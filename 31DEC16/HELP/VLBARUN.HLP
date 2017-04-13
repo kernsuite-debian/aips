@@ -1,0 +1,397 @@
+; VLBARUN - Amy Mioduszewski, NRAO - SEP 30 2014
+; Ver 1.0 : based heavily on VLBAPIPE by Lorant Sjouwerman
+;---------------------------------------------------------------
+;! applies amplitude and phase calibration procs to VLBA data
+;# RUN POPS VLBI UTILITY CALIBRATION
+;---------------------------------------------------------------
+;;  Copyright (C) 2014-2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+VLBARUN  LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VLBARUN: Applies amplitude and phase calibration to VLBA data !
+
+          To run this procedure you MUST type RUN VLBAUTIL and
+          RUN VLBARUN first to define the procedures in AIPS.
+
+                                   -- Load the data from disk --
+DATAIN                             Disk file name
+DOUVCOMP                           Compress data? Use -1, 0 or 1
+OUTNAME                            File name (name)
+OUTDISK                            Working disk with ample space
+                                   -- OR existing file --
+INNAME                             Input file name
+INCLASS                            Input file class
+INSEQ                              Input file sequence number
+INDISK                             Disk number for input file
+                                   -----------------------------
+OPTYPE                             For CONT, PSEU or SPEC (LINE)
+                                   -----------------------------
+CLINT                              CL table interval in minutes.
+CHREFANT                           Reference antenna NAME
+TIMERANG                           A good bandpass scan, or use
+                                     scan# in TIMERANG(1)+rest=0
+INVER             -1.0   46655.0   PC table to use
+                                   -1 => don't use Pulse cals
+                                       do manual phase cal
+CALSOUR                            List ALL Fring fit & CAL sour
+                                     FIRST is bandpass calib
+SOURCES                            ONLY FOR PHASE REFERENCING:
+                                     Source *PAIRS* to calibrate
+                                     START each pair with phase
+                                     referencing calibrator, if
+                                     2nd='*': all non-CALSOUR
+                                     are phase-referenced to 1st
+INFILE                             Set to DELZN correction file
+                                   -----------------------------
+SOLINT                             Time interval for fringe-fit
+                                   -----------------------------
+IMSIZE                             Image size for target SOURCES
+                                     =-1 for no images
+FACTOR                             CALSOUR IMSIZE (FACTORx128)
+                                   -----------------------------
+          Hint: when setting directory and e-mail lower-case
+          letters can be retained by NOT using the close quote.
+DOPLOT                             <= 0 no plots;=1 some plots
+                                   >1 huge number of plots
+OUTFILE                            DIRECTORY FOR HTML AND PLOT
+                                     FILES: if you want an html
+                                     file with plots please set
+                                     the dir where the html and
+                                     plot files can be put.
+OUTTEXT                            E-MAIL ADDRESS: if you want
+                                     an e-mail when the script
+                                     is complete, set the
+                                     address here.
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+VLBARUN
+Type: Procedure
+Use:  VLBARUN is the procedure that uses the VLBA calibration procedures
+      (VLBAUTIL) to calibrate VLBA data.  See the explain file for a detailed
+      description of the procedure.
+      Simple visibility flagging, bandpass calibration, and
+      ionospheric (total electron content) corrections are applied before
+      fringe fitting and averaging.  It may attempt to self-cal the
+      calibrators and will image the targets.
+
+NOTE: currently this procedure is intended for simple experiments!
+
+$----------------------------------------------------------------------------
+
+      Type RUN VLBAUTIL and RUN VLBARUN to define the VLBARUN procedures.
+
+      The procedure is run by typing : VLBARUN
+      The procedure will check the inputs (as far as it can) to avoid later
+      interruptions, and then proceed directly, if the data is already on
+      disk.
+
+CLEAN STARTING CONDITIONS
+      It is best to use one project per user number, as otherwise you may get
+      into trouble if different projects use the same source names.
+      It is not recommended to run two pipelines with the same user number
+      simultaneously, nor overlapping at any time during the processes.
+
+      Clean up all files resulting from previous attempts of running the
+      procedure, except for the original UVDATA and perhaps, when restarting
+      a specific frequency-ID, also not the F(X)POL files. When restarting
+      from disk, make sure the UV data has no extra SN, CL, FG etc tables.
+      Use the procedure P_RESTART (which is defined in VLBARUN) to do this.
+
+      If you  wish to flag some additional data (because the procedure did
+      not flag all the bad data automatically), make sure you put the flags
+      in FG table number 1.
+
+      If you have any antennas that do not have Tsys or Gain curves missing
+      from the data, please load them with ANTAB into TY and GC tables #1.
+
+      It is a VERY good idea to run TASAV before you do this to keep the
+      original TY, GC, BL and also FG tables number 1 in case of disasters.
+
+      Make sure there is enough disk space available on OUTDISK, about 4 to
+      5 times the expected compressed UVDATA set. For spectral line probably
+      you need much more because it will make spectral line image cubes.
+
+
+  DATAIN......48-character name of the disk file from which to read a
+              FITS file.  It must be in the form
+                  <logical>:<file name>
+              or
+                  <node>::<logical>:<file name>
+              where <node> is the remote computer name, <logical> is the
+              environment variable (logical name) for the disk area in
+              which the file named <file name> is stored.  <node> is
+              usually omitted when the file is local to the current
+              computer.  If DATAIN is not found, the task will try
+              DATAIN with the character 1 appended.
+              Beginning 2003-Oct-16 FITLD can read more than one disk
+              file at a time.  In that case, they must all have the
+              same name except that the last letter(s) are the
+              sequence number 1 through NCOUNT with no leading zeros.
+              DATAIN must give the base name only, omitting the
+              sequence number.  Then either
+                    DATAIN = 'MYDATA:file_
+              or
+                    DATAIN = 'MYDATA:file_1
+              can access files in $MYDATA named file_1, file_2,
+              file_3, etc.  Note that this is similar to the pieces of
+              a FITS pieced UV-table data set, but only one UV-table
+              data set may be read at a time.
+  DOUVCOMP....If true (> 0.5) then output data will be
+              compressed which saves disk space at the expense
+              of losing some weighting information.
+  OUTNAME.....The name for the output files. The output files
+              will all be given the class UVDATA and assigned
+              distinct sequence numbers as needed.
+  OUTDISK.....The disk drive number for the output data if loading from
+              disk. Choose a disk with a large amount of space.  If
+              data is already loaded into AIPS (i.e. you are using
+              INNAME, INCLASS etc) then OUTDISK is ignored and INDISK
+              is used.
+  INNAME......Input UV file name (name) that is already loaded.
+              Note that you CANNOT use both DATAIN/OUTNAME/OUTDISK
+              and INNAME/INCLASS/INSEQ/INDISK
+  INCLASS.....Input UV file name (class) that is already loaded.
+  INSEQ.......Input UV file name (seq. #) that is already loaded.
+  INDISK......Disk drive # of input UV file.  NOTE: this is also
+              used as OUTDISK.
+  OPTYPE......The type of observation and requested output files:
+              ''     = 'CONT' for channels < 65; 'SPEC' otherwise
+              'CONT' =  Plain continuum observations, uses pulse cals
+                        unless INVER = -1
+              'PSEU' = Pseudo-continuum observations, uses pulse cals
+                       unless INVER = -1.  The data is NOT averaged
+                       over channels, but the resulting images are
+                       continuum images - used for large FOVs
+              'SPEC' = Spectral line observations.  Manual pulse-cal is
+                       performed.  Data is unaveraged and images are
+                       spectral line cubes of the phase referenced target
+                       sources ONLY.
+              'LINE' = Same as 'SPEC'.
+  CLINT.......Calibration table interval in minutes. This should
+              normally be in the range 0.25 to 1.0.  If <=0 then
+              0.25 is assumed.
+  CHREFANT....Name of reference antenna.  If not set, a sensible antenna in
+              the southwest will be tried (FD, PT, LA or KP).
+  TIMERANG....Time range on which ALL antennas have good data on the bandpass
+              calibrator (see below, CALSOUR(1)).  Used for instrumental
+              phase calibration by either the pulse-cals or manually by
+              running FRING on this scan.
+              If you know the scan number, you can use the scan number
+              e.g., set TIMERANGE=66,0 to get the time range associated with
+              scan 66.
+              If all 0, then VLBARUN will try to find a good scan by running
+              BSCAN on the bandpass calibrator.
+  INVER.......PC table to use, if -1 do manual phase cal
+  CALSOUR.....All the calibrators should be listed here.  All these sources
+              will be FRING fit.  IMPORTANT: the FIRST source is the source
+              used for instrumental phase and bandpass calibration.  If
+              TIMERANGE was set, it must be a scan on CALSOUR(1).
+              If you want all sources fringe fitted then you may use
+              CALSOUR(2)='*' but remember to also specify CALSOUR(1).
+              These sources will be imaged in (pseudo) continuum mode.
+  SOURCES.....For phase referencing.  List PAIRS of phase-referencing/target
+              sources.  The phase calibrator should be the first in the pair,
+              i.e., with the odd index.  Each target should be the second in
+              the pair, i.e., have an even index.  All the phase calibrators
+              must be in the CALSOUR list as well.  If your are not
+              phase-referencing any source, then leave SOURCES blank.  If
+              SOURCES = 'PRCAL', '*' then all non-calibrators are phase
+              referenced to 'PRCAL'.
+              There is a maximum of 15 pairs, a total of 30 source fields.
+  SOLINT......The solution interval (min.) for FRING fit.  0 => 1 minute
+              If SOLINT > Scan/2 (in Multisource) SOLINT = Scan.
+  INFILE......If you want to apply a DELZN corrections file, set INFILE to
+              the filename.  See CLCOR explain file for more details, the
+              file format is the OPCODE='ATMO' format (which is the same
+              as DELZN produces).
+  IMSIZE......Output target image sizes.  Minimum IMSIZE of 512 up to
+              8192 pixels.  Sources listed in CALSOUR are automatically
+              imaged with a size of 128 by 128 unless FACTOR is set.
+              Pixel size is automatically set by frequency:
+              2.25/Frequency(GHz) mas.
+              IMSIZE=-1 do not make images.
+  FACTOR......scaled image size of CALSOURs.  Image size of sources listed
+              in CALSOUR is FACTOR*128.  The maximum FACTOR is 64.
+  DOPLOT......Make diagnostic plots to judge quality of procedure results.
+              <=0 => no plots
+              1 => some plots
+              2 => lots of plots (could be hundreds)
+  OUTFILE.....Directory of html and plots files.  If you want the diagnostic
+              plots written to disk and an html file created to make the
+              plots easier to examine please set directory here.  This is
+              limited to 37 characters (including final /).  Environmental
+              variables are allowed and must end with a ':'.  Mixed
+              environmental and regular are not allowed, e.g.,
+                OUTFILE='/home/computer/BM394/pipeline/
+                OUTFILE='FITS:'
+              are allowed.
+              BUT:
+                OUTFILE='FITS:BM394/
+              is not.
+              IT IS STRONGLY RECOMMENDED THAT THE DIRECTORY GIVEN IS EMPTY.
+  OUTTEXT.....E-mail address for notifications when script is done or
+              failed.
+  BADDISK.....A list of disk numbers to be avoided when creating scratch
+              files.
+$---------------------------------------------------------------------------
+VLBARUN:           Procedure that attempts to calibrate VLBI data blindly.
+Documentor:        Amy Mioduszewski, amiodusz@nrao.edu.
+Related Programs:  All VLBAUTIL procs, BPASS, SPLIT, IMAGR,..
+                                  POSSM, VPLOT and many many more
+
+VLBARUN applies VLBAUTIL procedures to simple VLBI experiments.  VLBARUN
+attempts to make sensible choices if inputs are left to default.  The only
+inputs that must be set are:
+   DATAIN or INNAME (INCLASS, INSEQ and INDISK) -> so the dataset is defined
+   CALSOUR(1) -> so VLBARUN knows what calibrator to use as the bandpass/
+      instrumental phase calibrator
+   SOURCES -> if the experiment is phase referenced
+
+More detail about defaults
+--------------------------
+VLBARUN tries to pick sensible defaults if inputs are left blank.  Below
+describes how it makes these decisions.
+  OPTYPE=''   -> VLBARUN checks the total number of channels and decides from
+                 that whether dataset is continuum (64 or less) or spectral
+                 line (>65).
+  CLINT=0     -> set to 0.25 minutes
+  CHREFANT='' -> Chooses the first antenna present from the southwest VLBA
+                 antennas in the order of FD, PT, LA and KP.
+  TIMERANGE=0 -> Runs the task BSCAN on CALSOUR(1) to select scan with the
+                 highest signal to noise with all the antennas present. If
+                 INVER>=0 then BSCAN also checks if there are PC table
+                 entries for that scan.
+
+Diagnostic plots
+----------------
+VLBARUN offers the option to create diagnostic plots.  If DOPLOT is set
+to 0 no plots are made.  For 0<DOPLOT<1.5 (i.e. DOPLOT=1) the following plots
+are produced:
+    -POSSM plot of bandpass solution
+    -SNPLT of amplitudes in CL table after ACSCL
+    -SNPLT of amplitudes in CL table after APCAL
+    -POSSM plots of amp and phase after instrumental phase calibration
+    -SNPLT of phase, delay, rate and SNR in CL table after FRING
+    -VPLOT of phase of data for phase reference sources with all calibration
+     applied
+    -KNTR (contour) plots of the images produced, if images are requested
+
+For DOPLOT>1.5, IN ADDITION to the above plots the following are produced
+as well:
+    -SNPLT of amplitudes in SN table after ACSCL
+    -SNPLT of amplitudes in SN table after ACCOR
+    -SNPLT of amplitudes in CL table after ACCOR
+    -SNPLT of amplitudes in SN table after APCAL
+    -SNPLT of phase, delay, rate and SNR in SN table after FRING
+    -SNPLT of amplitude in CL table after FRING
+
+Output of plots to disk, creation of html file and e-mail message
+-----------------------------------------------------------------
+VLBARUN will create .gif files on disk in the directory defined by OUTFILE of
+the plots that are requested.  It then makes a vlbarun.html file that includes
+headings for the plots and at the bottom a list of the CL tables and what
+calibration is added to each.  This vlbarun.html file is intended to make
+examination of the diagnostic plots easier, so the user can quickly judge whether
+the pipeline worked.
+
+It is STRONGLY recommended that the directory defined by OUTFILE be an empty
+directory.  VLBARUN creates and deletes files in this directory so it is safer
+if there aren't any files for VLBARUN to potentially clobber or delete.
+VLBARUN checks if there is an existing vlbarun.html file and will not run if
+there is.
+
+It is also recommended that if OUTFILE is used then an e-mail address be
+provided in OUTTEXT.
+
+The e-mail will state whether VLBARUN is done (subject: VLBARUN DONE) or failed
+(subject: VLBARUN FAILED).  The FAILED message only catches failure do to a
+problem with how VLBARUN was set up, if the pipeline fails because a task fails
+that is not captured and no e-mail message is sent.  If OUTFILE is set, the DONE
+message includes the URI to the vlbarun.html file assuming that the machine
+you are viewing it on is the "localhost".  So if you are on that machine, you
+can copy that URI ("file:///etc") into your web browser and look at the plots.
+If you are not on the machine where the plots were created then just copying
+the file:///... URI will not work.
+
+CONSIDERATIONS FOR MAC OS X AND OTHER OS THAT MIGHT NOT INCLUDE COMMON LINUX
+COMMAND-LINE TOOLS  -- the output of plots to display using .gif and
+html files requires the command-line command "convert".  If you do not
+have "convert" then you cannot use the OUTFILE input.  There are packages you
+can install on your machine that will give you access to linux command-
+line tools like convert.
+
+What does VLBARUN do?
+---------------------
+Below are the basic calibration steps that VLBARUN performs.  This does not
+include all the plotting etc..
+ 1) checks that the inputs are correct as well as it can, sets some defaults.
+ 2) run VLBATECR - corrects ionosphere if the observing frequency is less than
+                   12 GHz.  This procedure uses Global Positioning System (GPS)
+                   models of the electron content in the ionosphere to correct
+                   the dispersive delays caused by the ionosphere.  This
+                   correction is particularly important for phase referencing
+                   experiments at low frequency.
+ 3) run VLBAEOPS - corrects Earth Orientation Parameters (EOP) used in correlation.
+                   VLBI correlators must use measurements of the EOPs while
+                   correlating. These change slowly with time and therefore the
+                   EOPs used by the correlator must be continually updated.  Even
+                   though the EOPs that a correlator uses are the the most accurate
+                   at the time of correlation, frequently after the correlation the
+                   EOPs are improved.  This procedure inserts a correction for the
+                   difference between the EOPs used in correlation and the current
+                   best calculation of the EOPs.  This is particularly important
+                   for phase referencing.
+ 4) run VLBACCOR - sampler corrections.  This procedure corrects the amplitudes
+                   in cross- correlation spectra due to errors in sampler
+                   thresholds using measurements of auto-correlation spectra
+ 5) run VLBAPCOR or VLBAMPCL - correct instrumental delays if there is more than one
+                   IF.  These delays or "instrumental single-band delays" are caused
+                   by the passage of the signal through the electronics of the
+                   baseband converters and can be corrected with either the pulse
+                   cals (VLBAPCOR) or by running FRING on one scan (VLBAMPCL).
+ 6) run VLBABPSS - Runs BPASS to calibrate the bandpass response functions for
+                   each antenna.
+ 7) run VLBAAMP  - Runs ACSCL which applies the BP table and previous calibration
+                   tables and corrects the cross-correlation spectra using auto-
+                   correlations.  For more information see VLBA Scientific Memo #37
+                   (Craig Walker). Then preforms a-priori amplitude gain calibration
+                   using the gain curves and system temperatures.
+ 8) run VLBAPANG - correct paralactic angle.  The RCP and LCP feeds on alt-az
+                   antennas will rotate in position angle with respect to the
+                   source during the course of the observation (all VLBA and
+                   VLA antennas are alt-az). Since this rotation is a simple
+                   geometric effect, it can be corrected by adjusting the phases
+                   without looking at the data. You must do this correction for
+                   polarization and phase referencing experiments.
+ 9) run CLCOR - OPTIONAL, if INFILE is not blank will run CLCOR with OPCODE='ATMO'
+                   in order to apply a DELZN output file specified in INFILE.
+ 8) run FRING - final fringe fit of the data.  This step removes the global frequency-
+                   and time-dependent phase errors.
+ 9) run SPLIT - applies final calibration and splits into single source files.  If
+                   OPTYPE 'CONT' then frequencies are averaged.
+10) run IMAGR - OPTIONAL, if IMSIZE > 0 then produce images of all the sources
+                using the IMAGR autoboxing feature.
+
+

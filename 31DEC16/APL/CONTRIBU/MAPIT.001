@@ -1,0 +1,680 @@
+$     ---- MAPIT.001 ----
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1999
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+$Automatic Mapping batch map making procedures
+$Procedures search for a maximum in the field and shift
+$the center of a high resolution map to the maximum.
+$Procedures next self-calibrate the UV data and produce
+$high dynamic range I Q and U images.
+$BECAUSE of limited AIPS procedure space, comments are
+$mostly outside the procedures.
+$
+$Glen Langston, MIT, MPIfR, NRL, and NRAO
+$Joseph Lehar and Sam Conner, MIT
+$last editted by glen langston on 1992 June 25
+$updated for changes in AIPS on   1999 Oct  15
+RESTORE 0
+
+$turn of messages for long procedures
+MSGKILL TRUE
+$Define variables
+PROC DECLARE;SCALAR OKSCAL
+SCALAR RACELL,DECELL,PIXSI,XAXIS,ISTOKE,INBX,II,IJ,IJK,IIM
+SCALAR PEAK,NUMCC,NSCAL,SNVER,UVFREQ,CRP1,CRP2,UV0SEQ,BMSIZ
+SCALAR UVDIS,MSCDIS,MADIS,UV0DIS,IN0DI,IN0SE,MSCSEQ,UVSEQ
+SCALAR VIEW,OTIME,LOOP,CCFACT,UVLOW,UVMAX,X1,X2,Y1,Y2,XY,DXY
+SCALAR BOXSI,PEEK1,PEEK2,RMS,LASTRMS,RMSFACT,RMSLIM,NOLDUV
+SCALAR MNSIZ,MSOLIN,CSOLIN,NSOLIN,ZRMS,ZFLUX,PBIF,PEIF,MINRMS
+SCALAR MNMAP,CLSAV,CLFLUX,CLIMIT,NUMVIS,NUMIF,NUMSTOK,NUMFREQ
+SCALAR MGAIN,MNITER,MFLUX,MBMAJ,MBMIN,MBPA,MFACT,MPIXSI,MBOX
+SCALAR DOAMP,MDOPOL,MDOTV,DOSTOP,DOZAP,DOINT,MDOINT,MDOALL,MNBOX
+ARRAY  MUVRANG(2),MFLDSI(2,64),RMSBOX(4),SOLFAC(20),XYSIZE(2)
+ARRAY  MRASHI(64),MDECSHI(64),MIMSIZ(2)
+STRING*1 ASTOKE,BSTOKE(7);STRING*2 MUVWTFN; STRING*4 SCTYPE
+STRING*6 MAPCLASS,MSCLASS,UVCLASS,UV0CLAS,IN0CL,STCLASS(7)
+STRING*8 MAPKEY(3,7),INTASK;STRING*16 MSCNAM,UVNAM,MAPNAM,IN0NAM
+STRING*50 OUTLIN,WEAKPEA,ENTBOX,GOODBX,NOBOX,TWOPEA,NOCLIP
+STRING*53 POUNDS,BIGMAPA,BIGMAPB,ADJUSTV,MDLPNT,MDLIMG,MDLFST
+FIN
+
+$gwt: sets the task name, goes and waits
+PROC GWT(TASK);GO;WAIT;RET;FIN
+
+$clrzap: clears the file status and zaps it
+PROC CLRZAP;CLRST;ZAP;RET;FIN
+
+$thecat: utility for listing all files with same name
+PROC THECAT; INTASK=TASK;TPUT ZAP
+ INCL='';INS=0;INTY='';CATA;TGET ZAP;TASK=INTASK;RET;FIN
+
+$gotxpl: Puts TXPL output in history and on CRT
+$        plot on tty with no waiting. plot file is deleted
+PROC GOTXPL;INS=0;INV=0;DOCRT=3;GWT('TXPL')
+ INEXT='PL';CLRST;IF(DOZAP>0)THEN EXTDES;END
+RET;FIN
+
+$typound: TYPE POUNDS to mark STEPS
+POUNDS='#####################################################'
+PROC PRPND;TYP POUND;RET;FIN
+
+$head: Types next MAPIT Step.
+$      Pounds signs surround output
+PROC HEAD(OUTLIN);PRPND;TYP '#',OUTLIN;PRPND;RET;FIN
+
+$setmap: Set Name adverbs for Latest MAP
+PROC SETMAP
+ INN=MAPNA;INDI=MADI;INCL=MAPCL;INS=0;INTY='MA';RET;FIN
+
+$setmod: Set Name of self cal input model
+PROC SETMOD;IN2N=MSCNA;IN2D=MSCDI;IN2C=MSCLA;IN2S=MSCS;RET;FIN
+
+$resetmap: ReSet Map Name adverbs to Inname
+PROC RESETMAP;MAPNAM=INN;MADIS=INDI;MAPCL=INCL;RET;FIN
+
+$setuvd: Set Name adverbs for input UV-Data
+PROC SETUVD
+ INN=UVNAM;INDI=UVDI;INCL=UVCL;INS=UVSE;INTY='UV';CLRST;RET;FIN
+
+$getsize: return ra and dec size in pixels of current map
+PROC GETSIZE;KEYW='NAXIS1';GETH;XYSIZ(1)=KEYV(1)
+ KEYW='NAXIS2';GETH;XYSIZ(2)=KEYV(1);RET;FIN
+
+$peakfnd: find peak in map
+$ PEAK  - OUTPUT brightness of highest peak in the images
+$ PIXXY - OUTPUT pixel containing highest peak
+PROC PEAKFND;HEAD('FINDING PEAK')
+ SETMAP;DOINV=0;BLC=0;TRC=0;IMST;PEAK=PIXV;RET;FIN
+
+$tvpix: procedure to load the central part of an image to
+$       to the tv.
+$ PEAK - Peak of image to be loaded
+$ RMS  - Rms noise level of image to be loaded
+
+PROC TVPIX(PEAK,RMS);PIXRA=-2*RMS,MIN(20*RMS,PEAK)
+ GETSIZ;TXINC=XYSIZ(1)/512;TYINC=XYSIZ(2)/512;TVLOD;RET;FIN
+
+$gettvb: Get TV box for MX; Asks the user for input clean boxes
+$        The previous clean image is loaded on TV.
+$        TV pixel range is set so that faint features are seen
+$        User Fiddles the TV colors until satisfied.
+$        Next user may quit or enter a number of clean boxes
+$        Boxes are placed in the center of the screen
+$DOINT   - IF > 0 then DO interactive setting of clean boxes.
+$DOSTOP  - IF > 0 then DO stop map+self-cal loop
+$RMS     - RMS Noise level of image.
+$LASTRMS - Increase Last RMS to allow new boxes to be used.
+ADJUSTV = 'ADJUST TV and INPUT CLEAN BOXES:'
+NOBOX ='Enter  0 to Continue without stopping again:'
+ENTBOX='Enter Number of Clean Boxes (<0 Means stop):'
+PROC GETTVB
+ IF (DOINT>0&DOSTOP<0) THEN HEAD(ADJUSTV);TVIN;TVPIX(PEAK,RMS)
+  TVFID;BOXSI=MNSIZ/5;NBOX=0;INBX=11
+  WHILE (INBX<-10!INBX>10) TYP ENTBOX;TYP NOBOX;READ INBX;END
+  IF (INBX>0) THEN INBX=MIN(MAX(INBX,1),10);NBOX=INBX
+   FOR II=1:INBX
+    IF (CLBOX(1,II)=0) THEN XY=II*3
+     CLBOX(1,II)=XY+(XYSIZ(1)*.4); CLBOX(2,II)=XY+(XYSIZ(2)*.4)
+     FOR IJ=1:2;CLBOX(IJ+2,II)=CLBOX(IJ,II)+BOXSI;END
+    END;END; LASTRMS=2*LASTRMS
+   REBOX;TYP GOODBX;TYP NOBOX;READ INBX
+   IF (INBX<0) THEN REBOX;INBX=1;END
+  END;END
+ IF (INBX=0) THEN DOINT=-1;END;PIXRA=0
+ IF (INBX<0) THEN HEAD('STOPPING SELF-CAL');DOSTOP=1;END
+RET;FIN
+
+$startmx: runs mx and cleans up files after mx has finished
+$  All files (UVWORK, CLEAN and BEAM) are created on MADIS
+$  UVWORK and BEAM are deleted.
+$  Inname is reset to output map name
+PROC STARTMX;SETUVD;CLR2N;CLRON;IN2DI=MADI;OUTD=MADI
+ FACTOR=MFACT;GWT('MX');INS=0
+ INCL='UVWORK';INTY='UV';INDI=OUTD;CLRZA
+ INCL='?BM001'; INTY='MA';INDI=OUTD;CLRZA;SETMAP
+RET;FIN
+
+$setnear( BOXSI) : sets a box around PIXXY(1,2) location
+$                  Limits box to within the image
+$ PIXXY  - X and Y pixel number for box center
+$ BOXSI  - radius of region to set blc and trc
+$ XYSIZ  - size of image in pixels
+PROC SETNEAR(BOXSI)
+ BLC MAX(1,PIXX(1)-BOXSI),MAX(1,PIXX(2)-BOXSI);GETSIZE
+ TRC MIN(XYSIZ(1),PIXX(1)+BOXSI),MIN(XYSIZ(2),PIXX(2)+BOXSI)
+RET;FIN
+
+$GETBOX  - Returns the rms inside a box at X,Y
+$ BOXSI  - Radius of the box for statistics measurement
+$ RMS    - OUTPUT RMS noise of box centered on X,Y
+PROC GETBOX(X,Y,BOXSI,RMS)
+ PIXXY=X,Y,0;SETNEAR(BOXSI);IMST;RMS=PIXSTD;RET;FIN
+
+$GETRMS: Search four corners for second lowest RMS
+$ More than one corner may have the source in it.
+$ RMS   - OUTPUT average of middle 2 RMS values
+$         RMSNOISE is put in map header.
+$ X2, Y2- Scratch variables used nowhere else
+PROC GETRMS(RMS); HEAD('FINDING RMS NOISE IN IMAGE')
+ DOINV=-1;GETSIZ;BOXSI=XYSIZ(1)/10;XY=1.5*BOXSI
+ GETBOX(XY,XY,BOXSI,RMSB(1));X2=XYSIZ(1)-XY
+ GETBOX(X2,XY,BOXSI,RMSB(2));Y2=XYSIZ(2)-XY
+ GETBOX(X2,Y2,BOXSI,RMSB(3));GETBOX(XY,Y2,BOXSI,RMSB(4))
+ RMS=MAX(MIN(RMSB(1),RMSB(2)),MIN(RMSB(3),RMSB(4)))/2
+ RMS=MIN(MAX(RMSB(1),RMSB(2)),MAX(RMSB(3),RMSB(4)))/2+RMS
+ KEYWORD='RMSNOISE';KEYV=RMS,0;KEYTYP='R';PUTHEAD
+ PRPND; TYP '# SOURCE ',INN,', RMS =',RMS; PRPND
+RET;FIN
+
+$MAPEND;  MAP cleanup info
+PROC MAPEND;PEAKFND;GETRMS(RMS);RET;FIN
+
+$calcshift: Set MX parameters to put map center on peak.
+$           If map was shifted, add previous shift.
+$ PIXXY(1) - INPUT Ra  Pixel location
+$ PIXXY(2) - INPUT Dec Pixel location
+$ X        - OUTPUT Ra  shift in arc seconds
+$ Y        - OUTPUT Dec shift in arc seconds
+ PROC CALSHIFT
+ KEYW='CDELT1';GETH;RACELL=KEYV(1)
+ KEYW='CDELT2';GETH;DECELL=KEYV(1)
+ KEYW='CRPIX1';GETH;CRP1=KEYV(1)
+ KEYW='CRPIX2';GETH;CRP2=KEYV(1)
+ X=((PIXX(1)-CRP1)*RACELL)*3600;RASHI=X,0
+ Y=((PIXX(2)-CRP2)*DECELL)*3600;DECSH=Y,0
+RET;FIN
+
+$MIDSHIFT: locates the best shift location;
+$          If first peak is 6 times noise, get position
+$          if second peak > than 50 % of first and 7 RMS
+$          then shifts between two peaks, if both peaks in view
+$ VIEW      - Field of view of final image, shift between two
+$             peaks must be smaller, or they both fall off map
+$ RASHI(1)  - output shift in arc seconds.
+$ DECSH(1)  - output shift in arc seconds.
+TWOPEA ='# SHIFT: Shifting between two peaks'
+PROC MIDSHIFT;DOINV=-1;PEAKFND;PEEK1=PEAK;X1=0;Y1=0;PRPND
+ IF (PEEK1>6*RMS) THEN
+  MAXFIT;CALSHI;X1=X;Y1=Y;DOINV=1;SETNEAR(12);IMST
+  DOINV=0;PEEK2=PIXV;CALSHI;DXY=MAX(ABS(X1-X),ABS(Y1-Y))
+  IF (PEEK2>MAX(PEEK1/2,MINRMS*RMS) & DXY<VIEW) THEN
+   X1=(X1+X)/2;Y1=(Y1+Y)/2;FLDSI=0;MFLDSI=0; TYP TWOPEA
+  END; END
+ TYP '# SHIFT: DELTA RA  =',X1,' DEC =',Y1
+ RASHI=X1,0;DECSH=Y1,0;PRPND
+RET;FIN
+
+$GETIT:  GET Number of clean ITerations
+$ NITER   - Output Number of clean iterations in map
+PROC GETIT;SETMAP;KEYW='NITER';GETH;NITER=KEYV(1);RET;FIN
+
+$GETSEQ:  GET sequence number of file
+PROC GETSEQ;INS=0;KEYW='IMSEQ';GETH;INS=KEYV(1);RET;FIN
+
+$mamx: clean map, using dirty map to shift the phase center
+$  PIXSI  - size of one pixel in arcseconds
+$  FLUX   - cut off flux for clean
+$  MUVRANG- Limit of UV range to use for deconvolution
+$  RMS    - OUTPUT rms noise in map
+PROC MAMX;HEAD('DE-CONVOLVING');SETUVD;UVRANG=MUVRA
+ OUTD=MADIS;OUTN='';OUTS=0;CELLS=PIXSI;DOTV=MAX(MDOT-1,-1)
+ QH;STARTMX;UVRANG=0;DOTV=-1;MAPEND
+ IF (MDOT>0) THEN TVIN;TVPIX(PEAK,RMS);END
+RET;FIN
+
+$scalit: self calibrate UV file, using the clean image
+$  NUMCC - number of clean components for model
+$  UVLOW - lower limit of uvdata to self-calibrate
+$  REFANT- reference antenna number
+$  DOAMP - Do amplitude selfcalibration
+$  SOLINT- Solution interval (min). Calculated from input
+$          interval (CSOLIN) times a facter for each LOOP
+$ CALIB APARM parameters are important for solution
+$ quality: APARM(1) == Number of antennas for solution
+$          APARM(3) >0 Average RR, LL data
+$          APARM(5) >0 Average IFs
+$          APARM(7) == SNR cutoff (I like 3)
+$          APARM(9) >0 Pass Failed Solutions (Passing is
+$                      a good idea for first few solutions)
+$ avoid aliases on side lobes by varying cell size
+$ do amp and phase self-cal only if requested
+PROC SCALIT
+ SOLMOD='P';SETUVD;NMAP=NFIELD;UVRANGE=UVLOW,1E12;SOLCON=0
+ SNVER=0;XINC=0;CALSOUR='';SUBAR=0;SMOOTH=0;INVER=0
+ ANTWT=0;GAINERR=0;APARM=3,0,0,0,0, 0,3,0,1,0;CPARM=0,1,0
+ SOLIN=SOLFAC(MAX(1,MIN(NSOLIN,LOOP)))*CSOLIN; SOLTYP=SCTYPE
+ IF (PEAK<MDOALL*RMS) THEN
+  APARM(5)=MIN(NUMIF-1,1);APARM(3)=MIN(NUMSTO-1,1)
+ ELSE
+  IF (LOOP>0.75*NSCAL&DOALL>0) THEN DOAMP=1; END
+ END
+ IF (DOAMP>0&(PEAK>MDOALL*RMS)&DOALL>0) THEN
+  SOLMOD='A&P';SOLINT=4*CSOLIN; APARM(1)=4;NUMCC=0;END
+ NCOMP=NUMCC;HEAD('SELF-CAL UV DATA'); FLUX 0
+ IF (NUMCC>0) THEN TYP '# Num Clean Components ',NUMCC
+ ELSE TYP '# Using All Clean Components ';END
+ TYP '# Reference Antenna    ',REFANT
+ TYP '# UV Minimum (K-lambda)',UVLOW
+ TYP '# Averaging Time (min) ',SOLINT
+ TYP '# Solution Mode        ',SOLMOD; PRPND
+ QH;OUTCL='SCALO';OUTD=UVDI;OUTS=0;DOFIT=0;GWT('CALIB')
+ INS=0;INVER=0;XAXIS=0;NCOUNT=0;PIXRA=0;INEXT='SN';EIF=0
+ OPTYP='SUM';GWT('SNPLT');GOTXPL;OPTYP=''
+ INCLA='SCALO';OUTCL='SCAL';CLRST;RENAM
+ UVCLAS=OUTCL;UVSEQ=0;SETUVD;INEXT=''
+RET;FIN
+
+$CLPIT: Remove wild points many sigma above mean
+$ set clip flux limit based on number of vis and RMS
+$ assume source is less than 90% polarized
+$ Source Flux and RMS noise are read from UVDATA header
+$ CLFLUX - Flux level to clip data
+$ NUMVIS - Number of visiblities
+$ ZFLUX  - Flux of source measured by UVPRM
+$ ZRMS   - RMS noise of UVdata measured by UVPRM
+PROC CLPIT; SETUVD;UVRA=MUVRA;ANTE=0;BASELI=0
+ KEYW='UVPFLUX0';GETH;ZFLUX=KEYV(1)
+ KEYW='UVPRMSF0';GETH;ZRMS =KEYV(1)
+ IF (CLFLUX<=0) THEN CLFLUX=ZFLUX+(SQRT(NUMVI/2)*ZRMS);END
+ APARM=CLFLUX,(CLFLUX*.9),(ZRMS/SQRT(NUMVI/2)),0
+ IF (CLFLUX>CLIMIT) THEN PRPND
+  TYP '# Clipping points brighter than ',CLFLUX;PRPND
+  CLRON; OUTD=MADIS; OUTCL='UVCLIP'; OUTS=0; GWT('CLIP')
+  UV0CLAS=OUTCL;UVCL=OUTCL;UVDI=MADIS;UVSE=0;UV0SE=0;SETUVD
+  END
+RET;FIN
+
+$PLOTIT: Plot UV data vs Antenna Spacings
+$        set XINC to plot only 2000 points
+$ NUMVIS - Input Number of visibilities in UV data set
+$ Two plots are made for each IF,
+$  1) amplitude vs baseline length and 2) amplitude vs time
+PROC PLOTIT;SETUVD;PBIF=MIN(BIF,NUMIF);PEIF=EIF
+ IF (PEIF<BIF!PEIF<=0) THEN PEIF=NUMIF;END
+ FOR BIF=MAX(1,PBIF):MAX(1,PEIF);BPARM=0;BPARM(8)=250
+  PRPND;TYP '# Plotting UV-data for IF Number',BIF;PRPND
+  XINC=0;TIMER=0;INV=0;DOPOL=0;DOCAL=-1;SUBAR=0;SOURC=''
+  FACTOR=0;
+  GWT('UVPLT');GOTXPL;XINC=MAX(1,NUMVIS/2E3);BPARM=11,0
+  GWT('UVPLT');GOTXPL;XINC=0;BPARM=0
+ END; BIF=PBIF
+RET;FIN
+
+$GETPIX: Read Min and max UV range and observing duration
+$ PIXSI - Pixel size in arc seconds, calculated if not set
+$ UVMAX - OUTPUT maximum uvrange of input data (in lambda)
+$ OTIME - OUTPUT duration of observation in minutes.
+$         Time is converted from days to minutes
+$ Task UVPRM finds the Min and Max Uvrange, within input
+$      UVRANGE; UVPRM results are passed in Keywords
+PROC GETPIX; HEAD('Finding Min and Max UV-Range')
+ SETUVD;UVRA=MUVRA;BPARM=0;DOPOL=0;GWT('UVPRM')
+ IF (MUVRA(2)>0) THEN UVMAX=MUVRA(2)*1000
+ ELSE KEYW='UVPRAMAX'; GETH; UVMAX=KEYV(1); END
+ PRPND; KEYW='UVPOTIME'; GETH; OTIME=KEYV(1)*1440
+ TYP '# DURATION OF OBSERVATION  (MIN): ',OTIME
+ TYP '# MAXIMUM UV RANGE (KILO-LAMBDA): ',CEIL(UVMAX/1E3)
+ IF (PIXSI<=0) THEN PIXSI=2.06E5/(3.5*UVMAX); END
+ TYP '# PIXEL SIZE       (arc seconds): ',PIXSI
+RET;FIN
+
+$getaxis: determine whether data are compressed and
+$         find number of stokes parameters and IFs
+$         if COMPLEX axis size is not 3,
+$         then then data are compressed.
+PROC GETAXIS; KEYW='GCOUNT';GETH;NUMVIS=KEYV(1)
+ KEYW='NAXIS';GETH;NAXIS=KEYV(1);NUMSTO=0;NUMIF=0;NUMFRE=0
+ FOR I = 1 TO NAXIS
+  KEYW=MAPKEY(1,I); GETH; KEYW=MAPKEY(2,I); GETH
+  IF (KEYSTR='STOKES') THEN NUMSTO=KEYV(1);END
+  IF (KEYSTR='IF') THEN NUMIF=KEYV(1);END
+  IF (KEYSTR='FREQ') THEN
+   NUMFRE=KEYV(1);KEYW=MAPKEY(3,I);GETH;UVFREQ=KEYV(1)
+  END; END
+RET;FIN
+
+$CHECKIN: Check User input via MAPIT.HLP
+$ parameters are stored for latter re-use
+$  UVNAM =INNAM - Input UVdata
+$  MSCNAM=IN2NA - Model Self Cal Image (for restarting)
+$  MAPNAM       - Output Image name
+$  NSCAL =NMAPS - Number of self calibration loops
+$  The "M" ADVERBS are used to recored the MAPIT inputs
+PROC CHECKIN; CLRMSG; HEAD('CHECKING INPUT'); MSOLI=SOLIN
+ NUMVIS=1;KEYV=1;UVMAX=1;LOOP=-1;NSCAL=1;UVFREQ=22E9
+ PRTAS=''; PRNU=0; INP MAPIT_NA; INP MAPIT_UV; INP MAPIT_MX
+ TPUT MAPIT; TPUT MAPIT_MX; PIXSI=CELLS(1);CSOLIN=SOLINT
+ IN0CL=INCL;IN0S=0;IN0DI=INDI;IN0N=INN;SUBAR=0;BCOM=0;DOAMP=0
+ MDOT=DOTV;MFACT=FACTOR;IF(MFACT>.5) THEN MFACT=-.1;END
+ MUVWTFN=UVWTFN;MNMAP=NMAP;GAINU=0;OKSCAL=-1
+ MFLUX=FLUX;MNIT=NITER;MGAIN=GAIN;MDOPOL=DOPOL;MBOX=NBOX
+ MBMAJ=BMAJ;MBMIN=BMIN;MBPA=BPA;MUVRA=UVRANG;MFLDSI=FLDSI
+ MRASHI=RASHI;MDECSHI=DECSHI;DOTV=-1;DOCAL=-1;MIMSIZ=IMSIZ
+ CLSAV=CUTOF;CLFLU=CUTOF;CUTOF=0;DOBAN=-1;DOPOL=-1;DOSTOP=-1
+ ANTENN=0;BASELI=0;NSCAL=NMAP; IF (NMAP=0) THEN NSCAL=3; END
+ MDOALL=ABS(DOALL); IF (MDOALL<5) THEN MDOALL=30; END
+ RMS=1E-9; PEAK=10*RMS; PIXV=RMS; LASTRMS=RMS/2; PIXSTD=RMS
+ UVNAM=INN;UVCLAS=INCL;UVSEQ=INS;UVDI=MAX(INDI,1)
+ UV0CL=INCL;UV0SE=INS;MAPNAM=INN;MAPCL='ICL001';MADIS=OUTD
+ MSCNA=IN2N;MSCLAS=IN2CLA;MSCSE=IN2S;MSCD=IN2DI
+ CLRON; OUTDI=MADIS; ASTOK=SUBSTR(STOKES,1,1)
+ FOR I=1 TO 7; IF (ASTOK=BSTOKE(I)) THEN ISTOK=I; END; END
+ IF (ISTOK=2!ISTOK=3) THEN ISTOK=1;END; MAPCL=STCLA(ISTOK)
+ STOKES=BSTOK(ISTOK); IF (MADIS<=0) THEN MADIS=INDI;END
+ IF (MNIT<=0) THEN MNIT=1000;END
+ IF (MGAI<=0) THEN MGAI=0.05;END
+$ get UV par
+ GETAXIS; GETPIX; BMSIZ=FLOOR((2.7E12/UVFREQ)/PIXSI)
+ type 'at d'
+ TYP '# VLA Primary beam (FWHM pixels): ',BMSIZ
+ IF (IMSIZ(1)<=7) THEN
+  IMSIZ=MIN(2**CEIL(LN(BMSIZ)/LN(2)),512); END
+ MNSIZ=MIN(IMSIZ(1),IMSIZ(2))
+ type 'at e'
+ TYP '# Image size            (pixels): ',MNSIZ
+ PRPND; VIEW=IMSIZ(1)*PIXSI*.95; MPIXS=PIXSI
+ IF (CSOLI<=0) THEN CSOLI = MIN((OTIME+.5)/2,5); END
+ TYP '# Self-Calibrate if Signal/Noise >',MINRMS
+ IF (DOALL>0) THEN
+  TYP '# Ampl. Self-cal if Signal/Noise >',MDOALL;END
+RET;FIN
+
+$RECHECK: Reset a few adverbs to the input values
+PROC RECHECK; RASH=MRASH;DECSH=MDECSH;NMAP=MNMAP
+ FLUX=MFLUX;NITER=MNIT;GAIN=MGAIN;DOPOL=MDOPOL;IMSIZ=MIMSIZ
+ BMAJ=MBMAJ;BMIN=MBMIN;BPA=MBPA;SOLINT=MSOLI;NBOX=MBOX
+ UVRANG=MUVRA;FLDSI=MFLDS;DOTV=MDOT;FACTO=MFACT;SETMOD
+ UVWTFN=MUVWT;CUTOF=CLSAV;DOINT=MDOIN
+ INN=IN0N;INDI=IN0DI;INCL=IN0CL;INS=IN0S
+RET;FIN
+
+$GETANT: Get Reference antenna if not already set
+$ The reference antenna is put in header by UVPRM.
+PROC GETANT(REFANT)
+ IF (REFANT<1) THEN HEAD('GET REFERENCE ANTENNA')
+  SETUVD; BPARM=0; DOPOL=0; GWT('UVPRM')
+  KEYW='UVPREFAN';GETH;REFANT=KEYV(1)
+ END
+RET;FIN
+
+$GETSHIFT: Get ra and dec shift if requested.
+$          Modifies MX inputs for a large field of view
+$          First makes a map of large region around
+$          the center of the observation. ONLY SHIFTS IF peak
+$          is brighter than MINRMS times noise.
+$ DOCENTER - If true find RASHIFT and DECSHIFT
+BIGMAPA='# Making an Image with a large pixel size.  Peak in'
+BIGMAPB='# next Image will be the center of de-convolutions'
+PROC GETSHIFT
+ IF (DOCENTER>0) THEN HEAD('CENTER MAP ON SOURCE')
+  TYP BIGMAPA;TYP BIGMAPB;NITER=15;UVWTFN='NA';NBOX=0
+  GAIN=.333;BMAJ=0;BMIN=0;FLDSI=0;PIXSI=2*PIXSI;MAMX;NBOX=MBOX
+  PRPND; TYP '# SOURCE ',INN,', PEAK=',PEAK;PRPND
+  IF (PEAK>RMS*MINRMS) THEN MIDSHIFT;CLRZAP;END
+  GAIN=MGAIN;UVWTFN=MUVWTFN;PIXSI=MPIXS
+  BMAJ=MBMAJ; BMIN=MBMIN;FLDSI=MFLDSI
+ END
+RET;FIN
+
+$GETCC: find positive clean components for self-cal
+$         Mapname is assumed to be correctly set.
+$ NUMCC - Output Number of clean components brighter than
+$         Twice the first negative
+$ FLUX  - Output Sum of flux of first NUMCC clean components
+$         CCFND passes the number of CCs found via MAP
+$         header NTHCC.
+PROC GETCC(NUMCC,FLUX); HEAD('SELECT CLEAN COMPONENTS')
+ FLUX=0;FACTOR=CCFACT;ECOUNT=0;INV=1;OUTV=1;GWT('CCMRG')
+ INV=0;OUTV=0;GWT('CCFND');KEYW='NTHCC';GETH;NUMCC=KEYV(1)
+ KEYW='SUMFLUX';GETH;FLUX=KEYV(1)
+RET;FIN
+
+$GETUVLOW: Find lower limit of UV data represented
+$          by Clean components
+$ FLUX - Input to UVPRM, is the brightness represented by
+$          the image clean components.
+$ UVLOW- Output Lower Limit of UV Range for self-cal (k-lambda)
+$          limit uvlow to less than 25% of the UV range
+PROC GETUVLOW(FLUX,UVLOW)
+ SETUVD;UVRA=MUVRA;BPARM=0;BLVER=-1;SUBAR=0;GWT('UVPRM')
+ KEYW='UVPFLMIN';GETH;UVLOW=KEYV(1)
+ KEYW='UVPRAMAX';GETH;UVMAX=KEYV(1)
+ UVLOW=MAX(MIN(UVMAX/4,UVLOW),UVMAX/20)/1000
+RET;FIN
+
+$DELMAPS: Delete multi-field MX CLEAN maps
+$ MAP NAME, CLASS and SEQUENCE are assumed correct
+$ First MAP is deleted and other fields if they exist
+PROC DELMAPS; CLRZAP
+ IF (NFIELD > 1 & INS>0) THEN INTY
+  FOR I = 2 TO NFIELD;INCL='?CL001';CLRZAP;END;  END
+RET;FIN
+
+$DELAST:  Delete last map and self calibration
+PROC DELAST; HEAD('SOLUTION NOT IMPROVING, DELETING')
+ SETMAP;GETSEQ;IF (INS>1) THEN DELMAPS;END
+ SETUVD;INCL='SCAL';GETSEQ;IF (INS>1) THEN CLRZAP;END;INS=0
+RET;FIN
+
+$DELPRE: Delete Previous map and self calibration
+$ DOZAP: if true, delete, else save for diagnostics
+$ LOOP : Only Delete self-cal after first loop
+PROC DELPRE(LOOP); HEAD('SOLUTION IMPROVED')
+ IF (DOZAP>0) THEN HEAD('DELETING PREVIOUS');SETMAP
+  GETSEQ;IF (INS>1) THEN INS=INS-1;DELMAPS;END
+  SETUVD;IF (OKSCAL>0) THEN INCL='SCAL';GETSEQ;END
+  IF (INS>1&LOOP>1) THEN INS=INS-1;CLRZ;END;INS=0
+  END
+RET;FIN
+
+$getpeak: return PEAK value of the map
+PROC GETPEAK; KEYW='DATAMAX';GETH;PEAK=KEYV(1);RET;FIN
+
+$POLARIT - creats I, Q and U maps and combines to make a plot
+$  DOPOL - >0: make polarization plots.
+$      Polarization maps do not require much cleaning,
+$      so the number of iterations is one quarter of ICL001.
+PROC POLARIT; GETPEA
+ IF ((DOPOL>0)&(PEAK>MDOALL*RMS)) THEN FACTOR=MFACT
+  HEAD('Q and U IMAGES');ZEROSP=0;FLUX=MAX(0,MFLUX)
+  NITER=MNITER/4;STOKES='Q';MAMX;STOKES='U';MAMX;STOKE=''
+  END
+RET;FIN
+
+$GETSCAL: Determine parameters for self-calibration
+$         After first third of self-calibration passes,
+$         use previously self-calibrated data for next
+$         self-calibration.  (Input Image name must be set)
+$ NUMCC - Number of clean components in model
+$ UVLOW - Lower limit of UV range to self-calibrate
+$ NSCAL - Number of self-calibration loops
+$ FLUX  - Brightness containined in clean component model
+$ NOLDUV- Number of loops to use original UV data for self cal
+PROC GETSCAL; GETCC(NUMCC,FLUX)
+  IF (LOOP<MAX(NSCAL/3,NOLDUV+1)) THEN
+   UVCLAS=UV0CLAS; UVSEQ=UV0SEQ; END
+  SMODEL=0;IN2N=INN;IN2CL=INCL;IN2S=INS;IN2DI=INDI
+  GETUVLOW(FLUX,UVLOW);SCALIT
+RET;FIN
+
+$PSCAL: Point Source Model Self CALibration
+$ZFLUX - Estimated point source model Flux
+$       Source is assumed to be at the phase center
+PROC PSCAL
+ CLR2N;IN2DI=INDI;SMODEL=ZFLUX,0;NUMCC=0
+ GETUVLOW(ZFLUX,UVLOW); SCALIT
+RET;FIN
+
+$GETMOD: Get model image for first self calibration
+$ MSCNAM - Model Self Cal image name (IN2Name set by SETMOD)
+$          If the model name is set, restart with model
+$        - The next map set will use UVCLAS for imaging
+MDLPNT='Starting Self-Cal with POINT MODEL'
+MDLIMG='Starting Self-Cal with Input Image'
+MDLFST='Creating Image for First Self-Calibration Loop'
+PROC GETMOD; LOOP=0
+ IF (MSCNAM<>'') THEN
+  IF (MSCNAM='POINT') THEN HEAD(MDLPNT);PSCAL
+  ELSE HEAD(MDLIMG);INN=MSCNA;INCL=MSCLA;INS=MSCS;INDI=MSCD
+   GETRMS(RMS); GETSCAL;GETPEA;END;END
+ FLU=MFLU;IF(NSCAL>0)THEN HEAD(MDLFST);FLU=-1;END
+ NITE=MNIT;MAMX
+ IF (DOINT>0) THEN GETTVB;SETMAP;DELMAPS;MAMX;END
+ GETPEA;LASTRMS=RMS
+RET;FIN
+
+$MAPLOOP: Inner Deconvolution and Self-calibration loop.
+$         Amplitude self-cal is done on 80 % of cycles.
+$         Loop executes only if noise is getting smaller.
+$         Shifts phase center again after first pass.
+$ LOOP  - Execution number
+$ NSCAL - Maximum number of self calibration executions
+$ MFLUX - for all but last loop, clean only to first negative
+$         source model component
+$         Loop stops executing when RMS is significantly worse
+$         Than previous execution. setting RMS=LASTRMS allows
+$         another try with different Self-Cal parameters
+$ PIXSI - Cell Size of image
+$ DOSTOP- STOP executing loop
+WEAKPEA='PEAK TOO FAINT TO SELF-CALIBRATE'
+PROC MAPLOOP(LOOP); RMSLIM=RMSFAC*LASTRMS; PIXSI=MPIXS
+ IF ((DOSTOP<=0)&(RMS<=RMSLIM)&(LOOP<=NSCAL)) THEN
+  PRPND; PRINT '# LOOP ',LOOP,' OF ',NSCAL,'#';PRPND;SETMAP
+  IF (PEAK<MINRMS*RMS) THEN DOSTOP=1;HEAD(WEAKPEA)
+  ELSE GETSCAL;SETMAP;GETTVB
+   IF (LOOP<NSCAL&DOSTOP<=0) THEN FLU=-1;MAMX
+$   if rms worse, delete
+    IF (RMS>RMSLIM) THEN DELAST
+     IF (DOAMP<=0&DOALL>0) THEN DOAMP=1;RMS=LASTRMS;END
+    ELSE OKSCAL=1
+     IF (DOCENTER>0) THEN MIDSHIFT;END;DELPRE(LOOP)
+   END; END; END; END
+ LASTRMS=MIN(LASTRMS,RMS)
+RET;FIN
+
+$MAPIT: Main procedure for mapping and self-calibration
+$ Inputs to MAPIT are set with the MAPIT Help file
+$ i.e. INPUT MAPIT
+$    The self calibration loop continues only if peak is
+$    seven times the noise level.
+$ MAPIT first attemps self-calibration based on the Fourier
+$       Transform (FT) of the UV data.  If the FT fails, a
+$       point source model is used for self-calibration.
+$ Self Cal only if noise greater than MINRMS time RMS
+MINRMS=8
+PROC MAPIT
+  CHECKIN
+  CLPIT
+  PLOTIT
+$ ref ant, shift center, 1st s-cal
+  GETANT(REFANT); GETSHIFT; GETMOD
+$ If Self-calibrating
+  IF (NSCAL>0) THEN FOR LOOP=1:NSCAL;MAPLOOP(LOOP);END;END
+  DOPOL=MDOPOL;POLARIT;OUTS=0
+$ final clean, clean-up
+  FLUX=MFLUX;NITER=MNIT;MAMX
+  IF (RMS<LASTRMS*RMSFAC) THEN DELPRE(NSCAL);END
+  IF (CLFLUX>CLIM&DOZAP>0) THEN
+   SETUVD;INCLA='UVCLIP';CLRZ;END
+  IF (DOZAP>2&OKSCAL>0) THEN SETUVD;INCL='SCAL';CLRZ;END
+  HEAD('DONE WITH SOURCE ==> '!!INNA); RECHECK
+RET;FIN
+
+$map parameters
+XYSIZ=512; MGAIN=0.05; GAIN=MGAIN;ZEROSP=0; UVBOX=0
+UVWTFN=''
+DOCENTER = -1; DOPOL = -1; DOALL = -1
+NUMVIS=1; LASTRMS=0.5; RMS=1; KEYV=1,1; ZRMS=1; PEAK=RMS
+UVMAX=1; LOOP=1; NSCAL=1; PIXSI=1; UVFREQ=22E9; PIXV=PEAK
+
+$DOINT: Do interactive set of boxes before MX
+DOINT=-1
+$DOSTOP:  Flag to stop self-cal + image loop
+DOSTOP=-1
+
+$FACTOR determines MX minor cycle clean stopping point.
+$       a small value stops clean just before reaching
+$       side-lobe level (FACTOR=0 => stop at level)
+$       FACTOR=-1 => one component per minor cycle. (slow)
+FACTOR=-.1
+
+$RMSFAC is the rms noise factor for stopping the MAPLOOP
+$RMSFAC if RMS is less than RMSFAC*LASTRMS the loop continues
+$RMSFAC > 1 implies solution is allowed to get a little worse.
+$       before the solution improves
+RMSFAC=1.2
+$CLIMIT is minimum source flux for CLIP
+CLIMIT=0.04
+
+$CCFACT determines the CC components to include in SCAL
+$       model. Default is twice negative CC is minimum.
+CCFACT=2
+
+$Self-Calibration solution interval Factor Defaults
+FOR I=1 TO 20; SOLFA(I) = 1/I; END
+
+$"Tuned" Self-Calibration Solution Interval Factors
+NSOLIN=10
+SOLFA(1)=1  ;SOLFA(2)=3/4;SOLFA(3)=2/3;SOLFA(4)=1/2;
+SOLFA(5)=1/3;SOLFA(6)=1/4;SOLFA(7)=1/5;SOLFA(8)=1/6;
+SOLFA(9)=1/8;SOLFA(10)=1/10
+
+$sctype is the self cal solution type used in mapit.
+SCTYPE='L1'
+
+$nolduv is number of loops to use orginal UVdata for self-cal
+$after NOLDUV self-cals, the previous self-cal output is used as
+$input to the next self-cal input.
+NOLDUV=2
+
+$general parameters
+$ set keywords used to read map and uvdata headers
+FOR I = 1 TO 7; MAPKEY(1,I)='CTYPE'!!CHAR(I);END
+FOR I = 1 TO 7; MAPKEY(2,I)='NAXIS'!!CHAR(I);END
+FOR I = 1 TO 7; MAPKEY(3,I)='CRVAL'!!CHAR(I);END
+
+$ set stokes clean classes
+BSTOKE= 'I','Q','U','V','L','R',' '
+FOR I = 1 TO 6; STCLASS(I)=BSTOKE(I)!!'CL001';END
+$default stokes is I
+STCLASS(7) = 'ICL001'
+
+GOODBX ='Enter >0 to Continue (<0 = re-select boxs) :'
+
+DOCRT -1; PRNU -1; INEXT 'PL'; DOTV=-1; DOZAP=1
+
+$clear messages
+CLRMSG
+
+$turn on the message file
+MSGKILL FALSE
+
+$To execute MAPIT:
+$ set INDISK, and the NAME of the INPUT UV data set.
+$ set OUTDISK and BADDISK to speed execution.
+$ TYPE:
+$       MAPIT
+$ to start execution

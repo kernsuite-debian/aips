@@ -1,0 +1,290 @@
+; MOMNT
+;---------------------------------------------------------------
+;! calculates images of moments along x-axis (vel, freq, ch)
+;# Task Analysis
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 2002-2003, 2005, 2009, 2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+MOMNT     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+MOMNT:  Task to calculate profile moments
+INNAME                             Input name(name).
+INCLASS                            Input name(class).
+INSEQ           0.0      9999.0    Input name(seq. #). 0=>high
+INDISK          0.0         4.0    Input disk drive #. 0=>any
+OUTNAME                            Output name(name).
+OUTCLASS                           Contains a string of numbers
+                                     (0-3) indicating which
+                                     moments are wanted.
+                                     blank => '012'
+OUTSEQ         -1.0      9999.0    Output name(seq. #).
+                                     0=>highest unique.
+OUTDISK         0.0         4.0    Output image disk drive #
+                                     0=>highest with room.
+BLC             0.0      2048.0    Bottom left corner of image
+                                     0=>entire image
+TRC             0.0      2048.0    Top right corner of image
+                                     0=>entire image
+FUNCTYPE                           Smoothing functions to be
+                                     used for blanking;
+                                     1st char refers to velocity
+                                     coord:  B:box, H:Hanning;
+                                     2nd char refers to spatial
+                                     coords:  B:box, G:Gaussian.
+CELLSIZE        0.0        25.0    Width of smoothing functions:
+                                     1st element: velocity coord
+                                     2nd element: spatial coords
+                                     Allowed ranges:
+                                     Vel. B/H: odd integer 1-25
+                                     Spat. G: real 0.5-6.0.
+                                           B: odd integer 1-11
+FLUX                               Use only data > FLUX
+ICUT                               Use only data > in abs value
+                                   than ICUT (> 0).  Use only
+                                   data < in abs value than
+                                   ICUT (< 0.).
+PBPARM                             Beam parameters:
+                                   (1) Cutoff: 0 -> no PB corr
+                                   (2) > 0 -> Use (3)-(7)
+                                   (3)-(7) Beam shape
+----------------------------------------------------------------
+MOMNT
+Type: Task
+Use:  MOMNT does profile analysis on spectral line data.  It
+      calculates profile moments 0 to 3 from n-dimensional maps
+      (2<n<8) and puts the results in (n-1)-dimensional maps with
+      class 'MOMm' m=0-3).  The first coordinate of the input map HAS
+      TO BE 'VE', 'FR', or 'CH'; a subimage may be selected.  The
+      decision on whether or not to include a particular point in the
+      moment calculation is made by comparing the smoothed/averaged
+      intensity at that point with FLUX and ICUT.  The
+      smoothing/averaging is done in three dimensions, with a choice
+      of Boxcar or Hanning for the velocity coordinate, and Boxcar or
+      Gaussian for the spatial coordinates (specified by FUNCTYPE).
+      The size of the convolving kernel is given by CELLSIZE and has
+      to be an odd integer, except for the Gaussian where it specifies
+      the FWHM of the kernel; in this case the size of the kernel is
+      2*CELLSIZE(2)+1.  The maximum kernel size for velocity is 25,
+      for the spatial coordinates 11.  The kernel sizes are adjusted
+      to the nearest extremum if they are out of bounds.  The subimage
+      size is adjusted for the spatial kernel size, if necessary.  The
+      program makes an effort to minimize the I/O; if
+         (TRC(1)-BLC(1)+1+CELLSIZE(1)) * CELLSIZE(2) *
+            (TRC(2)-BLC(2)+1+CELLSIZE(2))  >  4000000
+      the execution time will about double because of a huge increase
+      in I/O (corners and kernel sizes adjusted, of course).  For FLUX
+      try a value in the range
+         1.5 to 4 * RMS / SQRT (A * B)
+      where:
+         A   = CELLSIZE(1)                 for velocity Boxcar
+             = (CELLSIZE(1)+1)/2           for velocity Hanning
+         B   = CELLSIZE(2)**2/(B1*B2)      for spatial Boxcar
+             = CELLSIZE(2)**2/(B1*B2) + 1  for spatial Gaussian
+         B1  = major axis FWHM of input map beam (in pixels)
+         B2  = minor axis FWHM of input map beam (in pixels)
+         RMS = r.m.s. noise in input map
+      The units of the first input axis must be m/s, Hz, or channel
+      number.  XMOM is similar to MOMNT but does not do any smoothing
+      before the clipping.
+
+      *************************************************************
+      MOMNT now (2003-06-01) finally handles magic-value blanks.
+      Using REMAG to convert blanks to zero and then smoothing with
+      them is not correct and is no longer required.
+      *************************************************************
+
+      Users should be aware that the image of the first moment is in
+      single-precision floating point.  If the first axis is frequency,
+      there may be not be enough accuracy to represent the variation in
+      frequency about some very high central frequency.  The task will
+      subtract the central value from the image of the first moment
+      whenever the difference in the axis values from one end to the
+      other is < 10**-3 of the central value.  NOTE: THIS PRODUCES AN
+      INCORRECT FIRST MOMENT SINCE AIPS HEADERS NO LONGER SUPPORT THE
+      CONCEPT OF A BIAS AND SCALE.
+Adverbs:
+  INNAME.....Input name (name):             Standard defaults.
+  INCLASS....Input name (class);            Standard defaults.
+  INSEQ......Input name (sequence number);  0 => highest.
+  INDISK.....Input disk unit number;        0 => any.
+  OUTNAME....Output name (name):            Standard defaults.
+  OUTCLASS...Contains a string of numbers (0-3) indicating which
+             moments are wanted (e.g., '0123' or '301');
+             N.B. blank => '012'.  The actual OUTCLASSes of the
+             images will be 'MOM0','MOM1','MOM2',and 'MOM3'.
+  OUTSEQ.....Output name (sequence number); 0 => highest unique.
+  OUTDISK....Output disk unit number;       0 => highest w room.
+  BLC........Bottom left corner of subimage; 0: bottom left corner of
+             entire image
+  TRC........Top right corner of subimage; 0: top right corner of
+             entire image
+  FUNCTYPE...Smoothing functions to be used for blanking;
+             first character refers to velocity coordinate:
+                 B:box, H:Hanning (default B);
+             second character refers to spatial coordinates:
+                 B:box, G:Gaussian (default B).
+  CELLSIZE...Width of smoothing functions;
+             first element: velocity coordinate; allowed range:
+                 B/H: odd integer 1 - 25  (<= 0 => 3);
+             second element: spatial coordinates; allowed ranges:
+                 B: odd integer 1 - 11    (<= 0.0 => 5),
+                 G: real 0.5 - 6.0        (<= 0.0 => 2.0).
+  FLUX.......A flux cutoff in the same units as the input image (i.e.
+             Jy/beam).  Data values below FLUX in the smoothed image
+             are ignored in the moment computation.  NOTE that 0.0 is
+             not a null value.  Instead, it means ignore all negative
+             brightnesses.
+  ICUT.......A flux cutoff in the same units as the input image (i.e.
+             Jy/beam).  When ICUT > 0.0, data values in the smoothed
+             image less in absolute value than ICUT are ignored.  When
+             ICUT < 0.0, data values in the smoothed image greater in
+             absolute value than ICUT are ignored.  NOTE that ICUT and
+             FLUX are both always used.
+  PBPARM.....Primary beam parameters:  Adjust the cutoff levels to
+             account for the primary beam.
+             (1) Lowest beam value to believe: 0 -> do not do a
+                 primary beam correction.  The maximum correction is
+                 a factor of 100.
+             (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+             (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See explain for details
+----------------------------------------------------------------
+
+     MOMNT has the option of scaling the cutoff values on a
+pixel-by-pixel basis to "correct" for the primary beam.  Thus, as the
+beam value goes down the cutoff value goes up.  This allows MOMNT to
+be run on data cubes after the application of PBCOR.  Since the
+primary beam is a function of frequency, the spectral moments are
+affected by the primary beam correction.  Unfortunately this
+correction also raises the noise, making the option to raise the
+cutoff useful.
+
+     MOMNT corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+1.285           -1.329E-3       6.445E-7        -1.146E-10  *
+1.465           -1.343          6.579           -1.186 "
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.

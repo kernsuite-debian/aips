@@ -1,0 +1,121 @@
+      DEFINE SEARCH(NF,NT,MF,MT,ND,NR,DATA)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: VLBI fringe search using FFTs.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+      LOCAL INTER,FINAL,FFT,LOC1,MF2,MT2,COUNT,NN,NR2,ND2,NT2
+"    VFC ROUTINE
+"   SEARCH is a routine to do a gridded fringe search by means of
+"   padded FFTs.  The number (size) of the FFTs is NF (MT) +
+"   NR (MF).
+"   Inputs:
+"    NF     I*2    No. frequency channels.
+"    NT     I*2    No. time points.
+"    MF     I*2    No. points for freq. FFT.
+"    MT     I*2    No. points for time FFT.
+"    ND     I*2    No. delay channels to search.
+"    NR     I*2    No. rate channels to search.
+"    DATA P I*4    Base address of data array (NT,NF)
+"    Also expects in the AP memory:
+"    0  => COS (PHASE0)    PHASE0 = 0.0
+"    1  => SIN (PHASE0)
+"    2  => COS (del PHASE T)  del PHASE T = -2*Pi*(NR/2)/MT
+"    3  => SIN (del PHASE T)
+"    4  => COS (del Phase F)  del PHASE F = -2*Pi*(ND/2)/MF
+"    5  => SIN (del PHASE F)
+"        These phases should make the center come out in cell
+"        (ND/2+1, NR/2+1)
+"
+"    Output:
+"    0 => 1 dim. array index for peak.
+"    1 => peak amplitude
+"    2 => peak phase.
+"
+"    Programmer: W. D. Cotton, April 1982.
+"
+"                                        SET POINTERS
+      MF2 = MF * 2
+      MT2 = MT * 2
+      NT2 = NT * 2
+      NR2 = NR * 2
+      ND2 = ND * 2
+      SP09 = NF * NT2
+      INTER = DATA + SP09
+      SP09 = NF * NR2
+      FINAL = INTER + SP09
+      SP09 = NR * ND2
+      FFT = FINAL + SP09
+      NN = NR * ND
+      COUNT = NF
+      LOC1 = INTER
+"                                        DO FIRST XFORM.
+"                                        FIRST ROTATE PHASE
+ LOOP1:  CALL VCLR(FFT, 1, MT2)
+         CALL PHSROT (DATA, 2, FFT, 2, 0, 2, NT)
+"                                        DO TIME FFT
+         CALL CFFT (FFT, MT, -1)
+"                                         SAVE RESULT
+         CALL CVMOV (FFT, 2, LOC1, 2, NR)
+"                                        UPDATE PHASE RAMP.
+         CALL PHSROT (0, 2, 0, 2, 4, 2, 1)
+"                                        UPDATE DATA POINTER.
+         DATA = DATA + NT2
+"                                        UPDATE RESULT POINTER.
+         LOC1 = LOC1 + NR2
+"                                        UPDATE COUNT
+         COUNT = COUNT - 1
+         IF COUNT > 0 GOTO LOOP1
+"                                         SECOND TRANSFORM LOOP.
+      COUNT = NR
+      LOC1 = FINAL
+ LOOP2:  CALL VCLR (FFT, 1, MF2)
+"                                         MOVE TO FFT WORK SPACE.
+         CALL CVMOV (INTER, NR2, FFT, 2, NF)
+"                                         FREQ. FFT.
+         CALL CFFT (FFT, MF, -1)
+"                                         MOVE TO OUTPUT ARRAY.
+         CALL CVMOV (FFT, 2, LOC1, 2, ND)
+"                                         UPDATE OUTPUT POINTER.
+         LOC1 = LOC1 + ND2
+"                                         UPDATE INPUT POINTER.
+         INTER = INTER + 2
+"                                         LOOP.
+         COUNT = COUNT - 1
+         IF COUNT > 0 GOTO LOOP2
+"                                         FIND MAX AMP.
+      CALL CVMMAX (FINAL,2,0,NN)
+"                                         SAVE INDEX IN AP LOC 0 I*2
+      SP09 = SP15
+      CALL S9SAV (0)
+"                                         POLAR CONVERSION.
+      SP09 = SP09 * 2
+      SP09 = SP09 - 2
+      LOC1 = FINAL + SP09
+      CALL POLAR (LOC1, 2, 1, 2, 1)
+S999: END

@@ -1,0 +1,141 @@
+        .TITLE ZRDMF (NWORDS, INBUF, OUTBUF, FLAG)
+;-----------------------------------------------------------------------
+;! convert DEC Magtape Format (36 bits data in 40 bits) to 2 integers
+;# Z Binary Tape
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Convert data packed in DEC-Magtape format (DMF) to pairs of local
+;   integers.
+;
+;   The DMF format is:
+;
+;      Track    1    2    3    4    5    6    7    8
+;      Byte
+;        1      F0   F1   F2   F3   F4   F5   F6   F7
+;        2      F8   F9  F10  F11  F12  F13  F14  F15
+;        3      F16  F17  R0   R1   R2   R3   R4   R5
+;        4      R6   R7   R8   R9  R10  R11  R12  R13
+;        5       0    0    0    0  R14  R15  R16  R17
+;
+;   where Rn refers to the right halfword, Fn to the left halfword.
+;
+;   Since the purpose of this routine is to read Modcomp tapes written
+;   with this peculiar format, F16, F17, R16 and R17 (the high order
+;   bits) are zero for VLA data, but are used for the word count.
+;
+;   The first word (5 bytes) of a tape block contains the word count of
+;   the block.  The word count is a 16-bit twos-complement integer
+;   comprising bits R2-R16.  All other words are treated as pairs of
+;   16-bit, twos-complement integers comprising bits F0-F15 and R0-R15.
+;
+;   Input data is assumed to be packed into 1 1/4 integers and output
+;   data will be returned in a pair of local integers per DEC-10 word.
+;   The first integer of each pair corresponds to the left DEC-10
+;   halfword (zero for the word count) and the second to the right
+;   halfword.  The sign of each halfword is preserved on expansion to a
+;   local integer.
+;
+;   Inputs:
+;      NWORDS   I           Length of the input buffer in DEC-10
+;                           words
+;      INBUF    I(*)        Input buffer containing DMF format data
+;      FLAG     I           If > 0, the first word word is the
+;                           beginning of a tape block
+;   Output:
+;      OUTBUF   I(*)        Output buffer containing two local short
+;                           integers per input DEC-10 word
+;   VAX/VMS version
+;-----------------------------------------------------------------------
+                                        ; define argument list
+NWORDS = 4
+INBUF  = 8
+OUTBUF = 12
+FLAG   = 16
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZRDMF,^M<R2,R3,R4,R5,R6,R7,R8>
+                                        ;
+                                        ; Put arguments into registers
+        MOVL    @NWORDS(AP),R2          ; R2 = number of words.
+        MOVL    INBUF(AP),R3            ; R3 = Addr. of input
+        MOVL    OUTBUF(AP),R4           ; R4 = Addr. of output
+        MOVL    @FLAG(AP),R5            ; R5 = FLAG (temporarily)
+                                        ; R5 = input (Modcomp)
+                                        ;      1st 4 bytes
+                                        ; R6 = 5 th byte
+                                        ; R7 = output (VAX) - right half
+                                        ; R8 = output (VAX) - left half
+        TSTL    R2                      ; Compare number of words to 0
+        BGTR    START
+        JMP     EOB                     ; Return if no work to do.
+                                        ;
+START:  TSTL    R5                      ; Check if first word starts
+                                        ; tape block.
+        BLEQ    LOOP                    ; if not normal start.
+                                        ; Return least sig. bits for
+                                        ; word count.
+        MOVZBL  (R3)+,R5                ; get 1st byte
+        ASHL    #8,R5,R5                ; shift
+        MOVB    (R3)+,R5                ; get 2nd byte
+        ASHL    #8,R5,R5                ; shift
+        MOVB    (R3)+,R5                ; get 3rd byte
+        ASHL    #-6,R5,R7               ; Shift to least signifigant bits
+                                        ; of output
+        ASHL    #8,R5,R5                ; shift R5
+        MOVB    (R3)+,R5                ; get 4 th byte.
+        ASHL    #4,R5,R5                ; shift R5 for low 4 bits
+        MOVZBL  (R3)+,R6                ; Get  5th byte.
+        BISL2   R6,R5                   ; OR  the bits together.
+        ASHL    #16,R5,R5               ; shift to high
+        BISL2   R5,R7                   ; OR  the final result
+        JMP     SAVE                    ; Join normal loop
+                                        ; loop over logical records
+                                        ;
+LOOP:   MOVZBL  (R3)+,R5                ; get 1st byte
+        ASHL    #8,R5,R5                ; shift
+        MOVB    (R3)+,R5                ; get 2nd byte
+        ASHL    #8,R5,R5                ; shift
+        MOVB    (R3)+,R5                ; get 3rd byte
+        ASHL    #-8,R5,R7               ; Shift to least signifigant bits
+                                        ; of output
+        ASHL    #8,R5,R5                ; shift R5
+        MOVB    (R3)+,R5                ; get 4 th byte.
+        ASHL    #4,R5,R5                ; shift R5 for low 4 bits
+        MOVZBL  (R3)+,R6                ; Get  5th byte.
+        BISL2   R6,R5                   ; OR  the bits together.
+        ASHL    #14,R5,R5               ; shift to high
+        BICL2   #^C^XFFFF0000,R5        ; mask unwanted bits (should be 0)
+        BISL2   R5,R7                   ; OR  the final result
+SAVE:   ASHL    #16,R7,R8               ; Copy left halfword to R8
+        ASHL    #-16,R8,R8              ; with correct sign
+        ASHL    #-16,R7,R7              ; Shift right halfword
+        MOVL    R8,(R4)+                ; Store result.
+        MOVL    R7,(R4)+
+        SOBGTR  R2,LOOP                 ; Loop
+EOB:    RET
+        .END

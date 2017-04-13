@@ -1,0 +1,333 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+# UPDREMOVE
+#-----------------------------------------------------------------------
+#! Remove obsolete files from AIPS system
+## Update UNIX
+#;  Copyright (C) 1995, 1997, 1999-1998, 2002-2004, 2009
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Remove source files and objects listed in REMOVE.UNQ
+#
+#   Inputs:
+#      LogFile          name of update log file
+#      Alts             list of alternate code areas
+#
+# This version has ARCH-dependent test flags.  Testing for symbolic
+# links is available with -l on a convex, -h on a sun, and not at all
+# on an IBM (aix).  Also, grep -s is a BSD-ism.  Posix uses grep -q.
+# Don't use ranlib on Solaris.
+# Also if UpdDoRemove is NO, do the libraries anyway.  Duhh.
+#-----------------------------------------------------------------------
+#                                       Nothing to remove if
+#                                       REMOVE.UNQ is empty.
+[ -s REMOVE.UNQ ] || exit 0
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Set TSTFLG for file testing.
+case $ARCH in
+   IBM)    TSTFLG="-f";;
+   LINUX)  TSTFLG="-L";;
+   LNX64)  TSTFLG="-L";;
+   CVEX)   TSTFLG="-l";;
+   *)      TSTFLG="-h";;
+esac
+ei1() {
+   echo "UPDREMOVE - $*" >> $LogFile
+}
+ti1() {
+   [ -t 1 ] && echo "UPDREMOVE - $*"
+}
+#                                       error status
+err=0
+#
+ei1 ""
+ei1 "Removal of modules from system:"
+ei1 ""
+cat REMOVE.UNQ | sed -e 's/^/UPDREMOVE : /g' >> $LogFile
+ei1 ""
+[ "$UpdDoRemove" != "YES" ] && ei1 "only remove these from libraries"
+#                                       Remove modules one at a time.
+for LINE in \
+   `awk '{print "$" $5 "/" $6}' REMOVE.UNQ | sed -e 's/\.$//'`
+do
+   PROPER=""
+   PATHNAME=`eval echo $LINE`
+   BASE=`echo $PATHNAME | sed -e 's/\([^\.]*\)\(.*\)/\1/'`
+   basen=`basename $BASE`
+#                                       Check for pertinence to this
+#                                       AIPS system before deleting
+#                                       it.  Otherwise, SEARCH won't
+#                                       find it, of course.
+   ti1 "processing $PATHNAME..."
+   for ALT in $Alts
+   do
+      eval PROPER=`SEARCH -q $PATHNAME $ALT 2> /dev/null`
+      [ "$PROPER" != "" ] && break
+   done
+   if [ "$PROPER" != "" ] ; then
+      ti1 "...SEARCH found $PROPER."
+   else
+      ti1 "...SEARCH found nothing."
+   fi
+#                                       Always remove text files.
+   if [ "$UpdDoRemove" = "YES" ] ; then
+      if [ -f $PATHNAME -o $TSTFLG $PATHNAME ] ; then
+#                                       First, remove any preprocessed
+#                                       and/or object forms.
+         for ext in f c s o
+         do
+            if [ -f $BASE.$ext -o $TSTFLG $BASE.ext ] ; then
+               rm -f $BASE.$ext
+               if [ -f $BASE.$ext -o $TSTFLG $BASE.$ext ] ; then
+                  ei1 "Remove of  $BASE.$ext"
+                  ei1 "FAILED!"
+                  ti1 "can't zap $BASE.$ext"
+                  err=1
+               else
+                  ei1 "Removed    $BASE.$ext"
+                  ti1 "zapped $BASE.$ext"
+               fi
+            elif [ -f      $PREP/$basen.$ext -o \
+                   $TSTFLG $PREP/$basen.$ext ] ; then
+               rm -f $PREP/$basen.$ext
+               if [ -f      $PREP/$basen.$ext -o \
+                    $TSTFLG $PREP/$basen.$ext ] ; then
+                  ei1 "Remove of  $PREP/$basen.$ext"
+                  ei1 "FAILED!"
+                  ti1 "can't zap $PREP/$basen.$ext"
+                  err=1
+               else
+                  ei1 "Removed    $PREP/$basen.$ext"
+               fi
+            fi
+         done
+#                                       Finally, remove THE file.
+         rm -f $PATHNAME
+         if [ -f $PATHNAME ] ; then
+            ei1 "Remove of  $PATHNAME"
+            ei1 "FAILED!"
+            ti1 "can't zap $PATHNAME!"
+            err=1
+         else
+            ti1 "zapped $PATHNAME"
+            ei1 "Removed    $PATHNAME"
+         fi
+      else
+         ei1 "Not found: $PATHNAME"
+         ei1 "Proceeding anyway."
+         ti1 "can't find $PATHNAME, continuing"
+      fi
+   else
+      ti1 "No remove on $PATHNAME (should be gone)"
+   fi
+#                                       Regardless of above, try to
+#                                       delete binary or library anyway.
+   case $PATHNAME in
+      *PGM*)
+#                                       Was it a file pertinent to
+#                                       this AIPS system?
+         if [ "$PROPER" = "$PATHNAME" ] ; then
+#                                       'find' doesn't follow symlinks
+            CWD=`$LPWD`
+            cd $LOAD
+#                                       Delete any .EXE (inc. alts)
+            for EXE in `find . -type f -name $BASE.EXE -print` ; do
+               rm -f $EXE
+               if [ -f $EXE ] ; then
+                  echo "UPDREMOVE : Remove of  $EXE" >> $LogFile
+                  echo "UPDREMOVE : FAILED!"         >> $LogFile
+                  ti1 "can't zap $EXE"
+                  err=1
+               else
+                  echo "UPDREMOVE : Removed    $EXE" >> $LogFile
+                  ti1 "zapped $EXE"
+               fi
+            done
+#                                       Watch for <name><n>
+            for EXE in `find . -type f -name $BASE.EXE -print` ; do
+               rm -f $EXE
+               if [ -f $EXE ] ; then
+                  echo "UPDREMOVE : Remove of  $EXE" >> $LogFile
+                  echo "UPDREMOVE : FAILED!"         >> $LogFile
+                  ti1 "can't zap $EXE"
+                  err=1
+               else
+                  echo "UPDREMOVE : Removed    $EXE" >> $LogFile
+                  ti1 "zapped $EXE"
+               fi
+            done
+            cd $CWD
+         else
+            ti1 "$PATHNAME not relevant to $ARCH"
+         fi
+      ;;
+      *DEV* | *SUB*)
+#                                       Remove object module.
+         AREA=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+#                                       Try to avoid duplicates
+         DENV=`PRINTENV | grep -v '^[CcPp][Ww][Dd]=' | \
+                          grep -v '^SYSLOCAL='       | \
+                          grep -v 'PATH='            | \
+                          grep =$AREA$ | sed -e 's#=.*##'`
+         ti1 "area is $DENV"
+         nw=`echo $DENV | wc -w`
+         nw=`expr $nw`
+         if [ $nw -ne 1 ] ; then
+            ei1 "Reverse area name lookup failed!  Too many logicals!"
+            ei1 "For $AREA found $DENV"
+            ti1 "Reverse area name lookup failed!  Too many logicals!"
+            ti1 "For $AREA found $DENV"
+            exit 1
+         fi
+         ei1 "find libraries for area $DENV"
+         nlib=0; ndeb=0
+         for SUBLIB in \
+            `grep $DENV$ $SYSLOCAL/LIBR.DAT | sed -e 's#:.*##'`
+         do
+            ti1 "checking library $SUBLIB"
+            SUBLIB=`eval echo $SUBLIB`
+            ti1 "translated this to $SUBLIB"
+            if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+               DBGSUB=`echo $SUBLIB | sed -e 's#/LIBR/#/LIBRDBG/#'`
+               [ -f "$DBGSUB" ] || DBGSUB=""
+            else
+               DBGSUB=""
+            fi
+#                                       Ar doesn't have an error so use
+#                                       "ar t" to look first.  Anchor
+#                                       the search!  Otherwise you get
+#                                       MERGE.o and IMERGE.o confused!
+	    achk=`ar t $SUBLIB | grep "^${basen}.o"`
+            if [ "$achk" != "" ] ; then
+               ar d $SUBLIB ${basen}.o 2> /tmp/REMOVE.$$
+	       dchk=`ar t $SUBLIB | grep "^${basen}.o"`
+               if [ "$dchk" != "" ] ; then
+                  ei1 "Remove of ${basen}.o from $SUBLIB FAILED!"
+                  ti1 "FAILED to zap ${basen}.o from $SUBLIB"
+                  err=1
+               else
+                  ei1 "Remove     ${basen}.o"
+                  ei1 "from       $SUBLIB"
+                  ti1 "zap $basen.o from $SUBLIB"
+                  nlib=`expr $nlib + 1`
+               fi
+            fi
+            if [ "$DBGSUB" != "" ] ; then
+	       achk=`ar t $DBGSUB | grep "^${basen}.o"`
+               if [ "$achk" != "" ] ; then
+                  ar d $DBGSUB ${basen}.o 2>> /tmp/REMOVE.$$
+		  dchk=`ar t $DBGSUB | grep "^${basen}.o"`
+                  if [ "$dchk" != "" ] ; then
+                     ei1 "Remove of ${basen}.o from $DBGSUB FAILED!"
+                     ti1 "FAILED to zap ${basen}.o from $DBGSUB"
+                     err=1
+                  else
+                     ei1 "Remove     ${basen}.o"
+                     ei1 "from       $DBGSUB"
+                     ti1 "zap ${basen}.o from $DBGSUB"
+                     ndeb=`expr $ndeb + 1`
+                  fi
+               fi
+            fi
+#                                       Non-null /tmp/REMOVE.$$ means
+#                                       an error occurred.  Quit NOW!
+            if [ -s /tmp/REMOVE.$$ ] ; then
+               sed -e 's/^/UPDREMOVE : /' /tmp/REMOVE.$$ >> $LogFile
+               ei1 "Removal failed!" >> $LogFile
+               ti1 "Removal failed!  `cat /tmp/REMOVE.$$`"
+               rm -f /tmp/REMOVE.$$
+               exit 1
+            fi
+#                                       Randomize the object library
+#                                       just modified. Ranlib doesn't
+#                                       have an error return either...
+            case $ARCH in
+#                                       System V, no ranlib so skip.
+               SOL*|SUL|HP|HP2|SGI)
+                  ;;
+               *) if [ $nlib -gt 0 ] ; then
+                     ei1 "Randomize  $SUBLIB"
+                     ti1 "ranlib $SUBLIB"
+                     ranlib $SUBLIB 2> /tmp/REMOVE.$$
+                  fi
+                  if [ $ndeb -gt 0 ] ; then
+                     ei1 "      and $DBGSUB"
+                     ti1 "   and $DBGSUB"
+                     ranlib $DBGSUB 2>> /tmp/REMOVE.$$
+                  fi
+#                                       Non-null /tmp/REMOVE.$$ means
+#                                       an error occurred.
+                  if [ -s /tmp/REMOVE.$$ ] ; then
+#                                       Failure.  Report and exit.
+                     sed -e 's/^/UPDREMOVE : /' /tmp/REMOVE.$$ \
+                         >> $LogFile
+                     ei1 "Randomization failed!"
+                     ti1 "Ranlib barfed!  `cat /tmp/REMOVE.$$`"
+                     rm -f /tmp/REMOVE.$$
+                     exit 1
+                  else
+                     rm -f /tmp/REMOVE.$$
+                  fi
+               ;;
+            esac
+#                                       Check for shared libraries.
+            if [ -f $SYSLOCAL/USESHARED ] ; then
+               ( cd `echo $SUBLIB | sed -e 's,SUBLIB$,,'`
+                 rm -fr .shared; mkdir .shared; cd .shared
+                 ar x ../SUBLIB; rm -f _*
+                 ei1 "Build $SUBLIB.so"; ti1 "make $SUBLIB.so"
+                 case $ARCH in
+                    SUN3 | SUN4) ldopt="-d -assert pure-text";;
+                    SOL* | SUL)  ldopt="-G -t";;
+                    HP | HP2)    ldopt="-b";;
+                    *) ei1 "FIX ME!!!!"; ti1 "FIX ME!!!!";;
+                 esac
+                 ld -o $SUBLIB.so $ldopt *.o
+                 mv $SUBLIB.so $LIBR/${DENV}.so; cd ..; rm -r .shared
+               )
+            fi
+         done
+         if [ $nlib -eq 0 -a $ndeb -eq 0 ] ; then
+            ei1 "didn't remove $PATHNAME from any libraries"
+            ti1 "didn't remove $PATHNAME from any libraries"
+         else
+            ei1 "Removed $basen.o from $nlib ($ndeb debug) libraries"
+            ti1 "Removed $basen.o from $nlib ($ndeb debug) libraries"
+         fi
+      ;;
+   esac
+#                                       Error?
+   if [ "$err" != "0" ] ; then
+      exit 1
+   else
+      continue
+   fi
+done
+exit 0

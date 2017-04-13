@@ -1,0 +1,499 @@
+@@
+
+
+
+           The "WaWa" or "easy" IO Package
+
+
+      We have created a fairly coherent set of routines which attempt
+to hide most of the nasty details mentioned in the previous sections.
+They perform most catalog file operations for the programmer and hide
+the details of calls to COMOFF, MINIT, MDISK, ZCREAT, et al.  In many
+cases these cost core space and/or speed, but for computation-bound
+algorithms these are probably not important.
+
+
+
+
+I. Salient Features of the WaWa IO package:
+
+l.  Each main task calls a single setup routine whose name reflects
+    the number of simultaneous map type file the programmer wants open.
+
+2.  All the parameters needed to specify a catalogued file are gathered
+    into a single array, called a namestring.
+
+3.  The interface between the parameter passing subroutines (e.g.,
+    GTPARM) and the i/o routines so that fewer format conversions are
+    needed.
+
+4.  Many subroutine calls are combined so that e.g., ZPHFIL, CATDIR,
+    CATIO, and MINIT, more or less disappear from sight.
+
+5.  Scratch files are catalogued along with regular maps, which makes
+    destroying them easier, either within the task or externally.
+
+6.  A general clean-up subroutine for closing files and destroying
+    scratch files is provided.
+
+7.  "Hidden" buffers large enough to hold a 2048-point Real*4 map row
+    are provided.  These make double buffered IO look more like 
+    FORTRAN IO on the large mainframes.
+
+8.  I/O to "map" type files is always in R*4 format as seen by the
+    user.  On input automatic scaling from I*2 occurs.  A separate
+    routine can be used to find the min/max of an output file, but it
+    may be more convenient for the programmer to accumulate these as
+    his algorithm progresses.  A separate subroutine may be called to
+    convertoutput R*4 maps to I*2.
+
+
+
+II. Namestrings
+
+    Refer to any catalogued file by a real array of length 9, e.g.,
+
+    REAL*4  NAMS (9)
+    where NAMS(1:3) contain the file NAME as 12 packed characters
+          NAMS(4:5) contain the file CLASS as 6 packed characters
+          NAMS(6)   contains SEQ as a real number
+          NAMS(7)   contains the disk volume as a real number
+          NAMS(8)   contains the file physical type as A2
+          NAMS(9)   contains the file USID number as a real number
+
+    The formats match those provided by GTPARM.  If you specify an
+    [INPUTS] file with           INNAME
+                                 INCLASS
+                                 INSEQ
+                                 INDISK
+                                 INTYPE
+                                 USERID
+    the parameters will be inserted into your input array such that
+    it forms a valid namestring.
+
+    I allow some null values that cause default usages:
+    a) a leading double blank in NAMS(1) means "any NAME"
+    b) a leading double blank in NAMS(4) means "any CLASS"
+    c) a 0.0 in NAMS(6) means "any SEQ"
+    d) a 0.0 in NAMS(7) means "any DISK"
+    e) a leading double blank in NAMS(8) means a physical
+       type of "MA"
+    f) a 0.0 in NAMS(9) means USID of NLUSER i.e. the task user.
+       A 32,000.0 in NAMS(9) means "any USID"
+
+    A value of "SC" for the leading characters in NAMS(8) means
+    "scratch".  In this case all the package subroutines substitute
+    internally (they do not alter the calling namestring) a NAME,
+    CLASS, and USID unique to the main task and AIPS initiator (i.e.
+    interactive AIPS #1, #2 or BATCH AIPS #6, #7, ...) :
+         NAME = TSKNAM|NPOPS
+         CLASS = 'SCRTCH'
+         USID = NLUSER
+
+
+
+ III. Subroutines:
+
+  A.  IOSETn       Setup I/O for n simultaneous map files
+  B.  FILOPN       Open a file, particularly associated files
+  C.  OPENCF       Open a catalogued file
+  D.  FILIO        Do i/o to a non-map file
+  E.  MAPWIN       Set a multi-dimensional window on an open map
+  F.  MAPXY        Set a 2-dim window on top plane of a map
+  G.  MAPIO        Read or write to a map
+  H.  FILCLS       Close a map or non-map file
+  I.  FILCR        Create a non-map file
+  J.  MAPCR        Create a map file
+  K.  FILDES       Destroy either a map or non-map file
+  L.  UNSCR        Destroy all scratch files
+  M.  CLENUP       Call UNSCR and close any still open files
+  N.  MAPFIX       Convert a catalogued R*4 map to a catalogued I*2 map
+  O.  MAPMAX       Find MAX & MIN of an R*4 map and enter into catalog
+  P.  GETHDR       Retrieve catalog header for an open catalogued file
+  Q.  HDRINF       Retrieve specified items from map header
+  R.  TSKBEn       Combination of IOSETn and some task startup chores
+  S.  TSKEND       Some task cleanup chores
+
+
+
+ IV.  Detailed descriptions
+
+
+  A. IOSET1...IOSET5
+     calling arguments:  none
+     Primary Function:
+        Initialize I/O tables;  call ZDCHIN;  allocate buffer space
+        for map i/o to N files adequate for 2048 real or 1024 complex
+        pixels per line.
+
+
+  B. FILOPN (LUN, NAMS, EXT, TYPE, VER, ERROR)
+     Inputs:
+        LUN      I*2     logical unit number
+        NAMS(9)  R*4     namestring specifying catalogue
+        EXT      L*2     Desired file is an extension of a catalogued
+                         file?
+        TYPE     C*2     if EXT is true, EXT file TYPE
+        VER      R*4     if EXT is true, EXT file version number
+                         (VER = 0.0 => latest version)
+
+     Primary Function:
+        Find a catalogued or extension file in catalogue, open file
+        and associate it with the LUN
+
+
+  C. OPENCF (LUN, NAMS, ERROR)
+     Inputs:
+        LUN      I*2     Logical unit number
+        NAMS(9)  R*4     File namestring
+
+     Primary Function:
+        Same as FILOPN but restricted to catalogued files
+        (i.e. no associated files) to simplify call sequence
+
+
+  D. FILIO (OP, LUN, NREC, DATA, ERROR)
+     Inputs:
+        OP       R*4     "READ" or "WRIT"
+        LUN      I*2     Logical unit number
+        NREC     I*2     record number
+     Inputs/Output:
+        DATA(256)  I*2   data area
+
+     Primary Function:
+        Transfer a specified 512 byte record between an open file
+        associated with LUN, and the array DATA.
+
+
+  E. MAPWIN (LUN, BLC, TRC, ERROR)
+     Inputs:
+        LUN      I*2     Logical unit number
+        BLC(7)   R*4     Bottom left corner of subarray
+        TRC(7)   R*4     Top Right Corner of subarray
+     Primary Function:
+        Select a subarray of the (up to) 7-dimensional map array
+        hypercube so that MAPIO (cf below) only reads a subset of
+        the hypercube.  If MAPWIN is not called the entire map will
+        be delivered, line by line, by MAPIO.  If it is, the lines in
+        the subarray will be delivered line by line.
+
+        When WRITing you cannot window in the x-direction (fastest
+        varying coordinate) because of disk addressing problems, but
+        you can window in the other dimensions.
+
+        MAPWIN can be called any number of times after opening a file,
+        even if a previous WIN has not been completely transferred.
+
+
+  F. MAPXY (LUN, WIN, ERROR)
+     Inputs:
+        LUN      I*2     Logical unit number
+        WIN(4)   R*4     A 2-dimensional window
+
+     Function:  Does the same as MAPWIN but assumes you only want to
+        talk to part or all of the top 2-dimensional plane of a
+        possibly multidimensional map.  If WIN(1) = 0.0, you get the
+        entire top plane.
+
+
+  G. MAPIO (OP, LUN, DATA, ERROR)
+     Inputs:
+        OP       R*4     "READ"  "WRIT"
+        LUN      I*2     Logical unit number
+        DATA(*)  R*4     data area
+
+     Primary Function:
+        Transfer one line of data between core area DATA and a disk 
+        map-type file.  On READ, data are converted from I*2 to R*4 if
+        necessary and are scaled using the header scaling and offset
+        factors.  Integer "blanked" values are replaced with the R*4
+        value numerically equivalent to the string "INDE".
+
+        On WRIT data output is unscaled R*4, only.  When you start
+        writing MAX and MIN in the header will be marked as "INDE" or
+        indefinite.  If you want an I*2 map, you should make an R*4
+        scratch map and then call MAPFIX.  If Max and Min are still
+        indefinite at this time MAPFIX will figure them out with an
+        extra pass through the map.  You can also set them yourself in
+        the map (catalogued on disk) header and save some time.
+        You can switch from "READ" to "WRIT" at any time.
+
+
+  H. FILCLS (LUN)
+     Inputs:
+        LUN      I*2     Logical unit number
+        Close a file and clean up any I/O pending to it.
+
+
+  I. FILCR (NAMS, TYPE, NBLOCK, VER, ERROR)
+     Inputs:
+        NAMS(9)  R*4     Specifies catalog slot
+        TYPE     R*4     Extension file type (2 characters)
+        NBLOCK   I*2     Number of 512-byte blocks requested
+        VER      R*4     Version of newly created file
+
+     Primary function
+        Create a non-map of "file" type file associated with the
+        catalogued file NAMS, and modify catalog block accordingly.
+
+
+  J. MAPCR (NAMS, HDR, ERROR)
+     Inputs:
+        NAMS(9)  R*4     Specified catalog entry
+        HDR(256) I*2     Catalog block specifying enough
+                         information to determine file size:
+                         specifically # of axes and # of pixels
+                         on each axis.
+
+     Primary function:
+        Create and catalog a map-type file.  Only R*4 and complex*8
+        maps will be created.
+
+
+  K. FILDES (NAMS, EXT, TYPE, VER, ERROR)
+     Inputs:
+        NAMS(9)  R*4     Specifies catalog entry
+        EXT      L*2     Is file an extension file?
+        TYPE     R*4     IF(EXT) what is extension type? (2 char)
+        VER      R*4     IF(EXT) what is extension version?
+
+     Primary function:
+        Destroy a catalogued or extension file and modify catalog
+        appropriately.
+
+
+  L. UNSCR
+        no arguements
+
+        Destroy all scratch files created by this task
+
+
+  M. CLENUP
+        no arguements
+
+        Close all files opened with FILOPN.  Destroy scratch files.
+
+
+  N. MAPFIX (NAMIN, NAMOUT, ERROR)
+     Inputs:
+        NAMIN(9) R*4     Input catalog string
+        NAMEOUT(9) R*4   Output catalog string
+
+     Primary function:
+        Convert a catalogued (including scratch) R*4 map to a catlogued
+        I*2 map.  If MAX & MIN are filled in in the R*4 header, they
+        they will be used to determine scaling.  If not, or if they are
+        incorrect and cause an overflow, a new Max and Min will be
+        determined and entered in header.
+
+
+  O. MAPMAX (LUN, MAX, MIN, ERROR)
+     Inputs:
+        LUN      I*2     Logical Unit No. of an open map
+     Outputs:
+        MAX      R*4     Map maximum value
+        MIN      R*4     Map minimum value
+
+     Primary function:
+        Determine the maximum and minimum values of an R*4 map and
+        enter values into map header
+
+
+  P. GETHDR (LUN, HDR, ERROR)
+     Inputs:
+        LUN      I*2     Logical Unit. No. of an open map
+     Outputs:
+        HDR(256) I*2     Map header of that map
+
+     Primary function:
+        Fetch the header block of a catalogued, open, file
+
+
+  Q. HDRINF (LUN, TYPE, START, NUMBER, DATA, ERROR)
+     Inputs:
+        LUN      I*2     Logical Unit. No. of an open map
+        TYPE     I*2     type of header information wanted
+                         1=> I*2; 2=> R*4; 3=> R*8 6=> Ch*8
+        START    I*2     Index of 1st item requested, in the system
+                         specified by TYPE
+        NUMBER   I*2     Number of items requested
+     Outputs:
+        DATA(*)  ***     Receiving array; type specified by TYPE
+
+     Primary function:
+        Fetch a NUMBER of consecutive entries from the map header
+        of an open map.
+
+
+  R. TSKBEn (PRGNAM, NPARM, RPARM, ERROR)
+     Inputs:
+        PRGNAM(3) I*2    Name of task we are starting up
+        NPARM     I*2    Number of R*4 parameters we expect initiator
+                         to pass
+        RPARM(*)  R*4    Array to receive passed parameters
+
+     Function:  for n = 1,...5 this subroutine does several task
+        startup chores:
+        1.   Calls IOSETn to initialize i/o
+        2.   Calls GTPARM to get parameters
+        3.   If DOWAIT is false , calls RELPOP
+
+
+  S. TSKEND (IRET)
+     Inputs:
+        IRET     I*2     return code back to initiator if DOWAIT is true
+                         0 => ok, > 0 => troubles
+
+     Function:   combines some task ending chores:
+        1.  Calls CLENUP to destroy scratch files & close other files
+        2.  If DOWAIT was true, calls RELPOP with return code IRET
+
+
+
+V.  Additional goodies and "helpful" hints
+
+
+  A.  The LUN used does convey meaning.  Legal values range from 9
+      through 30.  However, values 16 through 25 convey an implication
+      that the file is a map file, value 9 is reserved for the TV, and
+      values 10 through 15 may get you into trouble.  Use 26 - 30 for
+      non-maps.
+
+
+  B.  The package is not overly helpful at the moment with non-map
+      files.  The programmer might wish to consider EXTINI and EXTIO
+      instead.  (Hopefully, we will soon incorporate these in the WaWa
+      system, replacing the existing non-map stuff.)  For plot files,
+      the programmer must use the package of plot file routines 
+      described elsewhere.
+
+
+  C.  The primary common in the WaWa system is included by the state-
+      ments:    INCLUDE 'DITB.INC'
+                INCLUDE 'CITB.INC'
+      Its name is /WAWAIO/ and its contents are
+
+         WRIT         R*4   'WRIT'      IO control string
+         REED         R*4   'READ'
+         CLWR         R*4   'CLWR'      Catalogue control string
+         CLRD         R*4   'CLRD'
+         REST         R*4   'REST'
+         OPEN         R*4   'OPEN'
+         CLOS         R*4   'CLOS'
+         SRCH         R*4   'SRCH'
+         INFO         R*4   'INFO'
+         UPDT         R*4   'UPDT'
+         FINI         R*4   'FINI'      IO control string
+         CSTA         R*4   'CSTA'      Catalogue control string
+         INDEF        R*4   'INDE'      Blanked floating point pixel
+
+         SUBNAM(3,8)  I*2   Subroutine names: CATDIR, CATIO, MINIT,
+                            MDISK, ZCLOSE, ZCREAT, ZDESTR, ZOPEN in the
+                            form of 2 char/word for error messages
+
+         LINT         I*2   Number integer values in one IO buffer
+         LREAL        I*2   Number real values ine one IO buffer
+         NFIL         I*2   Number simultaneous open map files
+         EFIL         I*2   Size of FILTAB ( 5 + NFIL) - number of
+                            simultaneous files of all types
+         QUACK        I*2   0 => restart AIPS at end, 1 => already done
+
+         POLUN        I*2   FILTAB pointer for LUN value (1)
+         POFIN        I*2   FILTAB pointer for IO table pointer value
+                            (2)
+         POVOL        I*2   FILTAB pointer for disk number value (3)
+         POCAT        I*2   FILTAB pointer for cat location value (4)
+         POIOP        I*2   Filtab pointer for opcode number (5): 
+                            values 1 => write, 2=> read, <0 => new win
+         POASS        I*2   FILTAB pointer for is it associated file
+                            (6): 1 => assoc, 0 => main file
+         POBPX        I*2   FILTAB pointer for bytes/pixel code (7)
+         PODIM        I*2   FILTAB pointer for # axes (8)
+         PONAX        I*2   FILTAB pointer for # points on each of 7
+                            axes (9)
+         POBLC        I*2   FILTAB pointer for Bottom left corner (16)
+         POTRC        I*2   FILTAB pointer for Top right corner (23)
+         PODEP        I*2   FILTAB pointer for current depth in IO on
+                            axes 2 - 7 (30), Area (36) used for integer
+                            map (input) blanking code.
+         POBL         I*2   FILTAB pointer for block offset start IO
+                            in the current plane (37)
+
+         FILTAB(38,EFIL)  I*2   Table to hold all the values pointed
+                                at by the PO... pointers above: (i.e.
+                                the cat number is = FILTAB (POCAT, n)
+                                where n is found by finding that
+                                FILTAB (POLUN, n) which = desired LUN
+                                (Only for open files!!)
+
+
+  D.  There are 2 other commons which are used heavily.  They are
+      /MAPHDR/ which is a work area for map headers containing the
+      equivalenced arrays CAT2, CAT4, and CAT8.  The contents of this
+      common are changed frequently by the basic WaWa IO routines, but
+      it can be used, for example, to get the header array after a call
+      to FILOPN or OPENCF.  This common may be included by
+                INCLUDE 'DCAT.INC'
+                INCLUDE 'CCAT.INC'
+                INCLUDE 'ECAT.INC'
+      The other common, called /WAWABU/, contains
+              RMAX(10)      R*4    1-5 used by MAPIO for scale factor
+              RMIN(10)      R*4    1-5 used by MAPIO for offset
+              WBUFF(256)    I*2    scratch buffer for catalogue access
+              RBUF(n*2048)  R*4    IO buffers for map IO
+       The areas RMAX and RMIN for subscripts 6 through 10 could be 
+       used by a programmer, for example, to keep track of max/min. 
+       If no map file is currently open, RBUF is a large and useful
+       scratch area of core.  
+
+
+  E.  If a WaWa IO task (or any other task for that matter) is to be
+      overlayed on some computers, then all commons must be declared
+      in the main program.  For the WaWa system, this may be done by
+      the following list of includes:
+      Declarations:
+              INCLUDE 'ZFT5.INC'        File table space
+              INCLUDE 'IBUn.INC'        WaWa buffer/table sizes
+              INCLUDE 'IITB.INC'        WaWa IO common
+              INCLUDE 'IDCH.INC'        System parms
+              INCLUDE 'DHDR.INC'        Header pointers
+              INCLUDE 'DMSG.INC'        Messages, POPS #, ...
+              INCLUDE 'DCAT.INC'        Catalogue header
+      Commons:
+              INCLUDE 'CBUF.INC'
+              INCLUDE 'CITB.INC'
+              INCLUDE 'CDCH.INC'
+              INCLUDE 'CHDR.INC'
+              INCLUDE 'CMSG.INC'
+              INCLUDE 'CCAT.INC'
+      Equivalences:
+              INCLUDE 'EBUF.INC'
+              INCLUDE 'ECAT.INC'
+
+
+  F.  A uniform system of error code numbers has been adopted in the
+      WaWa IO package.  These code are consistent with the error codes
+      used by many IO routines, but not with the other error codes in
+      the multitudinous collection of AIPS routines.  They are
+          1 => File not open
+          2 => Input parameter error
+          3 => IO error ("other")
+          4 => End of file (hardware generated, see 9)
+          5 => Beginning of medium
+          6 => End of medium
+          7 => buffer too small
+          8 => Illegal data type
+          9 => Logical end of file (software generated, not hardware)
+         10 => Catalogue operation error
+         11 => Catalogue status error
+         12 => Map not in catalogue
+         13 => EXT file not in catalogue
+         14 => No room in header/catalogue
+         16 => Illegal window specification
+         17 => Illegal window specification for writing a file
+         21 => Create: file already exists
+         22 => Create: volume unavailable
+         23 => Create: space unavailable
+         24 => Create: "other"
+         25 => Destroy: "other"
+         26 => Open: "other"

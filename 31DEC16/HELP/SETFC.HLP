@@ -1,0 +1,434 @@
+; SETFC
+;---------------------------------------------------------------
+;! makes a BOXFILE for input to IMAGR
+;# Task Imaging
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1999-2005, 2007-2008, 2012, 2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+SETFC     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+SETFC:  Task to make a BOXFILE for input to IMAGR
+INNAME                             UV dataset name (name)
+INCLASS                            UV dataset name (class)
+INSEQ             0.0    9999.0    UV dataset name (seq. #)
+INDISK            0.0       9.0    Disk drive #
+SOURCES                            Source selected
+BCOUNT           0.0      511.0    First field number to use
+BOXFILE
+                                   disk file to write to (the
+                                   input BOXFILE for IMAGR)
+CELLSIZE $      0.0                (X,Y) size of grid in asec
+IMSIZE   $      0.0      16384     field size
+SHIFT                              Position shift (RA,Dec) asec
+                                   for all fields
+FLUX                               Minimum component flux =
+                                   (source * beam)
+BPARM                              (1) Inner region radius (deg)
+                                   (2) Field overlap (pixels)
+                                   (3) Factor to scale NVSS
+                                       fluxes, 0 -> 1
+                                   (4) Radius NVSS search (deg)
+                                   (5) Flux limit in NVSS (Jy)
+                                   (6) IMSIZE for NVSS fields
+                                   (7) IMSIZE for Sun fields
+                                   (8) Write Clean boxes for
+                                       NVSS fields
+                                   (9) Maximum allowed phase
+                                       error in imaging
+                                   (10) Points per beam
+OPTYPE                             'USEF' -> use F type field
+                                   cards rather than C type
+PBPARM                             Beam parameters:
+                                   (1) Cutoff; (2) Use (3)-(7)
+                                   (3)-(7) Beam shape parms
+INLIST
+                                   NVSS input file name
+                                   ' ' => AIPS provided.
+NFIELD   @                         Number fields found
+----------------------------------------------------------------
+SETFC
+Type:  Task
+Use:   SETFC makes an input BOXFILE to be used as input to IMAGR.  It is
+       meant to be used in preparation for wide-field 3D imaging.  It
+       prepares BOXFILE data to image an area around the pointing
+       position using a number of overlapped fields.  Optionally, it
+       also searches through lists of sources from the NVSS (21 cm VLA
+       D-array) or WENSS/WISH (92 cm Westerbork northern and southern)
+       surveys and adds outlier fields to image those sources above a
+       specified flux limit.  It writes an inscribed circular Clean
+       box for the fields covering the primary beam and can,
+       optionally, write small Clean boxes for each of the sources in
+       the outlier fields.  The latter will almost certainly require
+       later hand editing but they are instructive.
+Input adverbs:
+  INNAME......The UV dataset name (name).    Standard defaults.
+  INCLASS.....The UV dataset name (class).   Standard defaults.
+  INSEQ.......The UV dataset name (seq. #).  0 => highest.
+  INDISK......The disk drive #.         0 => any.
+  SOURCES.....The source to be used from a multi-source file; a single
+              source name is required to get the central pointing
+              position from the source table.  Ignored for single-source
+              files.
+  BCOUNT......First field number to use.  0 -> 1.  This allows you to
+              append to a pre-existing file with lower field numbers
+              obtained in some other way.
+  BOXFILE.....Output text file containing lines which specify the fields
+              for the multi-field imaging.  This file should then be
+              specified as the BOXFILE for IMAGR.  If the file already
+              exists, the new information will be appended to it.
+  CELLSIZE....Pixel size for the fields in IMAGR in arc seconds.
+              Value used is returned (i.e. 0's are changed to
+              recommended values)
+  IMSIZE......Size of each field.  Value used is returned (i.e. 0's
+              are changed to recommended values)
+              If CELLSIZE and/or IMSIZE are zero, the data are read to
+              find the maximum baseline and maximum W in order to
+              estimate these parameters.  The "maximum phase error" in
+              gridding ignoring the W term may be controlled with
+              BPARM(9).
+  SHIFT.......Specifies a position shift in arc seconds at the phase
+              center for all of the fields in the inner portion.  The
+              output RA = RA0 + SHIFT(1)/cos(DEC0) and DEC = DEC0 +
+              SHIFT(2) where 0 refers to the input coordinates.
+  FLUX........Minimum included component "flux" = source flux times
+              the single-dish beam power.  0 => any in INLIST meeting
+              BPARM(4).  Note, the single dish beam power is taken to
+              be 0.01 outside the main lobe.  Fluxes are read from the
+              table, scaled by BPARM(3), and then compared to FLUX.
+  BPARM.......(1) The radius in degrees to be covered fully by
+                  overlapping fields.  <= 0 means do not do fly's eye
+                  list of fields.  < 0 => do not include catalog sources
+                  within abs (BPARM(1)) of the origin.
+              (2) Field overlap in pixels 0 -> 5.  The program now
+                  takes into account that the Cleaning area is smaller
+                  than the image size since the outer 6 pixels are
+                  regarded as unreliable.
+              (3) Factor to scale NVSS fluxes (to account for spectral
+                  index on average).  0 -> 1
+              (4) Radius for the search in the catalog for interfering
+                  sources.   < BPARM(1) => no search.  Try 30 for 74
+                  Mhz imaging.  All sources outside the center of the
+                  outermost fly's eye field (n.b. < BPARM(1)) and
+                  < BPARM(4) are included if they meet the flux
+                  criteria.
+              (5) Flux (Jy) limit in catalog search,  There are 4
+                  AIPS-provided NVSS files each containing sources > its
+                  flux limit.  Those limits are 50, 100, 300, and 1000
+                  mJy and searches will be faster if you are just above
+                  rather than just below one of these limits.
+              (6) Desired size of external fields; 0 -> 128.
+              (7) Desired size of external fields on Sun; 0 -> 256.
+              (8) > 0 => write Clean boxes in outlier fields.  If > 5,
+                  use BPARM(8) for the radius in cells.
+              (9) The phase error made in gridding a point is approx
+                  180 * W * (l*l + m*m) degrees where W is in
+                  wavelengths and l and m in radians.  Thus the
+                  maximum field of view (radius) is
+                         sqrt(E/(180*Wmax)).
+                  BPARM(9) gives the allowed value of E in degrees,
+                  where BPARM(9) = 0 -> 45 degrees.  The actual value
+                  of E used will be reduced by the cos (zenith angle)
+                  and will be reduced still further if the average
+                  abs(W) > Wmax/4 or the sqrt (average W*W) > Wmax/3.
+              (10) The cell size recommended is 1 / Bmax / Nppb where
+                  Bmax is tha maximum baseline and Nppb is the number
+                  of points per beam.  Even with uniform weighting the
+                  beam is often larger than 1/Bmax so one may end up
+                  with more than Nppb points per beam.  BPARM(10) sets
+                  points per beam (when CELLSIZE=0) and 0 -> 3.
+  OPTYPE......'USEF' -> use F type field cards giving the RAshift and
+                        DECshift of the center of the field (facet)
+                        This can be used for more than one pointing
+                        although the NVSS sources and Sun will not be
+                        correct.
+              other  -> use C type field cards giving the center RA
+                        and DEC for each field
+  PBPARM......Primary beam parameters:
+              (1) Lowest beam value to believe: No default.
+                    0.0 => use any beam value
+              (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+              (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See explain for details
+  INLIST......Catalog input file name.  For format see Explain
+              ' ' => an AIPS-provided files appropriate to BPARM(5):
+              Epoch 2000:
+                FLUX >= 1.000  NV00.1000  (  2267 objects)
+                FLUX >= 0.300  NV00.0300  ( 14456 objects)
+                FLUX >= 0.100  NV00.0100  ( 63411 objects)
+                FLUX >= 0.030  NV00.0030  (237600 objects)
+              Epoch 1950:
+                FLUX >= 1.000  NV50.1000  (  2267 objects)
+                FLUX >= 0.300  NV50.0300  ( 14456 objects)
+                FLUX >= 0.100  NV50.0100  ( 63411 objects)
+                FLUX >= 0.030  NV50.0030  (237600 objects)
+              The WENSS/WISH surveys ar also available $AIPSTARS as
+                FLUX >= 0.100  WE00.0100  ( 99709 object 2000)
+                FLUX >= 0.100  WE50.0100  ( 99709 object 1950)
+              Some sites may choose to download really large source
+              lists to deeper flux levels.  These may include from the
+              NVSS survey:
+                FLUX >= 0.003  NV00.0003  (1560007 objects, 2000)
+                FLUX >= 0.003  NV50.0003  (1560007 objects, 1950)
+              and the WENSS/WISH survey:
+                FLUX >~ 0.010  WE00.0000  (319770 objects, 2000)
+                FLUX >~ 0.010  WE50.0000  (319770 objects, 1950)
+              These deep files may be particularly useful for BOXES
+              but are too deep to be of much use here.
+              Note: the WENSS survey covers +90 to +28 degrees
+              declination and the WISH survey covers -25 to -15 with
+              some sources to -9.
+Output adverbs (returned to AIPS):
+  CELLSIZE....Pixel size for the fields in IMAGR in arc seconds.
+              Value used is returned (i.e. 0's are changed to
+              recommended values)
+  IMSIZE......Size of each field.  Value used is returned (i.e. 0's
+              are changed to recommended values)
+  NFIELD......Number of fields put in the bOXFILE.
+----------------------------------------------------------------
+SETFC:  Task to make an input BOXFILE to be used with IMAGR
+DOCUMENTOR:  Bryan Butler (NRAO)
+
+                        DESCRIPTION
+
+This task was motivated by Lazio & Kassim's SETFAC RUN file which sets
+facets for wide-field imaging via IMAGR.  The original version of the
+task was then written by Bryan Butler.
+
+The purpose of the task is to set up a BOXFILE for input to IMAGR.  This
+is intended to be used for wide-field imaging applications (e.g., VLA 74
+MHz data), as a way of specifying multiple fields which cover a wide
+field of view.  It is quite usefull at any wavelength however.
+
+The task, if instructed to determine cell and/or image size, will read
+the UV data to find the maximum baseline and maximum W.  The cell size
+in radians is then 1/Bmax / Nppb where Nppb is the number of points
+per beam.  The formula for phase error which determines the maximum
+radius of a facet comes from Thompson, Moran, and Swenson,
+"Interferometry and Synthesis in Radio Astronomy" 2001, pages 73-74.
+In radians, the facet radius for which all phase errors are less than
+E degrees is sqrt (E / Wmax / 180).
+
+It is found that an error as great as 45 degrees is okay if there are
+not too many points at large W and if the elevation is not too low.
+The user may control E with BPARM(9) but the E actually used is set
+by E = BPARM(9) * cos (ZA) * Wmax / max (Wmax, 4*Wa, 3*Wr)
+where ZA is the zenith angle at transit, Wa is the average abs(W),
+and Wr = sqrt (average W*W).  This biases things when more than a few
+points are at large W and reduces the allowed error at low elevations
+where the results of the phase errors are more serious.
+
+The task is split into 2 relatively independent parts.  The first is the
+creation of a "fly's eye" - a tiling of overlapping fields which cover
+the central part of the primary beam.  The second part is the creation
+of several smaller fields which are centered on NVSS sources and the
+Sun.  The two parts are independent, i.e., you can do either or both of
+them on any particular run of SETFC.
+
+The fly's eye tiling is controlled by the parameters BPARM(1), BPARM(2),
+CELLSIZE, IMSIZE, and SHIFT.  See their description above...
+
+The NVSS source catalog is searched within some search radius for
+sources with flux density greater than specified, and small fields are
+created around these sources.  In order to do this, the position (RA,
+DEC) of the pointing phase center is required.  This is obtained from
+the input UV data set.  In the case of a single-source data set, it is
+read from the header.  In the case of a multi-source data set, the
+source must be specified in the first element of the adverb SOURCES, and
+the position is read from the SU extension.  The selection of sources is
+controlled by the adverbs BPARM(4), BPARM(5)< BPARM(6).  See their
+description above.   The source catalog may be specified in INLIST or
+you may use one of the AIPS-provided versions of the NVSS.  The format
+of the file is:
+
+All lines beginning with a semi-colon are ignored.  They are the
+copyleft, a descriptive text in the AIPS files, and other comments.
+Be careful about the epoch of the coordinates.
+
+Remaining give the Right ascension in degrees, Declination in degrees,
+Flux in mJy, and optionally a FWHM in arc seconds using format
+F9.5,1X,F9.5,I7,F10.4.  A sample is given below no width is shown
+since none are used by SETFC.
+
+;-----------------------------------------------------------------------
+;  Copyright (C) 1999-2000, 2002
+;  Associated Universities, Inc. Washington DC, USA.
+;
+;  This program is free software; you can redistribute it and/or
+;  modify it under the terms of the GNU General Public License as
+;  published by the Free Software Foundation; either version 2 of
+;  the License, or (at your option) any later version.
+;
+;  This program is distributed in the hope that it will be useful,
+;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;  GNU General Public License for more details.
+;
+;  You should have received a copy of the GNU General Public
+;  License along with this program; if not, write to the Free
+;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;  MA 02139, USA.
+;
+;  Correspondence concerning AIPS should be addressed as follows:
+;         Internet email: aipsmail@nrao.edu.
+;         Postal address: AIPS Project Office
+;                         National Radio Astronomy Observatory
+;                         520 Edgemont Road
+;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+; NRAO/VLA Sky Survey (NVSS) from CATALOG39.FIT
+;    2267 sources brighter than 1.0 Jy
+;    Catalog made on 1998-07-10 with 1814748 entries
+;RA(2000) Dec(2000)  Flux
+; deg       deg        mJy
+  0.08521  55.65239   1518
+  0.22108  40.90052   1301
+  0.84166 -17.45316   2415
+  1.23802  12.80524   1071
+  1.37727  69.39949   1105
+  1.55780  -6.39310   2051
+  1.59416  -0.07363   3898
+  2.12217  -5.97935   1323
+;.....
+358.54728  32.91998   1183
+358.59049  45.88455   1873
+358.78961  49.83570   2306
+358.97312  15.69069   1104
+359.25280 -34.75882   1286
+359.32748  14.76875   1020
+359.38022 -11.42748   1814
+359.64781  44.07789   1940
+
+------------------------------------------------------------
+PRIMARY BEAM PARAMETERS
+
+     SETFC corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+0.0738          -0.897E-3       2.71 E-7        -0.242E-10
+0.3275          -0.935          3.23            -0.378
+1.285           -1.329          6.445           -1.146      *
+1.465           -1.343          6.579           -1.186
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.

@@ -1,0 +1,1034 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995, 1998, 2000-2002, 2004-2005, 2007-2011, 2013-2016
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\chapts{Spectral-Line Software}{line}
+
+\renewcommand{\titlea}{31-December-2016 (revised 9-November-2016)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+
+    This chapter deals with the analysis and reduction of
+\Indx{spectral-line} data after they have had the basic calibrations,
+described in \Rchap{cal}, applied.  Spectral-line software generally
+involves three-dimensional images, often called ``cubes'', in which
+one of the three axes is frequency or velocity.  Special programs are
+available to build, manipulate, and transpose these cubes and to
+display them properly.  Most of the continuum software will work on
+data cubes or on appropriate two-dimensional subsets from a data cube.
+Spectral-line \uv\ data can be read into \AIPS\ from ``\uv'' FITS
+tapes.  Often, however, the data already exist on disk having been
+calibrated first within \AIPS\@.
+
+     The data reduction process at this point has a number of stages,
+namely data preparation and assessment, self-calibration, continuum
+subtraction, imaging, display and manipulation of data cubes, and
+analysis.  This chapter will address each of these areas in varying,
+but modest, detail on the assumption that the reader is somewhat
+familiar with the contents of previous chapters in this \Cookbook.
+Some aspects of the art of spectral-line imaging are discussed in
+Chapters 17 and 18 of {\it \jndx{Synthesis Imaging in Radio
+Astronomy}}\footnote{{\it Synthesis Imaging in Radio Astronomy},
+Astronomical Society of the Pacific Conference Series, Volume~6, ``A
+Collection of Lectures from the Third NRAO Synthesis Imaging Summer
+School'' eds. R. A. Perley, F. R. Schwab and A. H. Bridle (1989).}.  A
+brief outline of the basic calibration process is given in
+\Rappen{cont} of this \Cookbook\ and an outline of spectral-line
+analysis and calibration is given in \Rappen{line}.
+
+\Sects{Data preparation and assessment}{lineasses}
+
+     In the following sections, it is assumed that the \uv\ data are
+on disk and that the basic calibrations have been applied to them.  If
+your data are not currently on disk, you will need to read them in
+from magnetic tape or FITS disk files.  For tape, mount the tape in
+hardware and software (\Sec{magtape}) and then position the tape to
+the desired data files:
+\dispt{NFILES\qs {\it n\/} ; \tndx{AVFILE} \CR}{to advance {\it n\/}
+         files.}
+\dispt{\tndx{TPHEAD} \CR}{to check that the tape is correctly
+         positioned.}
+\dispe{Use {\tt \tndx{FITLD}} to read in the data:}
+\dispt{TASK\qs 'FITLD' ; INP \CR}{to review the inputs.}
+\dispt{OUTCL\qs '\qs' ; OUTN\qs '\qs' \CR}{to use the file names
+           recorded on tape (the default).}
+\dispt{NFILES\qs 0 \CR}{to read the current file on tape.}
+\dispt{NCOUNT\qs 2 \CR}{to load two files (if desired).}
+\dispt{GO \CR}{to run {\tt FITLD}.}
+\dispe{For FITS disk files, set {\tt DATAIN} appropriately and the run
+{\tt FITLD}\@.  Examine the \uv\ data set header with {\tt
+\tndx{IMHEAD}} after {\tt FITLD} finishes.  It should show multiple
+pixels on the {\tt FREQ} axis, like the \uv\ header illustrated in
+\Sec{header}.}
+
+     If your data are not yet calibrated, consult \Rchap{cal},
+especially \Sec{linecal}.  When the {\tt CL}, {\tt BP}, and other
+calibration tables are complete, apply them to the line data with {\tt
+\tndx{SPLIT}}:
+\dispt{TASK\qs 'SPLIT' \CR}{}
+\dispt{SOURCE\qs '{\it sou1\/}' , '{\it sou2\/}' , $\ldots$ \CR}{to
+            select sources, '\ ' means all.}
+\dispt{TIMERANG\qs 0 \CR}{to keep all times.}
+\dispt{BIF\qs 1 ; EIF\qs 0 \CR}{to keep all IFs.}
+\dispt{BCHAN\qs 1 ; ECHAN\qs 0 \CR}{to keep all spectral channels.}
+\dispt{FREQID\qs 1 \CR}{to set the one {\tt FQ} value to use.}
+\dispt{DOCALIB\qs TRUE \CR}{to apply calibration.}
+\dispt{GAINUSE\qs 0 \CR}{to use the highest numbered {\tt CL} table.}
+\dispt{FLAGVER\qs 1 \CR}{to apply the flag table.}
+\dispt{DOPOL\qs TRUE \CR}{to correct for feed polarization.}
+\dispt{DOBAND\qs 1 \CR}{to correct bandpass.}
+\dispt{BPVER\qs 1 \CR}{to select {\tt BP} table to apply.}
+\dispt{STOKES\qs ' ' \CR}{to write the input Stokes type.}
+\dispt{DOUVCOMP\qs TRUE \CR}{to write visibilities in compressed
+            format.}
+\dispt{APARM\qs 0 \CR}{to clear VLBA options, including the one to
+            calibrate the data weights.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{The \uv\ data produced by this process should have applied to
+them the full calibration and editing determined from the calibration
+sources.  Whether these are adequate or will need to be enhanced from
+the source data themselves is now to be determined. \todx{SPLIT}}
+
+     Your data may need to be edited further at this point.  If your
+calibrator data were almost free of problems, save for simple matters
+like dead antennas, then your source data are not likely to need much
+\indx{editing} either.  If your calibrator data required detailed and
+erratic data \indx{flagging}, then your source data will also need
+attention.  All of the considerations of \Sec{caledit} apply here too.
+In either case, the first step is to check for narrow-band interference
+which is a fairly common problem at some wavelengths.  The best task
+for this is {\tt \tndx{SPFLG}} (\Sec{spflg}), a spectral-line version
+of {\tt TVFLG} (\Sec{tvflg}).  {\tt SPFLG} displays spectral channels
+for all IFs along the horizontal axis and time along the vertical
+axis, one baseline at a time.  This is tedious to use for editing all
+of the data from a large interferometer. Instead, select a few of
+the shorter baselines (with the {\tt ANTENNAS} and {\tt BASELINE}
+adverbs) and do a quick check for interference.  If your data has
+sufficient signal-to-noise, then this quick examination should let you
+check which channels have signal and whether the Galaxy, for example,
+has contributed unwanted signal to your data.  If you find significant
+terrestrial interference, you may flag the bad data with {\tt SPFLG}
+(consider using the ``ALL-BL'' option to avoid looking at hundreds of
+baselines) or with {\tt \tndx{UVFLG}} (entering ``by hand'' what you
+find with {\tt SPFLG}).  Tasks {\tt \tndx{UVLIN}} and {\tt
+\tndx{UVLSF}} (below and \Sec{linecsub}) both offer the option to flag
+all channels of a particular sample if any one channel in the
+continuum-fitting portion of the spectrum has excessive flux after the
+fit.  {\tt UVLSF} also offers the option to flag when the rms of the
+continuum fit is excessive.  The task {\tt \tndx{CLIP}}
+(\Sec{genedit}) works in a channel-dependent way on line data. It can
+be instructed to flag a full spectrum if more than a user-specified
+number of channels are flagged in that spectrum.  {\tt \tndx{FLGIT}}
+is designed to work on line data sets that have a great deal of
+interference, generating channel-dependent flagging in the output file
+or in a flag table.  {\tt \tndx{UVMLN}} may also be used to generate
+flag tables for multi- and single-source files to flag seriously
+deviant data.  {\tt FLAGR} uses multi-channel data to estimate rms and
+flags any times having excessive rms, amplitude, weight, etc.  {\tt
+RFLAG} will flag data in detailed ways based on excessive variablility
+in time and/or frequency.  {\tt REFLG} will compress the large flag
+table made by {\tt RFLAG}\@.  {\tt UVCOP} will apply even a very large
+flag table if so instructed.  These tasks will eliminate certain
+classes of problems without bothering you with the details, which may
+--- or may not --- be a good thing.
+
+     To do serious editing of a non-spectral nature and to do
+self-calibration, you will need to create a single-channel data set
+that represents your multi-channel data in some fashion.  If your data
+contains little continuum signal, but does have a strong
+\Indx{spectral-line} signal, then use {\tt \tndx{UVCOP}} to copy the
+data for the channel with the strongest signal to a single-channel
+data set. Alternatively, the task {\tt \tndx{AVSPC}} may be used to
+average a few adjacent channels together to create the single-channel
+data.  If, on the other hand, your data set contains a useful level of
+continuum emission --- and most do --- then your single channel should
+be some estimate of this \indx{continuum}.  If your line signal is
+weak and you have done no frequency-dependent editing, then you can
+use the so-called ``channel-0'' data set created by {\tt FILLM} when
+you first loaded your VLA data to disk.  This data set is the vector
+average of the center 3/4 of the selected spectral channels, but
+remains useful only if you have applied all of the same calibration,
+editing and {\tt SPLIT}ing to it that you applied to the line data.
+It may be safest to create a new continuum estimate from the line data
+in any case.  The classical method for doing this is the task {\tt
+AVSPC}:
+\dispt{TASK\qs 'AVSPC' ; INP \CR}{to review the inputs needed.}
+\dispt{IND\qs {\it m\/} ; GETN {\it n\/} \CR}{to specify the input
+              \uv\ file.}
+\dispt{CLRONAME \CR}{to use the default output names and disk.}
+\dispt{AVOPT\qs '\ ' \CR}{to average channels only within IFs.}
+\dispt{ICHANSEL\qs {\it b1 , e1 , i1 , if1 , b2 , e2 , i2 , if2
+              ,\/}$\ldots$ \CR}{\hspace{1em} to average every {\it i1}
+              channel from {\it b1\/} through {\it e1\/} in IF {\it
+              if1\/}, plus every {\it i2\/} channel from {\it b2\/}
+              through {\it e2\/} in IF {\it if2\/}, etc.}
+\dispt{ICHANSEL\qs 10 , 50 , 1, 0, 81 , 119 , 1 \CR}{\eg\ average
+              channels 10 through 50 and 81 through 119 in each IF,
+              omitting the band edges and the channels with line
+              signal.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+\pd
+
+     A non-classical method for estimating the continuum is provided
+by the task {\tt \tndx{UVLSF}}\@  It fits a linear ``spectral
+baseline'' in the real and imaginary parts of each visibility
+spectrum.  By adding a slope to the channel-independent bias found in
+{\tt \tndx{AVSPC}}, it allows for small changes in the continuum
+visibility with frequency and spatial resolution across the observed
+band, as well as small, time-variable changes in the spectral passband
+not fully removed by {\tt BPASS}\@.  The option to fit even higher
+order baselines was added.  These are seldom useful and can run into
+problems since they are not constrained by data in the channel ranges
+containing the line signals.  The principal output of {\tt UVLSF} is a
+multi-channel data set with this baseline subtracted, \ie\ a
+continuum-free line data set.  However, the user may also get a
+single-channel ``\indx{continuum}'' data set evaluated at any one
+channel from the fit baselines.  Thus:
+\dispt{TASK\qs 'UVLSF' ; INP \CR}{to review the inputs needed.}
+\dispt{IND\qs {\it m\/} ; GETN {\it n\/} \CR}{to specify the input
+              \uv\ file.}
+\dispt{CLRONAME \CR}{to use the default output names and disk.}
+\dispt{BCHAN\qs 0 ; ECHAN\qs 0 \CR}{to include all channels.}
+\dispt{ICHANSEL\qs {\it b1 , e1 , i1 , if1 , b2 , e2 , i2 , if2 ,
+              }$\ldots$ \CR}{\hspace{1em} to average every {\it i1\/}
+              channel from {\it b1\/} through {\it e1\/} in IF {\it
+              if1\/}, plus every {\it i2\/} channel from {\it b2\/}
+              through {\it e2\/} in IF {\it if2\/}, etc.}
+\dispt{DOOUTPUT TRUE \CR}{to get the continuum data set.}
+\dispt{CHANNEL 0 \CR}{to select the channel at which the baseline is
+              evaluated --- in this case, the default which is the
+              reference channel.  Choose one near the center of the
+              band.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+\dispe{The continuum data set will have \AIPS\ class {\tt BASFIT} and
+be on the same disk as the output line data set.  You may also use
+{\tt UVLSF} to flag data with excessive residual flux and rms in the
+channels used for the fitting.  You may apply the usual data selection
+and calibration and flag tables to the input data, meaning that {\tt
+SPLIT} need not have been run on the data previously.  Note that
+neither {\tt AVSPC} nor {\tt UVLSF} should be used if the continuum
+visibility changes substantially across the passband, due to large
+bandwidth and complexity in the continuum source.  If the phase of the
+continuum  changes substantially across the passband due to the
+centroid of the continuum being considerably separated from the
+pointing center, you should instruct {\tt UVLSF} to shift the phase
+reference position before fitting the linear function and then to
+shift the phases back afterwards.}
+
+     Your \Indx{spectral-line} data may need further modification and
+preparation.  If you did not observe with ``Doppler tracking'' (and
+even the VLA changes frequency only on a scan-by-scan basis), then
+your data channels are not at the same velocity through the data set.
+Task {\tt \tndx{CVEL}} may be used to convert the data to full Doppler
+tracked form, or simply to shift the center velocity of your reference
+channel to, for example, the velocity used in another data set.  {\tt
+CVEL} works on multi-source as well as single-source data sets.  It
+applies any flagging and bandpass calibration to the data before
+shifting the velocity (which it does by a carefully correct Fourier
+transform method).  Note, the use of Fourier-transforms means that one
+{\it must not} use {\tt CVEL} an data with channel separations
+comparable to the widths of some of the spectral features.
+
+     Three other tasks allow you to change the number of spectral
+channels in your data set.  The simplest, {\tt \tndx{AVSPC}}, allows
+you to average every {\it n\/} adjacent channels together, producing a
+data set one $n^{\uth}$ as large.  The wsecond, called {\tt
+\tndx{SPECR}}, uses Fourier transform methods to increase or decrease
+the number of channels with a corresponding change in channel spacing.
+In {\tt 31DEC14}, {\tt \tndx{SPECR}} can also use simple interpolation
+methods in case the Fourier methods produce undesirable results (such
+as ringing when a feature is very narrow in the input data set).  The
+third task, new in {\tt 31DEC15} is called {\tt \Tndx{UVFRE}} and it
+attempts to convolve the data from one frequency structure onto
+another frequency structure defined in a second data set (the $uv$
+equivalent of {\tt HGEOM})\@.  These tasks, along with {\tt
+\tndx{CVEL}} may be required to convert one data set to the same
+channel velocity and separation as another data set, before the two
+can be concatenated (task {\tt DBCON}) and used together in imaging.
+If simple frequency smoothing is needed, the calibration routines will
+apply various convolutions to the spectrum under control of the adverb
+{\tt SMOOTH}\@.  {\tt \tndx{IMAGR}}, allows you to ``average''
+channels together by gridding them into the correct
+(channel-dependent) locations in the \uv\ plane.  This is seldom
+important to narrow-band observations, but is critical in wide
+``\indx{bandwidth synthesis}'' observations.  Nonetheless, it allows
+you to keep full spectral resolution in the \uv\ data set, but abandon
+it for some or all of the imaging.
+
+\sects{Editing and self-calibration}
+
+     Self-calibration can improve the ``dynamic range'' of your images
+significantly but {\bf only} if there is sufficiently good
+signal-to-noise in the \uv\ database.  It works by comparing the input
+\uv\ data with the predicted visibilities from a model of the source;
+from this a set of complex gain (amplitude, phase) corrections are
+generated for each antenna in the array as a function of time.
+Before engaging in a potentially long and useless exercise, it is
+wise to look at the continuum or single-channel data set you have
+created to determine whether there is sufficient signal (with respect
+to the noise) to enable detailed editing and/or self-calibration.
+Even if the continuum data would profit from these things, you must
+also decide whether there is sufficient signal-to-noise in the line
+data to benefit from the improved editing and calibration.  Consult
+the sections on editing (\Sec{initedit} and \Sec{caledit}) and on
+self-calibration (\Sec{selfcal}) before deciding to continue with this
+section.
+
+     In fact, there is very little to be written here.  The editing
+and self-calibration of the continuum or single-channel data set are
+precisely those described in \Rchap{cal} and \Rchap{image}.  The goal
+is to create and fill an {\tt FG} table (if flagging is needed) and an
+{\tt SN} table (if self-calibration is needed) attached to the
+single-source, single-channel data set.  Note that, for single-source
+data, we use an {\tt SN} table containing the accumulated calibration
+while we use, for multi-source files, a number of {\tt SN} tables with
+incremental calibrations and a single {\tt CL} table with the net
+corrections.  When all editing and \indx{self-calibration} are done,
+you use {\tt \tndx{TACOP}} (or {\tt \tndx{TAPPE}} if the flag table
+must be appended to an existing flag table) to copy the two tables to
+the multi-channel data set and then use {\tt \tndx{SPLIT}} to apply
+both tables to the multi-channel data (and to the single-channel data
+set too if desired).
+
+     Unfortunately, this nice scheme does not work all the time ---
+mostly due to various programs not being able to apply the tables to
+the data.  Use {\tt SPLIT} to get around the problem.  The preferred
+imaging and deconvolution task is {\tt IMAGR} which understands and
+applies such tables.
+\Iodx{spectral-line}
+
+    In general, you may keep the flagging information in a flag table
+(specified with adverb {\tt FLAGVER}) and add to and apply the table
+whenever it is needed.  Be aware that flag tables are applied only by
+those tasks that have the {\tt FLAGVER} adverb, but a number of tasks
+have been upgraded to understand calibration and flagging tables.  In
+fact, data that are not in time order may have flag tables applied (if
+they are small enough) and time-independent calibrations (\eg\ {\tt
+DOBAND=1} and {\tt DOPOL} $> 0$) may also be done.
+
+\vfill\eject
+\Sects{Continuum subtraction}{linecsub}
+
+     Most \Indx{spectral-line} observations contain a certain amount
+of frequency-independent, \indx{continuum} radiation in addition to
+the frequency-dependent line signals.  In most (all?) cases, it is
+probably best to separate the two signals at this stage of the data
+processing.  In this way, a {\it single\/} continuum image can be
+constructed to apply to all frequencies.  It will probably be
+necessary to apply Clean or other expensive deconvolution techniques
+to determine the best estimate of this continuum image.  To do this
+for each channel individually would not only be considerably more time
+consuming, but would result in different models for the continuum in
+each channel.  Since Clean is a data-adaptive non-linear algorithm,
+minor disturbances in its progress causes it to converge to
+surprisingly different solutions.  Such ``disturbances'' could be
+caused by differing noise and line signals in different channels.  (It
+can be caused simply by differing computational order on identical
+data using different computers.)  Clean also increases the noise in an
+image in the areas at which there are sources.  If the continuum is
+removed from the line data before Cleaning, then this increase in
+noise is also removed.  To determine the continuum from separately
+Cleaned channel images is to use noisier individual determinations to
+get the final estimate.  If the imaging and deconvolution were a
+linear process, then this would not matter.  But the deconvolution is
+non-linear, making it better to start with the best possible estimate
+of the continuum.
+
+     In many cases, the continuum signal is stronger by far than the
+line signal.  In such cases, it is best to use as many channels as
+possible to estimate the continuum and to remove that estimate as
+early as possible.  The remaining line signal may be of fairly low
+signal-to-noise ratio and, therefore, not need the same processing
+that the continuum signal requires.  In particular, it may not be
+necessary to Clean the channel images particularly deeply, if at all.
+
+     All of the arguments above suggest that the continuum should be
+estimated and subtracted in the visibility domain.  This has the
+unfortunate attribute that we can use only those channels which are
+free of line signal over the entire field of view.  (This is because
+the Fourier transform relation mixes signals from all directions in
+the field into every visibility sample.)  In the image domain, the
+dirty images also have this unfortunate attribute, in this case
+because the dirty beam mixes signals from all parts of the field into
+every pixel.  The above arguments suggest that the only time one
+should determine the continuum in the image domain is when the
+observations have essentially no channels which are free of line
+signal over the full field of view.  In that case, the continuum at
+each position will have to be determined from deconvolved images using
+those channels which are free of line signal at that position.
+\Iodx{spectral-line}
+
+     \AIPS\ provides three separate tasks for fitting and subtracting
+the continuum in the \uv\ plane.  All three fit a linear ``baseline''
+to a selected group of channels and subtract that from the data.  The
+reasons for a linear baseline are (1) a continuum source offset from
+the field center will produce a linear phase slope across the
+passband, (2) minor other changes in the visibility with baseline may
+be approximately linear over narrow passbands, and (3) minor passband
+variations with time appear also to be approximately linear.
+Higher-order fits can be done by {\tt UVLSF}, but they do not seem to
+be justified and are often not well constrained.  The first reason
+suggests that one should do the fit in amplitude and phase, an
+algorithm implemented by the task {\tt \tndx{UVBAS}}\@.  This should
+be used {\it only\/} if you have good signal-to-noise in {\it all\/}
+of your visibility samples.  The reason for this very stringent
+requirement is that visibility amplitudes have Ricean rather than
+Gaussian noise statistics.  As a result, very biased estimates are
+produced in moderate to low signal-to-noise cases.  For these, the two
+tasks {\tt \tndx{UVLSF}} and {\tt \tndx{UVLIN}} should be used.  They
+do the fits in the real and imaginary parts of the visibilities and,
+hence, do not produce biased estimates in the absence of signal.  Both
+tasks allow you to shift the visibilities to move a strong source to
+the center of the field before doing the fits (and then shift the
+visibilities back to the original phase center). This changes
+sinusoidal real and imaginary parts to linear for an accurate fit, but
+only for those cases where a single source dominates the field.  Both
+tasks offer the option to flag discrepant data, but they differ in the
+details of how they do this. {\tt UVLSF} offers the option to write
+out a ``best-fit'' single-channel data set as well as subtracting it
+from the line data; see \Sec{lineasses} for an sample inputs to {\tt
+UVLSF}\@.
+
+     There are also a number of ways to remove the \indx{continuum} in
+the image domain, all of which assume that the channels have been
+imaged similarly and placed into a three- or more dimensional
+``cube.''  The ``classical'' method to subtract the continuum, which
+is the least useful, is to average those image planes which contain no
+line signals using {\tt \tndx{SQASH}} on each set of line-free planes
+and {\tt COMB} to average those averages.  Finally, {\tt \tndx{COMB}}
+is used to subtract the resulting plane from each plane of the initial
+\indx{cube}.  In this method, the cube is in the ``natural''
+transposition with the frequency axis third.  The other two methods
+require you to use the task {\tt \tndx{TRANS}} (see \Sec{linetrans})
+to transpose the frequency axis to the first (most-rapidly varying)
+axis.  Then {\tt \tndx{IMLIN}} may be used to fit polynomial baselines
+(linear is usually all that is justified) to the line-free parts of
+each spectrum.  This task, like all of the other tasks so far
+mentioned in this section, requires you to use a fixed set of channels
+for all positions in the field.  Many objects (\eg\ rotating galaxies)
+have spatially-dependent spectra in which each pixel has a rather
+narrow line width compared to the object or objects as a whole.  In
+such cases, the task {\tt \tndx{XBASL}} may be used.  This task
+requires some endurance on your part to complete, but it allows you to
+specify the baseline region for each pixel interactively using the
+\AIPS\ TV or TEK graphics windows.
+
+\Sects{Imaging}{lineimag}
+
+     There are several tasks which may be used to convolve
+\Indx{spectral-line} data to a rectangular grid and then Fourier
+transform and \indx{Clean} that grid to make an image.  The old tasks,
+which we no longer recommend, are called {\tt \tndx{UVMAP}}, {\tt
+\tndx{APCLN}}, and {\tt WFCLN} and may be used if you insist.  Today,
+{\tt \tndx{IMAGR}} should be used for all normal imaging and Cleaning.
+Read \Sec{imagr} for basic information about this task and \Sec{clean}
+for information about using it to deconvolve your images.  It can read
+either single- or multi-source data, can apply calibration, and writes
+all channels into an image cube.  {\tt IMAGR} uses much more flexible
+and correct methods for data weighting (\Sec{imagrwt}) and uses the
+superior multi-field method of Cleaning in which source components are
+subtracted from the visibility data and the images recomputed in every
+``major cycle.''  {\tt IMAGR} grids each channel in exactly the proper
+place in the \uv\ plane and can be used to do frequency smoothing
+(``averaging'') in this most correct of ways.  It also offers options
+to correct your data for various effects of importance over wide
+fields and bandwidths.  It even has experimental variations on Clean
+(\Sec{expClean}) to deal with extended sources and the Clean bias.
+
+    To produce a cube of spectral line images with {\tt IMAGR} from
+channels {\it n1\/} through {\it n2\/} use:
+\dispt{TASK\qs 'IMAGR' ; INP \CR}{to review the inputs needed.}
+\dispt{IND\qs {\it m\/} ; GETN {\it n\/} \CR}{to specify the input
+             \uv\ file.}
+\dispt{CLRONAME \CR}{to use the default output names and disk.}
+\dispt{BCHAN\qs {\it n1\/} ; ECHAN\qs {\it n2\/} \CR}{to include a
+              range of channels.}
+\dispt{STOKES\qs 'I' \CR}{to make total intensity (unpolarized)
+              images.}
+\dispt{NCHAV\qs 1 \CR}{to avoid averaging channels.}
+\dispt{CHINC\qs 1 \CR}{to do every channel, setting the channel
+              increment.}
+\dispt{CHANNEL\qs 0 \CR}{do not restart.}
+\dispt{CELLSIZ\qs $\Delta x$ , $\Delta y$ \CR}{to set the image cell
+              dimensions in arc seconds.  Cells do not have to be
+              square.}
+\dispt{IMSIZE\qs $N_x$ , $N_y$ \CR}{to set the image size in pixels
+              (must be powers of two).}
+\dispt{NITER\qs 0 \CR}{to do no Cleaning.}
+\dispt{GO \CR}{to run {\tt IMAGR}.}
+\dispe{This makes ``dirty'' images and beams of the specified
+channels.  If Cleaning is needed, set the Clean adverbs {\tt NITER},
+{\tt NBOXES}, {\tt CLBOX}, {\tt GAIN}, {\tt BOXFILE}, etc.  Note that
+you must image one IF at a time in order to avoid combining multiple
+frequencies.  The task {\tt NOIFS} might be useful depending on your
+data.}
+
+Because of the upgrade of the VLA in 2010, {\tt IMAGR} is more careful
+with image units.  Unless you force the Clean beam size with {\tt
+BMAJ}, {\tt BMIN} and {\tt BPA}, {\tt IMAGR} will image each channel
+at its ``natural'' (frequency-dependent) resolution.  It now carefully
+scales each image plane so that it is actually in units of Jy per the
+Clean beam listed in the header.  The Clean beam for each frequency is
+recorded in a {\tt CG} table and used by {\tt MCUBE} and {\tt CONVL}
+among other tasks.
+
+     At this point, it is a very good idea to determine the noise in
+your output images and to compare it to the theoretical noise you
+expect.  If your images are significantly noisier than expected, it is
+a very good idea to stop processing, to think about what may have gone
+wrong, and then to check and correct that.  The noise may be
+determined using task {\tt \tndx{IMEAN}}:
+\dispt{TASK\qs 'IMEAN' ; INP \CR}{to review the inputs needed.}
+\dispt{IND\qs {\it m\/} ; GETN {\it n\/} \CR}{to specify the input
+              image file.}
+\dispt{DOHIST\qs TRUE \CR}{to plot the \indx{histogram}.}
+\dispt{NBOXES\qs 200 \CR}{to use a significant number of boxes in the
+              plot.}
+\dispt{PIXRANGE\qs = {\it -x\/} , {\it x\/} \CR}{to limit the
+              histogram to the range $\pm x$, where {\it x\/} should
+              be about 5 times the expected noise.}
+\dispt{DOTV\qs TRUE \CR}{to put the plot on the TV rather than in a
+              file.}
+\dispt{BLC\qs {\it x1, y1, f1\/} ; TRC\qs {\it x2, y2, f2\/} \CR}{to
+              select a sub-image of the cube that is free of signal.}
+\dispt{GO \CR}{to run the task, plotting on the TV.}
+\dispe{This will print two rms's on your message screen one computed
+using all the data and one done by fitting a histogram to the noise
+portion of the signal.  Especially if the latter fails, the plot
+will allow you to estimate the true rms, ignoring those pixels
+significantly above and below the Gaussian noise part of the
+histogram.  Using this plot, it may be better to include all of the
+data ({\us BLC\qs 0 ; TRC\qs 0 \CR}) rather than to limit the number
+of pixels contributing to the histogram.  The {\tt AIPS} verb {\tt
+IMSTAT} does the all-pixel rms computation without the useful plot,
+while the verb {\tt TVSTAT} allows you to mark one or more
+non-rectangular regions on an image on the TV over which the rms is
+computed.  Task {\tt RSPEC} will plot robust rmses computed on a per
+plane basis.}
+
+\Sects{Display and manipulation of data cubes}{cubes}
+
+\Subsections{Building and dismantling data cubes}{mcube}
+
+     Many \Indx{spectral-line} display and analysis functions make
+sense only on 3-dimensional (or more) images.  In particular, image
+creation functions may create one image per spectral channel while
+spectral analysis requires the images to be ordered with the spectral
+axis first (most rapidly varying).  To combine a number of
+{\it n\/}-dimensional images into an {\it n\/}- or $n+1$-dimensional
+image, use the task {\tt \tndx{MCUBE}}\@.  This task requires the
+images to have some one physical axis whose value varies between the
+input images in a manner consistent with a regular axis and it is that
+axis which is extended to make the ``\indx{cube}.''  If the output
+image specified already exists, then the input maps are inserted in
+the output image in the appropriate places.  This allows the {\it
+n\/}- or $n+1$-dimensional output image to be built up a bit at a time
+and allows replacement of portions of the image with a corrected {\it
+n\/}-dimensional image.  Type {\us EXPLAIN\qs MCUBE \CR} to receive a
+variety of hints and suggestions for using this rather general
+program.  As an example, to put 31 frequency channel images into one
+cube, type:
+\dispt{TASK\qs 'MCUBE' ; INP \CR}{to review the inputs.}
+\dispt{INNA\qs 'N315' \CR}{to select the source.}
+\dispt{INCL\qs 'IIM001' \CR}{to select the input image class for {\it
+                all\/} images.}
+\dispt{INSEQ\qs 1 ; IN2SE\qs 31 ; IN3SE\qs 1 \CR}{to set the first and
+                last image and the step in the task's loop over input
+                sequence number.  The task handles any missing images
+                gently.}
+\dispt{AXREF\qs 1 ; AX2REF\qs 31 \CR}{to set the pixel coordinate of
+                the first and last image on the third axis in the
+                cube.}
+\dispt{NPOINTS\qs 31 \CR}{to set the total number of points on the
+                third axis.}
+\dispt{OUTN\qs '\qs ' \CR}{to use the default {\tt OUTNAME}.}
+\dispt{OUTCL\qs 'LMFCUB' \CR}{to specify, in {\tt OUTCLASS}, the order of
+                axes.}
+\dispt{GO \CR}{to run {\tt \tndx{MCUBE}}.}
+\dispe{{\tt MCUBE} will scale each image plane so that it is on the
+same brightness scale as represented by the Clean beam in the header.}
+
+     Later on, you might want to replace some of these images by
+Cleaned images.  \Eg\ assume that you have Cleaned channels 10 through
+20, one at a time.  These images got the class {\tt ICL001}\@.  It is
+a good idea to give them sequence numbers that are the same as the
+channel numbers, thus 10 to 20.  Putting them in the existing cube
+(make a backup copy with {\tt SUBIM} if you are nervous) can then be
+done as follows:
+\dispt{TASK\qs 'MCUBE' ; INP \CR}{to review the inputs.}
+\dispt{INNA\qs 'N315' ; INCLA\qs 'ICL001' \CR}{to select the clean
+                images.}
+\dispt{INSE\qs 10 ; IN2SE\qs 20 ; IN3SE\qs 1 \CR}{to set the first and
+                last image and the step in the loop.}
+\dispt{OUTN\qs 'N315' ; OUTCL\qs 'LMFCUB' \CR}{to select the existing
+                cube.}
+\dispt{OUTSE\qs 1 \CR}{ }
+\dispt{GO \CR}{to run {\tt MCUBE}.}
+\dispe{{\tt IMAGR} with its {\tt DOTV} option allows you to Clean each
+channel with its own numbers of iterations and its own interactively
+set Cleaning boxes.  There are new options to create boxes
+automatically on each image plane and an option to control whether the
+boxes for channel $n$ are carried over to channel $n+1$.}
+\Iodx{spectral-line}
+
+{\tt MCUBE} can build a cube out of a set of images that do not have a
+suitable axis for image building.  This can be a set of images that
+have all the same axis parameters (\eg\ identical images except for
+date) or they can be images at, for example, an arbitrary set of
+frequencies.  Set {\tt DOCONCAT = 2} to force {\tt MCUBE} to make a
+{\tt SEQ.NUM.} axis or, if there are different frequencies, an {\tt
+FQID} axis with accompanying {\tt FQ} table.  The original coordinate
+values on an axis that differs from image to image are recorded in the
+history file and, for frequencies, also in the {\tt FQ} table.  Task
+{\tt \tndx{FQUBE}} does this operation more naturally and can combine
+two cubes each of which already has an {\tt FQID} axis.
+
+     Most programs work on cubes.  However, you may find it
+convenient, on occasion, to work with single image planes.  To
+separate the channels from the \indx{cube}, use task {\tt
+\tndx{SUBIM}} typing, for example:
+\displ{TASK\qs 'SUBIM' ; INP \CR}{to review the inputs.}
+\displ{INNA\qs 'N315' ; INCL\qs 'LMFCUB' ; INSE\qs 1 \CR}{to select
+                  the cube.}
+\displ{OUTN\qs 'N315' ; OUTCL\qs 'IMAGE' \CR}{to give it an output
+                  name and class.}
+\displ{BLC\qs 0 ; TRC\qs 0 \CR}{to select full planes.}
+\displ{DOWAIT\qs TRUE \CR}{to run in synchronous mode.}
+\dispz{FOR\qs J=10:20 ; BLC(3)=J ; TRC(3)=J ; PRIN\qs J ; OUTSE\qs J ; GO ;
+     END}{ }
+\dispe{This runs the program 11 times, taking planes 10 through 20 and
+creating separate images for them. To put the images back into the
+cube after they have been modified, use {\tt MCUBE}\@.}
+
+\vfill\eject
+\Subsections{Transposing the cube}{linetrans}
+
+     The task {\tt \tndx{TRANS}} will transpose the \indx{cube},
+ordering the axes in any way you specify.  Typically, one transposes
+images of spectral channels into spectra at image pixels for both
+display and analysis purposes.  Thus:
+\dispt{TASK\qs 'TRANS' ; INP \CR}{to review the inputs.}
+\dispt{INCLASS\qs 'LMFCUB' \CR}{to select the untransposed cube.}
+\dispt{TRANSC\qs '-312' \CR}{to make new axis order -3, 1, 2 in terms
+                  of the old axis order (\eg\ RA, Dec, Freq becomes
+                  Vel (opposite sign of Freq), RA, Dec).}
+\dispt{OUTCL\qs 'VLMCUB' \CR}{to give it an outclass reflecting the axis
+                  order.}
+\dispt{BLC\qs 0 ; TRC\qs 0 \CR}{to transpose the whole cube.}
+\dispt{GO \CR}{to run the program.}
+\dispe{Numerous tasks such as {\tt IMLIN}, {\tt XSUM}, {\tt PLCUB},
+and {\tt XMOM} act on the first axis and, typically, make sense only
+when that axis is frequency/velocity.  Note that such {\it x\/}-axis
+analysis may also be useful in other cases, including angular and time
+{\it x\/} coordinates.}
+\Iodx{spectral-line}
+
+\subsections{Modifying the image header}
+
+     On occasion you may feel the need to modify or add to the
+information in the image \indx{header}.  For example, to add an
+alternate velocity description for the frequency axis of a cube, type:
+\dispt{INDISK\qs {\it n\/} ; GETN\qs{\it ctn\/} \CR}{to select the
+           image.}
+\dispt{AXTYPE\qs 'OPTHEL' \CR}{to specify optical-convention
+           velocities relative to the Sun.}
+\dispt{AXREF\qs 16 \CR}{to specify the velocity reference pixel
+           (channel 16 is the center of the band in our example).}
+\dispt{AXVAL\qs 5.E6 \CR}{the velocity at the reference pixel in m/s.}
+\dispt{RESTF\qs 1420.4E6, 5752 \CR}{to specify the line rest frequency
+           in Hz (1420405752 Hz).}
+\dispt{\tndx{ALTDEF} \CR}{to add the information to the header.}
+\dispt{\tndx{ALTSW} \CR}{to switch between frequency and velocity
+           information in axis labeling, {\tt IMHEADER}, etc.}
+\dispe{The VLA now provides the velocity information to {\tt FILLM},
+making this operation unnecessary in many cases.}
+
+    Observers may find the Galactic coordinates of their sources to be
+of interest. To switch the header between Celestial and Galactic
+coordinates, type:
+\dispt{\tndx{CELGAL} \CR}{to go to galactic coordinates.}
+\dispt{CELGAL \CR}{to go back to celestial coordinates.}
+\pd
+
+     You may change many of the parameters in the image header and may
+fetch for use by the \POPS\ language all header parameters.  The
+verb {\tt \tndx{PUTHEAD}} changes a header parameter and {\tt
+\tndx{GETHEAD}} gets that parameter.  Type {\us EXPLAIN GETHEAD \CR}
+for the details, including a list of recognized keywords, and {\us
+EXPLAIN PUTHEAD \CR} for the more restricted list of values which you
+may change in the header.  For example, to move a header parameter
+from one image to another:
+\dispt{KEYWORD\qs '{\it keyword\/}' \CR}{to specify one of the fully
+              allowed keywords.}
+\dispt{GETN\qs {\it n\/} ; GETHEAD \CR}{to get the header value from
+              image {\it n\/}.}
+\dispt{GETN\qs {\it m\/} ; PUTHEAD \CR}{to put it in the header of
+              image {\it m\/}.}
+\pd
+
+\Subsections{Displaying the cube}{dispcube}
+
+     The easiest way to look at the cube is by using {\tt
+\tndx{TVMOVIE}}\@.  This verb loads portions of planes of a cube into
+the TV memory, and displays them in sequence at a variable frame rate.
+Type:
+\dispt{INDISK\qs {\it n\/} ; GETN\qs{\it ctn\/} \CR}{to select the
+               cube.}
+\dispt{INP\qs TVMOVIE \CR}{to review the inputs; use defaults for a start.}
+\dispt{TVMOVIE\qs \CR}{to load the images and start the movie.}
+\dispe{Now follow the instructions on your screen on how to change the
+transfer function, change speed, look at single frames, etc.  Having
+terminated the movie (button D), you may restart it with}
+\dispt{\tndx{REMOVIE} \CR}{to resume the movie.}
+\dispe{With the default adverbs, {\tt TVMOVIE} will zoom the display
+so that a single frame fills the display area.  If you are using a
+workstation, this may seriously limit the maximum possible frame rate.
+To use a smaller zoom factor and smaller display area, enter:}
+\dispt{DOCENTER\qs TRUE \CR}{to enable the option.}
+\dispt{FACTOR\qs {\it m\/} \CR}{to use a zoom factor of {\it m\/}.}
+\dispt{REMOVIE \CR}{to rerun the movie.}
+\dispe{Note that you may set these adverbs before the initial {\tt
+TVMOVIE} command as well.  If your cube has more than 3 axes with
+multiple pixels, {\tt TVMOVIE} can display all planes if {\tt DOALL =
+1}\@.}
+\Iodx{spectral-line}
+
+     {\tt TVMOVIE} uses an image ordering on the screen designed to
+improve the performance of movies on ``real'' TV devices.  To use a
+more pleasing ordering (left to right, top to bottom) that is nearly
+as efficient on workstations, use the {\tt \tndx{TVCUBE}} verb
+instead.  The verb {\tt REMOVIE} works on these displays as well.  One
+of the reasons to use {\tt TVCUBE} is to capture a full TV plane's
+worth of channels and print them on a \indx{PostScript} printer.  The
+first step is to get {\tt TVCUBE} to put the desired channels in one
+TV image plane. Set {\tt TBLC(3)} and {\tt TTRC(3)} to select those
+planes you want and set {\tt TVCHAN = 2} (or the highest TV plane
+allowed on your system) to force all the images into one TV image.
+Stop the move with button D, display the full TV memory (use the {\tt
+F2} button), adjust the enhancement (and color) of the display, and
+then run task {\tt TVCPS}\@.  If your images are too large for
+one channel, use {\tt TVCHAN = 1} and run {\tt \tndx{TVCPS}} once for
+each channel.
+
+\begin{figure}
+\centering
+% \resizebox{!}{7.5in}{\gname{kntr}}
+\resizebox{\hsize}{!}{\gbb{538,655}{kntr}}
+\caption[{\tt KNTR} contours of spectral channels]{Contour images of
+spectral channels from a cube generated by \AIPS\ task {\tt
+\tndx{KNTR}}\@.  Data on NGC6503 were provided by Don Wells from
+observations made with the VLA on 12 April 1983.\Iodx{spectral-line}}
+\label{fig:lineKNTR}
+\end{figure}
+
+     Another way to see multiple image planes on a single page is with
+the task {\tt \tndx{KNTR}}, which plots a page of contour and/or
+grey-scale drawings for each plane.  This task allows you to include
+``star'' positions and even an outline of the clean beam.  A {\tt
+KNTR} plot of neutral hydrogen emission from NGC6503 is shown in
+\Rfig{lineKNTR}.
+
+\begin{figure}
+\centering
+%\resizebox{!}{8.05in}{\gname{tvcube}}
+\resizebox{!}{8.05in}{\gbb{495,674}{tvcube}}
+\caption[{\tt TVCUBE} display of transposed cube.]{Display generated
+by transposing a data cube into 132 (right ascension, velocity,
+declination) order and then displaying the central declination
+position-velocity planes with {\tt AIPS} verb {\tt \tndx{TVCUBE}}\@.
+The TV display was then captured by \AIPS\ task {\tt \tndx{TVCPS}} for
+printing on PostScript printers.  Data on NGC6503 were provided by Don
+Wells from observations made with the VLA on 12 April
+1983.\Iodx{spectral-line}}
+\label{fig:linetrans}
+\end{figure}
+
+     It can be very informative to transpose the cube to look at
+position-velocity planes instead of position-position planes.  A {\tt
+TVCUBE} display of the NGC6503 data cube transposed to 132
+(position-velocity-position) order and then captured with {\tt TVCPS}
+is shown in \Rfig{linetrans}.
+
+     Finally, it is useful to look at the cube as a set of spectra.
+Use {\tt \tndx{TRANS}} to transpose to 312 order (or -312, 321, and
+the like).  The task {\tt \tndx{XPLOT}} displays the spectra on the
+graphics display selecting only those with a sufficiently strong line
+signal (set by adverb {\tt FLUX}) and ignoring those with really
+strong fluxes (controlled with {\tt PIXVAL})\@.  This can get rather
+tedious and it is easy to get lost in your cube.  The task {\tt
+\tndx{PLCUB}}, illustrated in \Rfig{linespect}, allows you to see
+numerous spectra at one time plotted in correct orientation with
+respect to their position coordinate.  It is necessary to experiment
+with the adverbs for {\tt PLCUB}, especially {\tt YINC}, {\tt ZINC},
+{\tt PIXRANGE}, and the like, to get a good plot.  Use the TV with
+{\us \tndx{DOTV}\qs TRUE \CR} to save trees.
+
+\begin{figure}
+\centering
+%\resizebox{!}{8.05in}{\gname{plcub}}
+\resizebox{!}{8.05in}{\gbb{515,727}{plcub}}
+\caption[{\tt PLCUB} display of spectra from a cube]{ Display
+generated by transposing a data cube into 312 order (velocity, right
+ascension, declination) and then displaying selected spectra on a
+regular grid in the angular coordinates with \AIPS\ task {\tt
+\tndx{PLCUB}}\@.  Data on NGC6503 were provided by Don Wells from
+observations made with the VLA on 12 April 1983.\Iodx{spectral-line}}
+\label{fig:linespect}
+\end{figure}
+
+    In general, other display programs work on one plane at a time.
+Therefore, you must specify which plane in the cube you want to see.
+For example, if you want to do {\tt \tndx{TVALL}} on channel 16, which
+is on pixel 16 of the third axis, you type:
+\dispt{TBLC\qs 0\qs 0\qs 16 ; TVALL \CR}{ }
+\dispe{Note that adverbs {\tt TBLC} and {\tt TTRC} are used for TV
+displays while {\tt BLC} and {\tt TRC} are used for image operations.}
+
+\vfill\eject
+\Sects{Analysis}{lineanal}
+
+     A wide variety of programs is available to do further
+\indx{analysis} of the data.   Exactly which ones you will need
+depends on the nature of your observations.  To see the latest list of
+symbols related to spectroscopy, enter
+\dispt{ABOUT\qs SPECTRAL \CR}{to list them all on your terminal.}
+\dispe{or consult \Rchap{list} of the \Cookbook\ for a less current,
+but paper, copy of the list.}
+
+    The subject of finding and removing the \indx{continuum} (aka
+spectral baseline) was discussed in \Sec{linecsub} above.  In the
+image domain, task {\tt \tndx{IMLIN}} may be used to remove polynomial
+baselines using the same spectral channels throughout the cube.  The
+task {\tt \tndx{XBASL}} can be used to remove baselines in an
+interactive (hence position-dependent) fashion. Be aware, however,
+that if you have made an error in the calibration, this has most
+likely caused slopes in amplitude {\it and\/} phase.  Therefore, it is
+generally better to track down the error and correct it than to decide
+(arbitrarily) to take out slopes in (Cleaned ?) image amplitude.  Task
+{\tt \tndx{SQASH}} may also be used to sum or average planes in a
+cube, which provides, among other things, a simple but crude way to
+determine a continuum image which can then be subtracted from the cube
+by {\tt \tndx{COMB}}\@.
+
+    Smoothing and blanking are important for almost all analysis
+programs.  {\tt \tndx{CONVL}} works on cubes and does a spatial
+smoothing (on position-position-velocity cubes).  {\tt CONVL} will use
+the {\tt CG} table to smooth all image planes to the same spatial
+resolution.  This is preferable to forcing a resolution with {\tt
+BMAJ} since it smooths the resisuals as well as the components.  Using
+all the defaults in {\tt \tndx{XSMTH}} performs a Hanning smoothing in
+velocity (on transposed velocity-position-position cubes) and can be
+used to do other kinds of smoothing as well.  This is not just useful
+for bringing out weak extended signals.  Smoothed images can also
+assist in determining the boundaries of sources to set windows for
+subsequent spectral analysis. For example, the smoothed cube could be
+used to set the {\tt CLIP} limits in task {\tt \tndx{COMB}} to be
+applied to the unsmoothed cube.\Iodx{spectral-line}
+
+     In fact, finding all regions of significant line signal may be
+difficult in large image cubes.  The task {\tt \tndx{SERCH}} offers an
+algorithm by Juan Uson to find line signals which match specified line
+widths and exceed a specified signal-to-noise ratio.  Histograms may
+be plotted or printed and a S/N hyper-cube may be written.
+
+    The task {\tt \tndx{BLANK}} offers a variety of algorithms for
+``blanking'' out regions of bad data or source-free regions in
+spectral-line cubes.  It has an interactive mode, which allows you to
+indicate with the cursor on the TV what are ``good'' regions.  Set
+everything but the image name to default values, use {\us OPCODE\qs
+'TVCU' \CR} and type {\us GO\qs BLANK \CR}\@.  Then just follow the
+instructions, pushing button A to lay out the polygon and button D
+followed by \CR\ to go to the next image.  If marking ``bad'' regions
+is easier, set {\us DOINV\qs TRUE \CR} before running {\tt BLANK}\@.
+A less subjective way is to use {\tt BLANK} with {\tt OPCODE =
+IN2C}\@.  Blanking is done based on the pixel values in a second cube,
+usually a smoothed version of the original cube.\iodx{blanked pixel}
+\iodx{undefined pixel}  The new task {\tt \tndx{RMSD}} can be used to
+blank an image based on its rms in a window surrounding each pixel.
+
+    The blanked cubes can be used to calculate integral profiles with
+{\tt \tndx{BLSUM}} and to calculate moments 0 to 3 of the profiles
+with {\tt \tndx{XMOM}}\@. Thus, the 0-moment image will be the
+integral under the profile (\eg\ total HI), the first moment is the
+velocity field, etc.  {\tt OPTYPE='MAX'} in {\tt XMOM} will select the
+peak brightness on each row and make images of it and its coordinate.
+A comparison of the two types of output can be very illuminating.
+Task {\tt \tndx{MOMNT}} does the smoothing, blanking and calculating
+of moments all in one run.  This is very easy to use, but can be
+dangerous since you don't see what is going on.  A display of the
+$0^{\uth}$ and $1^{\ust}$ moment images computed by {\tt XMOM} is
+shown in \Rfig{linemom}.
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.7in}{\gname{momnt}}
+\resizebox{!}{3.7in}{\gbb{536,522}{momnt}}
+\caption[Images of line-cube moments.]{Display generated by {\tt
+\tndx{GREYS}} and {\tt \tndx{LWPLA}} using the moment 0 image for grey
+levels and the first moment image for contours.  Data on NGC6503 were
+provided by Don Wells from observations made with the VLA on 12 April
+1983. \Iodx{spectral-line}}
+\label{fig:linemom}
+\end{figure}
+
+     Moment images (or any other 2 or 3 images) may be combined in a
+display in which one image controls intensity, a second image controls
+hue (color), and a third optional image controls saturation (color
+richness or purity, done by varying the ratio of white to pure color).
+In the days of powerful television display devices, this display could
+be done at truly interactive speeds in the display hardware.  Today,
+most workstations are capable of displaying full color images and the
+\AIPS\ display program supports them.  The verb {\tt \tndx{TVHUEINT}}
+will display the two specified TV channels using one as the intensity
+and the other as hue; see \Sec{TVcompare}  \AIPS\ task {\tt
+\tndx{HUINT}} may also be used with either full-color TV displays.
+This task offers a small menu of interactive options to enhance the
+images and otherwise control the display in manners esentially the
+same as the verb.  It however offers the option to write out an image
+cube having RGB as its third axis. It can also write an image of the
+3-color step wedge.  These images may then be processed with the usual
+display tasks such as {\tt KNTR} and rendered in PostScript by {\tt
+LWPLA}\@.  \AIPS\ task {\tt \tndx{TVHUI}} may also be used with either
+full or pseudo color TV displays.  This task also offers a small menu
+of interactive options to enhance the images and otherwise control the
+display.  It also offers the option to write out an image cube having
+RGB as its third axis and using much greater mathematical accuracy
+than is allowed in the TV display.
+
+  {\tt \tndx{RGBMP}} computes ``integral'' images another way --- as
+three weighted sums representing the low, center, and high velocity
+parts of the cube.  Like {\tt TVHUI}, {\tt RGBMP} writes its results
+as a cube with RGB as the third axis.  Task {\tt \tndx{TVRGB}} can
+display these outputs (or any other RGB cube or any three image
+planes), using one image plane to control the red image, one to
+control green, and one to control blue.  It works on real TV displays
+and full-color workstations and, using an algorithm to minimize the
+loss of color information, on pseudo-color workstations.  Like {\tt
+TVHUI}, it offers a small menu of interactive enhancement options.
+{\tt TVRGB} can write 24-bit color \indx{PostScript} files beginning
+with the {\tt 15JAN96} release. {\tt TVCPS} is another way to capture
+the displays generated by {\tt TVHUI} and {\tt TVRGB} to send to color
+PostScript printers.
+\Iodx{spectral-line}
+
+    If you prefer to fit \indx{Gaussian}s instead of calculating
+moments, the program {\tt \tndx{XGAUS}} can be used. First, it is a
+good idea to become acquainted with your data cube.  In {\tt 31DEC16},
+a highly interactive task called {\tt \tndx{TVSPC}} can let you
+examine the spectra from one or two transposed cubes at positions
+selected from an image plane, all on the TV display.  The image plane
+should be some image representing the full field, such as moment-zero
+or, in polarization, the I polarization image.  In earlier releases,
+use {\tt XPLOT} first to look at (a sample of) the profiles, before
+you do any Gaussian fitting.  {\tt XGAUSS} offers a non-interactive
+mode, but it is frequently unstable and depends on the fit channels
+and the initial guesses being virtually independent of position.
+Therefore, in most cases, it is preferable to use the interactive
+mode, so that you can see what is happening, but be aware that it
+might be rather time-consuming.\iodx{fitting}  In {\tt 31DEC13}, {\tt
+XGAUS} prepares a table of solutions which can be edited in various
+ways after all pixels have been fit once.  Images of the fit
+parameters are examined during the editing process and are written out
+only after you are happy with the results.  The task may be re-started
+with the same table as often as needed.
+
+     In {\tt 31DEC13}, two similar fitting tasks appeared.  {\tt
+\tndx{RMFIT}} is used to fit rotation measures to Q and U spectral
+cubes, using the cube of Faraday rotation output by {\tt \tndx{FARS}}
+to provide initial guesses.  It is far more capable than the Faraday
+rotation synthesis in distiguishing multiple components in the
+rotation measure.  {\tt \tndx{ZEMAN}} fits Zeeman splitting to
+spectral cubes of I and V polarization.  It can fit the line directly
+or it can fit the individual Gaussians found by {\tt XGAUS}
+individually.  The latter allows multiple magnetic-field values to be
+found in the same direction.  See \AIPS\ Memo 118\footnote{Greisen, E.
+W. 2015, ``Modeling Spectral Cubes in \AIPS,'' AIPS Memo 118 revised,
+{\tt http://www.aips.nrao.edu/aipsdoc.html}} for a detailed
+description of these tasks.
+
+     The cube can be rotated with {\tt \tndx{OGEOM}} (if the $\alpha$
+-- $\delta$ pixels are square), \eg\ to align one of the axes with the
+major axis of a galaxy.  If the pixels are not square, use {\tt
+\tndx{OHGEO}} to regrid the image instead.  A single profile can be
+produced from these images with {\tt \tndx{SLICE}}, then plotted using
+{\tt \tndx{TKSLICE}},{\tt \tndx{TVSLICE}}, or {\tt \tndx{SL2PL}} (see
+\Sec{TKslice}, \Sec{TVslice}, \Sec{plotrow}, and \Rfig{plotslta}).
+{\tt \tndx{PLCUB}}, {\tt \tndx{PLROW}} and {\tt \tndx{XPLOT}} are
+convenient programs for displaying multiple individual spectral
+profiles after the cubes have been transposed.
+
+     To compute and display spectral profiles summed over regions in
+the two angular coordinates, use {\tt ISPEC} for rectangular regions
+and {\tt BLSUM} for irregular regions set interactively using the TV
+display and cursor.  Both tasks print their results; both {\tt
+\tndx{BLSUM}} and {\tt \tndx{ISPEC}} make standard \AIPS\ plot files,
+and {\tt BLSUM} can also make a printer plot.  Note that both tasks
+sum over areas in the first two axes and plot that as a function of
+position on the third axis, no matter what the three axes actually
+represent.  This suggests a variety of interesting possibilities, such
+as time functions or line integrals versus position in the source.
+Both tasks can write the results as slice extension files which may
+then be printed, plotted and Gaussian fit in a variety of ways.  {\tt
+ISPEC} can plot the spectral derivative of the profile it has
+computed, which is of interest in Zeeman splitting experiments.  Task
+{\tt RSPEC} is similar to {\tt ISPEC} except that it plots the rms
+rather than the data.  {\tt RSPEC} has options to write out a
+signal-to-noise image and/or a text file of channel weights as
+well.\Iodx{spectral-line}
+
+     Note that if all you require is a single spectral profile, it may
+be possible to use {\tt \tndx{POSSM}} which works on the \uv\ data
+directly. If the spectral profile is a function of position within a
+well-resolved source, then you will have to go to the image plane.
+
+    {\tt \tndx{GAL}} fits models of galaxy rotation to images of the
+predominant velocity (\eg\ the first moment images written by {\tt
+\tndx{XMOM}}, {\tt \tndx{XGAUS}}, or {\tt \tndx{MOMNT}}).  It accepts
+a second input image to be used as weights for the first input image;
+it is common practice to use a the zero'th moment image for this.
+Plots may be produced.  The task {\tt \tndx{MODVF}} creates a model
+velocity field based on a user provided model for the rotation curve,
+orientation, and warping of the plane.
+
+     A much more powerful, but tricky to use, task named {\tt
+\Tndx{CUBIT}} was developed by Judith Irwin and contributed to \AIPS\
+\footnote{Irwin, Judith A. 1994, ``Arcs and bridges in the interacting
+Galaxies NGC 5775/NGC 5774,'' ApJ, 429, 618-633.}.  This task fits a
+galaxy rotation and emitter (usually HI) distribution to the full data
+cube.  It uses dynamic memory and so can work on any reasonable size
+cube.  It is much more likely to work if the cube has been very
+carefully {\tt BLANK}ed and if you approach it with patience.  Make
+the best initial guesses for all the parameters that you can.  Then
+fit for one parameter at a time until you begin to get a reasonable
+result.  Then allow the task to fit all of the parameters at once.
+And finally, check the fits going through the galaxy in halves or
+quadrants.  But first, study {\us EXPLAIN CUBIT \CR} in detail.  The
+results from this task are worth the trouble to get it to work on your
+data.

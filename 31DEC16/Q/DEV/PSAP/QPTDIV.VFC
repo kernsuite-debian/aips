@@ -1,0 +1,113 @@
+      SUBROUTINE QPTDIV (C, U, VS, INCVS, INCF, INCS, NCOMP, NVIS,
+     *   NF, NS)
+C-----------------------------------------------------------------------
+C! Subroutine call version of VFC routine; replaced by vector version.
+C# Obselete
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+C-----------------------------------------------------------------------
+C   Pseudo-AP version
+C   Divides the model visibility derived from CLEAN components into
+C   visibility records.  Arbitrary numbers of frequencies and
+C   polarizations can be processed.  The weights of the visibilities
+C   are multiplied times  the amplitude of the model visibility.
+C   Inputs:
+C      C      I   Base address of CLEAN components, increment=7.
+C                     0 = Amplitude
+C                     1 = used (PHASE)
+C                     2 = used (REAL)
+C                     3 = used (IMAG)
+C                     4 = -2 * PI * X
+C                     5 = -2 * PI * Y
+C                     6 = -2 * PI * Z
+C      U      I   Base address of U's, assumed followed by V, W
+C      VS     I   Base address of vis rec. (real, imag, wt)
+C      INCVS  I   Increment of VS for next visibility
+C      INCF   I   Increment of VS for next frequency
+C      INCS   I   Increment of VS for next IF (RR of LL)
+C      NCOMP  I   Number of CLEAN components.
+C      NVIS   I   Number of visibilities.
+C      NF     I   Number of frequencies.
+C      NS     I   Number of IF (usually 1 or 2)
+C   Also uses AP locations 0 and 1 and expects an array
+C   beginning in location 2 composed of:
+C            Freq(0) / Freq(ref) - 1.0
+C            Freq(1) / Freq(0)   - 1.0
+C                    .
+C                    .
+C                    .
+C            Freq(NF-1) / Freq(NF-2) - 1.0
+C-----------------------------------------------------------------------
+      INTEGER   C, U, VS, INCVS, INCS, INCF, NCOMP, NVIS,  NF, NS,
+     *   PHASE, REAL, IMAG, X, JVS, F, IVS, IF, IV, JU,
+     *   ZERO, ONE, SEVEN
+      INCLUDE 'INCS:DAPC.INC'
+      INCLUDE 'INCS:CAPC.INC'
+      INCLUDE 'INCS:EAPC.INC'
+      DATA ZERO, ONE, SEVEN /0, 1, 7/
+C-----------------------------------------------------------------------
+C                                        Make sure that there is data.
+      IF ((NCOMP.LE.0) .OR. (NVIS.LE.0) .OR. (NF.LE.0) .OR. (NS.LE.0))
+     *   GO TO 999
+C                                       Setup
+      PHASE = C + 1
+      REAL = PHASE + 1
+      IMAG = REAL + 1
+      X = IMAG + 1
+      JU = U
+      IVS = VS
+C                                        Begin visibility loop
+      INCLUDE 'INCS:ZVND.INC'
+      DO 200 IV = 1,NVIS
+C                                        Compute phase at ref. freq.
+         CALL QPTFAZ (X, SEVEN, JU, PHASE, NCOMP)
+C                                        Begin frequency loop.
+         JVS = IVS
+         F = 2
+      INCLUDE 'INCS:ZVND.INC'
+         DO 100 IF = 1,NF
+C                                        Prepare phase for this freq.
+            CALL QVSMA (PHASE, SEVEN, F, PHASE, SEVEN, PHASE, SEVEN,
+     *         NCOMP)
+            F = F + 1
+C                                        Convert to rectangular.
+            CALL QRECT (C, SEVEN, REAL, SEVEN, NCOMP)
+C                                        Sum parts.
+            CALL QSVE (REAL, SEVEN, ZERO, NCOMP)
+            CALL QSVE (IMAG, SEVEN, ONE , NCOMP)
+C                                        Divide by model
+            CALL QCVSDI (JVS, INCS, ZERO, JVS, INCS, NS)
+C                                        Update vis pointer.
+            JVS = JVS + INCF
+ 100        CONTINUE
+C                                        Update pointers.
+         IVS = IVS + INCVS
+         JU = JU + INCVS
+ 200     CONTINUE
+C
+ 999  RETURN
+      END

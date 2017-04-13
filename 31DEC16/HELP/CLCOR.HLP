@@ -1,0 +1,861 @@
+; CLCOR
+;---------------------------------------------------------------
+;! applies user-selected corrections to the calibration CL table
+;# Task Calibration VLA VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1998-1999, 2001-2005, 2008-2012, 2014-2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+CLCOR     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+CLCOR     Task which applies various corrections to CL tables.
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+SOURCES                            Source list ' '=>all.
+STOKES                             Stokes type to process
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select
+BIF               0.0      100.0   Lowest IF number 0=>all
+EIF               0.0      100.0   Highest IF number 0=>all
+TIMERANG                           Time range to use.
+ANTENNAS                           Antennas to correct.
+SUBARRAY          0.0     9999.0   Subarray;  0 => 1.
+GAINVER                            Input CL table 0=>high
+GAINUSE                            Output CL table: not =
+                                   GAINVER -> high+1
+OPCODE                             Operation code.
+                                      many -> see HELP!
+CLCORPRM                           Parameters (see HELP CLCOR).
+BADDISK           0.0     9999.0   Disks to avoid for scratch
+INFILE                             OPCODE = 'ANTP' or 'ANTC':
+                                    list of times and relevant
+                                    source right ascension,
+                                    declination shifts, in mas
+                                   OPCODE ='ATMO','TROP','IONO'
+                                    'DISP'
+                                    list of antennas, times and
+                                    relevant atmosphere vertical
+                                    delay.
+                                   OPCODE = 'SUND'
+                                    list of the planet(including
+                                    Sun and Moon) used in
+                                    the light deflection.
+                                    'BLANK' => SUN
+                                   OPCODE = 'EOPS'
+                                    The FILE can be picked up
+                                    from the webside
+                                    http://gemini.gsfc.nasa.gov/
+                                    solve_save/usno_finals.erp
+----------------------------------------------------------------
+CLCOR
+Task:  This task makes a number of corrections to a CL table.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  SOURCES....list of sources to process.
+             '*' = all; a "-" before a source name
+             means all except ANY source named.
+  STOKES.....The desired Stokes to correct.
+             'R', 'L', 'I', '  '=> all available
+  FREQID.....Frequency identifier to select (you may determine
+	     which is applicable from the OPTYPE='SCAN' listing
+	     produced by LISTR).
+  BIF........First IF to process. 0=>all.
+  EIF........Highest IF to process. 0=>all higher than BIF
+  TIMERANG...Time range of the data to be used. In order:
+             Start day, hour, min. sec,
+             end day, hour, min. sec. Days relative to ref.
+             date.
+  ANTENNAS...A list of the antennas to be modified.  If any
+             number is negative then all antennas listed  are
+             NOT to be modified.  All 0 => use all.
+  SUBARRAY...The subarray to modify. Do only one at a time.
+  GAINVER....Input CL table version. If GAINVER is equal zero or
+             greater than the total number of the CL tables
+             then GAINVER is equal to the last existing CL table.
+  GAINUSE....Output CL table version.  If GAINUSE not equal GAINVER
+             (after GAINVER default applied), then a new CL table is
+             created and the input CL table version (GAINVER) is
+             copied to version=(high+1).  This adverb allows you to
+             correct a CL table in place or to create a new one, but
+             not to overwrite an existing one other than the input.
+  OPCODE.....Operation code (see also EXPLAIN CLCOR):
+             'POLR' => Modify Right-Left phase difference using
+                       phases in CLCORPRM (deg); up to 20 IFs
+                       may be processed at a time.
+             'PHAS' => Rotate phase of residual gain by
+                       CLCORPRM (deg); up to 20 IFs may be
+                       processed at a time
+             'RATE' => Rotate phase of residual gain versus time.
+                       CLCORPRM(1) degrees constant term.
+                       CLCORPRM(2) = rate of change of phase
+                         (degrees/day)
+                       CLCORPRM(3) - (6) = day, hr, min, sec at
+                         which the "zero" phase (CLCORPRM(1)) is
+                         specified.
+             'OPAC' => apply atmospheric opacity amplitude
+                       corrections using zenith opacity of
+                       CLCORPRM(1) nepers.
+             'ADEL' => Correct phases, delays and rates for
+                       neutral atmospheric delay.
+                       CLCORPRM(1) = total pressure (mbars) at
+                         station, NOT at sea level.
+                       CLCORPRM(2) = partial pressure of water.
+                       CLCORPRM(3) = Temperature (C)
+                       CLCORPRM(4) = Tropospheric lapse rate
+                                  (K/km) (should be negative)
+                       CLCORPRM(5) = Height of tropopause (km)
+                       CLCORPRM(6) = Scale height of water
+                                  vapor (km).
+             'GAIN' => Correct using polynominal gain curve for
+                       antenna ** VOLTAGE** gain as a function of the
+                       zenith angle (ZA) in degrees.
+                       correction = CLCORPRM(1) +
+                          ZA * CLCORPRM(2) +
+                          ZA * ZA * CLCORPRM(3) etc.
+             'POGN' => Correct using polynominal gain curve for
+                       antenna ** POWER ** gain as a function of the
+                       zenith angle (ZA) in degrees.
+                       correction = CLCORPRM(1) +
+                          ZA * CLCORPRM(2) +
+                          ZA * ZA * CLCORPRM(3) etc.
+             'CLOC' => Correct residual delay and model parms
+                       for the effects of a linear clock drift
+                       at a particular antenna.
+                       CLCORPRM(1) = rate of change of station
+                         clock (nanosec/day)
+                       CLCORPRM(2) = clock value at the "zero"
+                         time specified by CLCORPRM(3)-(6)
+                         (nanosec)
+                       CLCORPRM(3) - (6) = day, hr, min, sec at
+                         which the "zero" clock (CLCORPRM(2)) is
+                         specified.
+                       CLCORPRM(7) : correction has three modes,
+                         if = 0 then the clock drift is added
+                         as a small correction and CLCORPRM(2)
+                         is ignored.
+                         if = 1 then the total correction set
+                         by the CLCORPRMS is added.
+                         if = 2 then the values present in the
+                         CL table are replaced by those defined
+                         by CLCORPRM(1)-CLCORPRM(6).
+             'PANG' => Add or remove parallactic angle
+                       corrections from CL table entries.
+                       CLCORPRM(1) > 0 => Add corrections
+                       CLCORPRM(1) =< 0 => Remove corrections
+             'PONT' => Correct for predictable pointing offset
+                       of an antenna. CLCORPRM(1) is the linear
+                       rate of change of antenna gain as the
+                       pointing drifts.
+             'IONS' => Make ionospheric Faraday rotation
+                       corrections using one of several models.
+                       CLCORPRM(1) = Model type:
+                       1 = Chiu model, CLCORPRM(3) = Sunspot no.
+             'ANTP' => Correct antenna and/or source position;
+                       antenna / source corrections are values to be
+                       added to the old positions in meters / sec of arc.
+                       The antenna (only one) must be specified in
+                       the case of antenna correction.
+                       The source (only one) must be specified in
+                       the case of source correction.
+
+                       !!!!!!!!!!!!!!!!!!! ATTENTION !!!!!!!!!!!!!!!!!!
+                       Starting June 2001 CLCOR corrects the AN or/and
+                       the SU table, if the relevant correction of the
+                       antenna or/and the source is carried out.
+                       So the application of the corrected CL table is
+                       required to match the data.
+                       Once CLCOR has been run, then the CL table must
+                       not be deleted and the correction can be undone
+                       only by doing it again with opposite sign.
+                       If you might forget applying this, then use the
+                       task SPLAT to apply it immediately.
+                       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+                       1 = "X" correction in meters.
+                       2 = "Y" correction in meters.
+                       3 = "Z" correction in meters.
+                       4   No longer used
+                       5 = Correction in the picture plane towards
+                           the RA direction in sec of arc.
+                           So it is RA correction, multiplied
+                           by COS(DECL).
+                       6 = Declination correction in sec of arc
+                       7   No longer used
+                       8 = drift of the source right ascension in mas/hr
+                       9 = drift of the source declination in mas/hr
+                         The CLCORPRM(8,9) are used if INFILE is 'blank'
+             'ANTC' => Correct antenna and/or source position;  The
+                       same as ANTP except that ANTP corrects the
+                       apparent source position while ANTC corrects
+                       the position of epoch.
+             'PCAL' => MkIII manual phase cal; replace the gain
+                       correction in the CL table with unit
+                       vectors with phases given in CLCORPRM.
+                       CLCORPRM(1) corresponds to BIF etc.
+                       Phases are given in degrees.
+             'PCFX' => Patch up missing phase cals.  CLCORPRM
+                       gives the expected relationship between
+                       phase cals and uses any non blanked
+                       values.
+             'SBDL' => Add a delay to the IF residual delays.
+                       Values given in CLCORPRM correspond to
+                       IFs BIF, BIF+1,... EIF in nanosec.
+	     'MBDL' => Change the multiple band delay by
+		       introducing the corresponded slope at
+		       phase vs IF frequency dependence.
+		       Values given in CLCORPRM correspond to
+                       IFs BIF, BIF+1,... EIF in nanosec		
+             'SSLO' => Correct the phase only for an incorrect
+                       frequency used to calculate the phase
+                       at the VLA.  CLCORPRM(1) gives the
+                       frequency error in MHz.
+             'ANAX' => Correct the delay, rate and phase for antenna
+                       axis offset.  CLCORPRM is an array of axis
+                       offsets in meters corresponding to the antenna
+                       list given. Note that with 'ANAX' the antenna
+                       table is also modified.
+             'ATMO' => apply atmospheric and clock delay corrections
+                       using the information for the antennas and
+                       times given in the input file.
+                       The file format:
+                       The first line is number of the data rows.
+                       The remaining lines specify the data with one line
+                       for each antenna/time.  Each line is formatted thus:
+                       Column 1: antenna name; The name can be done either
+                                 by the antenna number (two digits) or
+                                 by the relevant antenna name (two symbols)
+                       Column 2-5: day, hour, min, sec
+                       Column 6: zenith atmosphere delay, in cm
+                       Column 7: clock delay, in cm
+                       Column 8: derivative of the zenith atmosphere
+                                 delay, in sec/sec*1.0E14
+                       Column 9: derivative of the clock delay (clock
+                                 drift), in sec/sec*1.0E14
+                       For example the following line
+                        1  0 19  1 17.1 9.7327 -11.3983 -4.00728 7.98367
+                       means:
+                       antenna 1; time = 0d 19h  1m 17.1s;
+                       zenith atmosphere delay = 9.7327cm;
+                       clock delay = -11.3983cm;
+                       derivative of the zenith
+                       atmosphere delay =-4.00728E-14sec/sec;
+                       clock drift = 7.98367E-14sec/sec;
+                       If antenna 1 has the relevant name "FD", then
+                       the same line can be given as:
+                       FD  0 19  1 17.1 9.7327 -11.3983 -4.00728 7.98367
+                       This format is in agreement with current July 2008)
+                       DELZN output.
+                       The values of the delays and its derivatives
+                       should correspond to the desired correction.
+                       The corrections for the interferometer delay
+                       and phase are added (with sign) to the relevant
+                       columns of the CL table, which in turn are
+                       added to the data when calibration is applied.
+                       Example 1. The correlator did not provide any
+                                  atmosphere correction.  Since, the
+                                  the atmospheric delays are positive,
+                                  the corrections entered in the
+                                  INFILE should be negative.
+                       Example 2. The correlator model used 210 cm
+                                  for the zenith delay.  The true
+                                  zenith delay was 220cm.  Thus,
+                                  CLCOR has to make additional
+                                  additive correction of -10cm, and
+                                  the INFILE entry should -10cm.
+                       CLCORPRM(1): What correction to make in CL table?
+                                    0 => only atmosphere
+                                    1 => atmosphere + clocks
+             'TROP' => Similar to 'ATMO' except the zenith atmospheric
+                       (column 6 in INFILE) is the TOTAL zenith delay,
+                       (typically between 150-400cm).  This will be
+                       subtracted from the atmospheric delay applied
+                       by the correlator, which is in the ATMOS column
+                       in the CL table.  Make sure there is something
+                       sensible in this column (i.e. loosely between
+                       5-15 nsec) or you will get nonsense.  NOTE THAT
+                       EXPERIMENTS CORRELATED BETWEEN NOVEMBER 2002 AND
+                       FEBRUARY 2004 AT THE VLBA CORRELATOR THE ATMOS
+                       COLUMN IN THE CL, MC, AND IM TABLES ARE WRONG, SO
+                       YOU SHOULD NOT USE THIS OPTION.
+                       Other than this 'TROP' runs identically to
+                       'ATMO'
+             'DISP' => Correction of dispersive delays as a function
+                       of elevation; file contains:
+                       The first line is number of the data rows.
+                       The remaining lines specify the data with one
+                       line for each antenna/time as:
+                       Column 1: antenna number;
+                       Column 2-5: day, hour, min, sec
+                       Column 6: zenith dispersive delay, in 1/cm
+                       Column 7: derivative of the zenith dispersive
+                                 delay, in sec/m^2/sec*1.0E14
+             'SUND' => Correction of the extra time delay caused by
+                       the bending of the light ray passing through the
+                       gravitational field of the solar system planets.
+                       The VLBA correlator (before September 2004)
+                       carries out this correction
+                       considering the source locates at the infinity.
+                       This option removed the correlator correction and
+                       put the correction taking into account the actual
+                       position of the source inside of the solar system.
+                       The correction is carried out only for the one
+                       source (located at the solar system) given at
+                       the adverb SOURCE.
+                       CLCORPRM(1): What correction to make in CL table?
+                                    0 => correct actual space craft
+                                         position minus infinite position.
+                                         The infinite position correction
+                                         carried out by correlator is
+                                         substituted by actual space craft
+                                         position.
+                                    1 => correct just actual space
+                                         craft position
+                       CLCORPRM(2): Print out the test data?
+                                    0 => yes
+                                    1 => no
+                       CLCORPRM(3): Print the additional test data?
+                                    0 => no:
+                                         If CLCORPRM(2) equal 0 then
+                                         delays for each antenna/time
+                                         are printed out
+                                    1 => yes
+                                         If CLCORPRM(2) equal 0 then
+                                         positions of the spacecraft,
+                                         the first planet in the list,
+                                         baseline are printed out
+                                         additionally
+             'EOPS' => Correction of UT1-UTC and the Earth's pole
+                       position. The UT1-UTC and the Earth's pole
+                       position need to be corrected if the wrong values
+                       used during correlation.
+                OPTYPE=EOPS can be used only for data sets with proper
+                CT tables, namely data from the old VLBA correlator,
+                DiFX correlators, and, since November 2015, the EVLA.
+                The INFILE can be picked up from the web side
+                http://gemini.gsfc.nasa.gov/solve_save/usno_finals.erp
+                No editing of the file is required.
+
+                The actual EOP is interpolated for the time of observation
+                The default behavior, with CLCORPRM=0, is to use the
+                same sequence of days (-1,3) as it used at the majority of
+                cases at the correlator. For special cases (mainly for more
+                than on day observation), CLCORPRM can be set to
+                interpolate over a different range of dates.
+                CLCORPRM(1) Number of days preceding OBSDAT (given in the
+                            data header)
+                             0.0 => 1   (Use 0.1 if you want 0 as
+                             would be appropriate if the first data
+                             start at time ~ 1 day)
+                CLCORPRM(2) number of days starting from the first
+                            selected day
+                            0.0 => 5
+                            Example CLCORPRM(1)=3, CLCORPRM(2)=7,  =>
+                            The first day corresponds to OBSDAT-3 days,
+                            The last day corresponds to OBSDAT+3 days
+             'IONO' => apply ionosphere and clock delay corrections
+                       using the information for the antennas and
+                       times given in the input file.
+                       Format of data at the input file is identical to
+                       OPCODE = 'ATMO'
+                       The differences with 'ATMO':
+                        1.Phase-delay has the opposite sign
+                        2.Different mapping functions
+                          for 'ATMO'
+                          1/SIN(EL)
+                          for 'IONO'
+                          1/COS(Z_i),  where
+                            SIN(Z_i) = (R/(R+h_i)) * COS(EL)
+                            R is the Earth radius
+                            h_i is the ionosphere height
+                          See Thomson, Moran & Swenson 2nd edition
+                              page 560, eq 13.139 and 13.140
+  CLCORPRM...Parameters: see above.
+  BADDISK....A list of disks on which scratch files are not to
+             be placed.  This will not affect the output file.
+  INFILE.....Input file (used for OPCODE = 'ANTP', ANTC', ATMO', 'DISP',
+             'TROP', 'SUND', 'EOPS')
+
+             'ANTP' and 'ANTC'
+             The first (ascii) data record should specify NLINES,
+             the number of the lines at the file.
+             Then, NLINES records must follow in the following format:
+                       Column 1: Julian day
+                       Column 2: right ascension deviation, in mas
+                       Column 3: declination deviation, in mas
+             The values given at right ascension and declination
+             deviation correspond to the desired corrections.  The
+             lines must be given in time order.  The value added to
+             CLCORP(5 and 6) for a specific time is determined by
+             interpolation between the times given in the file.  CL
+             times less than the first get the values of the first
+             specified time and CL times greater than the last
+             specified get the values of that last time.  Note that
+             these corrections are in mas at the source and so do not
+             need a cos(declination) correction.
+
+             'ATMO' and 'TROP' and 'IONO'
+             The first (ascii) data record should specify NLINES,
+             the number of the lines at the file.
+             Then, NLINES records must follow in the following format:
+                       Column 1: antenna number; or antenna name
+                                 (3 symbols). Antenna name option
+                                 is at agreement with the current output
+                                 of DELZN
+                       Column 2-5: day, hour, min, sec
+                       Column 6: zenith atmosphere delay, in cm
+                       Column 7: clock delay, in cm
+                       Column 8: derivative of the zenith atmosphere
+                                 delay, in sec/sec*1.0E14
+                       Column 9: derivative of the clock delay (clock
+                                 drift), in sec/sec*1.0E14
+                   The values given at the atmosphere/clock delay
+                   and their derivatives correspond
+                   to the desired corrections.
+
+             'DISP'
+              The first line is number of the data rows (NLINES)
+              The remaining lines specify the data with one line for
+              each antenna/time as:
+                       Column 1: antenna number;
+                       Column 2-5: day, hour, min, sec
+                       Column 6: zenith dispersive delay, in 1/cm
+                       Column 7: derivative of the zenith dispersive
+                                 delay, in sec/m^2/sec*1.0E14
+
+             'SUND'
+             The list of the considered planets is given in the input
+             file. The planets should be chosen from the following
+             list:
+                  'MERCURY     ', 'VENUS       ',
+                  'MOON        ', 'MARS        ',
+                  'JUPITER     ', 'SATURN      ',
+                  'URANUS      ', 'NEPTUNE     ',
+                  'PLUTO       ', 'SUN         '
+             The INFILE format:
+                   The first line is number of the data rows.
+                   The remaining lines specify the planets list.
+                   Each planet name has to occupy 12 positions:
+                   Example: SUN         NEPTUNE     MARS
+                   If INFILE .EQ. '', then the only one 'planet':
+                   SUN is selected
+
+             'EOPS'
+             The INFILE can be picked up from the website
+                http://gemini.gsfc.nasa.gov/solve_save/usno_finals.erp
+             No editing of the file is required.
+
+----------------------------------------------------------------
+CLCOR:  Task to apply corrections to a CL table in a variety of ways.
+Documentor: W. D. Cotton
+Related Programs: LISTR, SPLIT, TABED, LOCIT
+
+This task will compute various corrections and apply them
+directly to a calibration (CL) table.  The operation to be done
+is determined by OPCODE.  Details and/or additional information
+for the various models is given below.
+
+OPCODE='POLR'
+     This option causes corrections to be made to remove the
+systematic phase offset between the right and left hand polarization
+systems.  The phase offsets are passed in CLCORPRM in degrees and are
+typically determined from running RLDIF (with DOAPPLY and SPECTRAL
+false) on polarization calibrated data on a source with known
+polarization angle.  (NOTE: if RLDIF is run with DOAPPLY true or with
+SPECTRAL true, CLCOR should not be used.)  Up to 20 IFs specified by
+BIF and EIF may be processed in a single run with the corresponding
+phase values in CLCORPRM(1) - CLCORPRM(20).  Specified phase
+corrections are made to the left hand polarization.
+     Because the feed polarization parameters must be modified as well
+as the Calibration table this option will cause the AN table
+corresponding to the specified subarray to be modified as well as the
+specified CL table.  The Q and U values in the SU (source) table
+are also modified.
+     NB: the modification of the CL, SU, and AN tables are cumulative
+so a given correction should be made only once for the specific range
+of IFs.  Thus, if multiple CL tables in the same subarray are to be
+corrected OPCODE='PHAS' with STOKES='L' should be used for each range
+of IFs for CL tables after the first run with OPCODE='POLR'.  (If
+the AN table gets messed up, correct all relevant CL tables and then
+rerun PCAL; further runs of CLCOR to correct the R-L phase difference
+will be unnecessary.)
+     If PCAL has not been run, CLCOR with OPCODE='POLR' will still
+execute but with a stern warning.  One should run PCAL first except
+for cases with low instrumental polarization on sources of high
+intrinsic polarization
+
+OPCODE='PHAS'
+     This causes the specified phases to be rotated by CLCORPRM(I)
+degrees where I = IFnumber - BIF + 1.  NOTE: specify either STOKES='R'
+or STOKES='L', otherwise the same correction will be applied to the R
+and the L polarizations.
+
+OPCODE ='OPAC'
+     This causes the specified amplitudes to be corrected for
+atmospheric opacity using a zenith opacity of CLCORPRM(1)
+nepers.  This operation does not modify the total model values.
+Exact values of the zenith opacity depend on the weather,
+especially at higher frequencies, but typical values are given
+in the following:
+     327 Mhz  0.007
+     610 Mhz  0.007
+     1.4 GHz  0.008
+     2.3 GHz  0.01
+     5.0 GHz  0.01
+     8.4 GHz  0.01
+     10  GHz  0.012
+     15  GHz  0.02
+     22  GHz  0.05
+     40  Ghz and up are highly dependent on the weather.
+
+OPCODE='ADEL'
+     This causes the phases, delays and rates to be corrected
+for a model atmosphere.  The model used is a two term round
+earth approximation.  The parameters passed are CLCORPRM(1) the
+total atmospheric pressure in millibars at the station, NOT
+referred to sea level and CLCORPRM(2), the partial pressure of
+water vapor in millibars.
+     Pressure in mm. of Hg. can be converted to millibars by
+multiplying by 1.33322.
+     Measurements of Dew point can be converted to relative
+humidity using the following table:
+
+         Relative Humidity (%) from temp and DP.
+
+DP depression               Dew Point deg C
+ temp-DP deg C    -10       0      10      20      30
+--------------   ------  ------  ------  ------  ------
+      0            100     100     100     100     100
+      1             92      93      94      94      94
+      2             86      87      88      88      89
+      3             79      81      82      83      84
+      4             73      75      77      78      80
+      5             68      70      72      74      75
+      6             63      66      68      70      71
+      7             59      61      63      66      68
+      8             54      57      60      62      64
+      9             51      53      56      58      61
+     10             47      50      53      55      57
+     12             41      44      47      49
+     14             35      38      41      44
+     16             31      34      37      39
+     18             27      30      33      35
+     20             24      26      29      32
+     22             21      23      26
+     24             18      21      23
+     26             16      18      21
+     28             14      16      19
+     30             12      14      17
+
+     The partial pressure of water vapor is obtained by
+multiplying the relative humidity (as a fraction) times the
+vapor pressure of water obtained from the following table:
+
+     Temp (C)   Pressure(mbars)   Temp (C)   Pressure(mbars)
+     --------  ----------------   ---------  ---------------
+      -40           1.29
+      -30           3.81             -25         6.35
+      -20          10.35             -15        16.55
+      -10          26.00              -5        40.17
+        0          61.05               5        87.23
+       10         122.78              15       170.36
+       20         233.78              25       316.72
+       30         424.28              35       562.29
+       40         737.59
+   Information from Handbook of Physics and Chemistry published
+by The Chemical Rubber Co. 46th ed.
+
+     The tropospheric lapse rate is the rate at which the
+atmosphere cools with increasing height.  The model used assumes
+that the temperature declines linearly to the tropopause and
+then is constant.  Accurate values can be derived from
+radiosonde data or approximate values can be obtained from the
+following table.  An accurate value of the height of the
+tropopause may be derived from radiosonde data; typical values
+can be obtained from the following table (Davis et al. 1985,
+Radio Science 20, 1593):
+
+      Latitude     Lapse rate (K/km)    Height of tropopause(km)
+         30 N         -4.7 to -5.9                 16
+         45 N             -6.5                     11.2
+         60 N             -3.9                      8
+
+     The scale height of the water vapor may be determined from
+radiosonde data (default = 2.2 km).
+
+OPCODE='GAIN'
+     This causes the specified amplitudes to be corrected by a
+factor determined from a polynomial gain curve as a function of
+zenith angle (in degrees).  The coefficients are specified by
+CLCORPRM and up to 20 terms are allowed. This allows for
+correction of amplitudes for the zenith angle (i.e. elevation)
+dependent behavior of the antenna gain.
+     The amplitudes are modified by:
+        FACTOR = CLCORPRM(1) + ZA*CLCORPRM(2) +
+                 ZA*ZA*CLCORPRM(3) ...
+
+OPCODE='CLOC'
+     This causes the residual delays and model values to be
+corrected for a linear clock drift at a particular antenna. The
+parameters needed are :
+     1)   clock rate (nanosec/day) ...... CLCORPRM(1)
+     2)   "zero" clock (nanosec) ........ CLCORPRM(2)
+     3)   time of "zero" clock
+            measurement          ........ CLCORPRM(3) -
+                                          CLCORPRM(6)
+     4)   correction mode        ........ CLCORPRM(7)
+               if = 0 then the clock drift is added
+               as a small correction and CLCORPRM(2) is
+               ignored.
+               if = 1 then the total correction set
+               by the CLCORPRMS is added.
+               if = 2 then the values present in the
+               CL table are replaced by those defined
+               by CLCORPRM(1)-CLCORPRM(6).
+          Mode = 2 gives the user the opportunity to set the
+          residual delay manually.
+
+OPCODE='PANG'
+
+    This option add or removes the phase of the parallactic
+angle to/from the residual phases of the specified CL table
+entries.  The AIPS polarization calibration routines expect
+that this correction has NOT been made to the raw data; if the
+parallactic angle corrections has been applied, then this
+option with CLCORPRM(1) .le. 0 will remove it.  The parallactic
+angle correction may be added using CLCORPRM(1) .gt. 0.
+    Note: the above definitions of applying or removing the
+parallactic angle correction assumes that the phase of the
+first polarization (RCP for VLA, VLBA) decreases with
+increasing parallactic angle.  This involves the definition of
+RCP.  If the opposite definition of RCP and LCP is used, then
+the sense of applying or removing the parallactic angle
+correction given above is removed.
+
+
+OPCODE='PONT'
+     This causes the specified amplitudes to be corrected for
+any gross predictable pointing error. The antenna gain
+correction factor is specified by a time at which the pointing
+was set correctly (i.e. the antenna gain is correct) and a
+linear drift factor. The TIMERANG parameters define the time at
+ which pointing was done, CLCORPRM(1) specifies the rate of
+change of antenna gain (per hour). The inverse of this will be
+applied to the CL gain entries in order to correct the amplitude
+error.
+
+OPCODE='IONS'
+     This option causes ionospheric Faraday rotation
+corrections to be computed and applied to the CL table.
+Several methods are available for determining the Faraday
+rotation correction; the method selected is indicated by the
+values given in CLCORPRM.
+     The group and phase delays introduced by the ionospheric
+plasma are also computed and applied to the CL table.
+
+     CLCORPRM(1):  Electron density model type:
+
+CLCORPRM(1) = 1 => Chiu model.
+
+     The electron column density will be computed using a Chiu
+model using software provided by Chris Flatters.  The model is
+described in Chiu, 1975, J. At. Terr Phys. 37, 1563).
+CLCORPRM(3) gives the sunspot number.
+     Sunspot numbers may be obtained from Solar-Geophysical
+Data published by NOAA.  Daily sunspot numbers are available
+and can vary considerably; actual daily sunspot numbers are
+preferable to smoothed, averaged or predicted values.  The
+sunspot number for the day approximately 3 days before the
+observation is the appropriate value to use.  Moderately
+accurate predicted monthly smoothed values are available a
+year in advance.
+     For those who are in a hurry or don't care, the following
+table gives observed monthly averaged values until May 1989
+followed by the predicted, smoothed values until 1990.  The
+estimated uncertainty (90%) in the smoothed values is given in
+parentheses under the predicted value.
+
+   International Relative Monthly Sunspot Numbers
+
+Year  Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
+----  --- --- --- --- --- --- --- --- --- --- --- ---
+1980  164 163 161 159 156 155 153 150 150 150 148 143
+1981  140 142 143 143 143 142 140 141 143 142 139 138
+1982  137 133 129 124 120 117 115 109 101  96  95  95
+1983   93  90  86  82  77  70  66  66  68  68  67  64
+1984   60  56  53  50  48  46  44  40  34  29  25  22
+1985   20  20  19  18  18  18  17  17  17  17  17  15
+1986   14  13  13  14  14  14  14  13  12  13  15  16
+1987   18  20  22  24  26  28  31  35  39  44  47  51
+1988   58  65  71  78  84  94 104 114 121 125 130 138
+1989  142 145 150 153 157 163 166 169 176 181 183 185
+                         ( 5)(11)(16)(19)(21)(23)(24)
+1990  186 187 185 180 174 170 168 166 159 151 144 139
+     (26)(29)(31)(32)(31)(28)(27)(29)(30)(31)(29)(26)
+1991  138 134 130 129 130 128 124 119 114 113 115 115
+     (27)(28)(29)(34)(35)(32)(29)(26)(22)(20)(21)(24)
+
+
+OPCODE='ANTP', 'ANTC'
+     This option will correct phases for an incorrect antenna and
+source position; delays and rates are also corrected.  The corrections
+to be added to the old values for the x,y, and z components are given
+in meters as CLCORPRM(1), CLCORPRM(2) and CLCORPRM(3). If the
+coordinates are in a right handed system then CLCORPRM(4) should be
+1.0 or larger.
+    The corrections to be added to the source position at the picture
+plane are given in sec of arc as CLCORPRM(5) for RA direction and
+as CLCORPRM(6) for declination.  OPCODE 'ANTP' adds the corrections to
+the apparent positions and recomputes the positions of epoch, 'ANTC'
+does the reverse.
+   Note: only one FQ ID is processed per run; if there are several FQ
+ID then CLCOR must be run several times.
+   A correction for antenna position errors should be made before
+further calibration is done.  First,  run CLCOR with OPCODE='ANTP'
+using GAINVER=1; GAINUSE=2 to copy CL table 1 to version 2 and then
+correcting for the antenna position error(s).  Then run CALIB applying
+CL table 2 (DOCAL=1; GAINUSE=2).  Use SNPLT to examine the results to
+be sure that the correction was done properly.  When using CLCAL the
+input CL table should be version 2 (GAINVER=2).  If there are adequate
+observations of calibrators then LOCIT can be used to determine
+antenna position errors.
+
+OPCODE='PCAL'
+     This option allows entering complex gain corrections
+directly into the CL table.  This operation is mostly of use in
+the setting of MkIII VLBI manual phase cals so only the phase
+can be specified.  If the amplitudes also should be changed then
+TABED can be used to multiply the real and imaginary parts of
+the complex gains by the appropriate value.
+     Note: the phases in the CL table are corrections to be
+added to the data and thus have the opposite sign from the
+Haystack convention.  Up to 20 IFs can be entered with
+CLCORPRM(1) corresponding to IF BIF, CLCORPRM(2) to BIF+1 etc.
+Phases are given in degrees.
+     Note: for some reason phase cals read by AIPS are 144
+degrees more positive that those decoded by the Haystack
+software.  To obtain the desired results add 144 degrees to any
+manual phase cals used in the Haystack system.
+
+OPCODE='PCFX'
+     This option is similar to 'PCAL' except that any unblanked
+phases are left unchanged.  Any blanked phases are replaced by
+the value expected based on any unblanked phases and the
+relationship between the IF given in CLCORPRM.  In the case that
+all phases are blanked then this option is the same as 'PCAL'.
+     This option is intended for use when some phase cals are
+present for a given antenna but are missing for some IFs.  This
+option allows using the good values and estimating the missing
+values.
+
+OPCODE='SBDL'
+     This option allows adding values to the IF residual delays.
+This correction will not effect the current values of the total
+model delay and is intended primarily for correcting MkIII data
+for the antenna based difference between the multi-band and
+single-band delays.  Individual IF values can be entered but it
+is usually assumed in the MkIII system that this is a constant
+value for all IF.  In this case fill CLCORPRM with the desired
+correction.  Values are given in nanoseconds and will be added
+to the current correction, i.e. subtracted from the data when
+this table is applied.  The values in CLCORPRM correspond to IFs
+BIF, BIF+1, ... EIF.
+Having applied this correction the new CL table application
+will change the slope of phase frequency dependence inside
+the each IF. The change of the slope at each IF is determined
+by the value of corresponded parameter CLCORPRM(I). This option
+does not change the phase difference between different IF's.
+
+OPCODE='MBDL'
+     This option changes the multiple band delay by introducing
+the corresponded slope at phase vs frequency dependence. The same
+phase is added for all channels of the given IF. Values of
+CLCORPRM are given at nanoseconds. The added phase is determined
+by the next formula  FI[I]=TWOPI*CLCORPRM[I]*DF[I], where DF[I]
+is a difference between the frequency of the given IF and
+residual one. The values of multiple band delays CLCORPRM[I] can
+be different for different IF, although it is constant typically.
+The values CLCORPRM[I] for all IF have to be installed even if
+they are the same for the all IF.
+The delay corresponded to the first IF - CLCORPRM[1] is substituted
+at the modified CL table at MBDELAY1(2) column.
+
+OPCODE='SSLO'
+     The VLA has four separate 'IFs'.  In normal observing, the
+frequencies of these are locked together into pairs.  Each pair forms
+an AIPS IF.  In normal observing, the phase calculation, or fringe
+stopping, is done correctly.
+     However, for some spectral line observing, it is desirable to
+have the separate VLA IFs of a pair at the same center frequency, but
+with different bandwidths.  In this case, the Signed Sum of the LOs is
+different and the two frequencies cannot be locked together.  The VLA
+has only sufficient hardware to control one IF of each pair, so the
+fringes for the other cannot be stopped correctly.  In general, this
+leads to decorrelation.  However, if the frequency difference is
+sufficiently small, it is merely results in a residual phase error,
+which changes slowly with time.
+     This option is to allow a post facto correction to be made
+to the phase only.  Note that the delay is calculated correctly.
+The VLA IFs that are affected are 'B' and 'C'.  By convention,
+'A' and 'D' are always fringe-stopped correctly.
+     Since the error depends upon the antenna location, the
+possibility that the antenna coordinates are defined in a left-
+handed system is allowed for, even though the VLA uses a right-
+handed system.
+
+The correction for SSLO is calculated at each CL table entry
+time as follows:
+
+     If A is the antenna position vector and S is the unit
+source position vector, then the calculated phase correction
+(dph) is
+
+     dph = 2 * pi * [ integer part of ( A . S * dfq / c)]
+
+where dfq is the frequency correction in Hz calculated from
+CLCORPRM(1).
+
+     The new value of the complex gain in the CL table (gnew) is
+calculated from the old value (gold) as:
+
+     gnew = gold * exp (i * dph)
+
+or, in Cartesian coordinates:
+
+     xnew = xold * cos(dph) - yold * sin(dph)
+     ynew = xold * sin(dph) + yold * cos(dph)
+
+where g = x + i * y
+
+OPCODE='ANAX'
+     This option changes the delay, rate and phase in accordance
+with an antenna axis offset. CLCORPRM(I, I=1, NANTSL) is the
+axis offset of antenna I in meters. The AN table is modified
+also. Three types of antenna mount (alt-azimuth (and Nasmyth), XY-EW,
+and equatorial) are supported.

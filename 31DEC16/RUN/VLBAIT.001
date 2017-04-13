@@ -1,0 +1,454 @@
+*.   Quick look at VLBAIT correlator data.
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1997, 2007-2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*.   Use INP VLBAIT to set inputs.
+*.   VLBAIT.HLP should be in the 'version' area.
+*.
+*.   This precedure reads in a specified VLBA file;
+*.   plots the autocorrelation spectra, fringe-fits
+*.   the data, plots the delays and rates for each
+*.   antenna and IF, then plots the amplitudes and
+*.   phases for each IF and baseline.
+*.
+*.   Define some variables.
+*.
+PROC VLBADEF
+  scalar gencl, plottp, nplots, dofrng, fringint, frngant
+  scalar doprint, plotsol, numif, numchn, plotraw, plotcal
+  scalar chan1, chan2, bbc1, bbc2, lsqoff, noread
+  scalar str1, str2, strlen, dotkpl, dozap
+  array  antplot(50), tscale(2), ascale(2)
+  array  pscale(2)
+  string*2 typext
+  string*1 ctst
+  string*12 defoutn
+  string*6  defoutcl
+  string*16 vlbsou
+  FINISH
+*.
+*.   proc to crack the DATAIN and produce a
+*.   default outname
+*.
+PROC DEFOUT(DATAIN, DEFOUTN)
+   ctst = substr(datain,1,1)
+   if (ctst = ' ') then
+      defoutn = 'VLBA_COR_TST'
+   else
+      strlen = length(datain)
+      str1 = 0
+      str2 = 0
+      for i = 1 to strlen
+         ctst = substr(datain,i,i)
+         if (ctst = ':') then
+            str1 = i+1
+            end
+         if (ctst = '.') then
+            str2 = i-1
+            end
+         end
+      if ((str2 - str1 + 1) > 12) then
+         str2 = str1 + 11
+         end
+      defoutn = substr (datain, str1, str2)
+      end
+   FINISH
+*.
+*.   proc to find the number of plot files
+*.
+PROC FINDPL(I,NPLOTS)
+   keyword = 'extype'!!char(i)
+   geth
+   typext = substr(keystrng,1,2)
+   if (typext = 'PL') then
+      keyword = 'extver'!!char(i)
+      geth
+      nplots = keyval(1)
+      end
+   FINISH
+*.
+*.   run the plots
+*.
+PROC DOPLOT(NPLOTS)
+   if (dotkpl = 1) then
+      for inver = 1 to NPLOTS; go tkpl; end
+      end
+   if (dotkpl = 0) then
+      for inver = 1 to NPLOTS; go lwpla; end
+      end
+   inext 'pl'
+   inver -1
+   extdest
+   FINISH
+*.
+*.   Now the active proceedure
+*.
+PROC VLBAIT
+    tput vlba
+    dowait   = true
+*.  -------  read the VLBA data.  --------
+    type '         '
+    defout(datain, defoutn)
+    ctst = substr(outnam, 1, 1)
+    if (ctst = ' ') then
+       outn = defoutn
+       end
+    ctst = substr(outcl, 1, 1)
+    if (ctst = ' ') then
+       outcl 'raw'
+       end
+    inname = outn
+    incl = outcl
+    ind = outd
+    inseq = 0
+    defoutcl = outcl
+    if (noread < 1) then
+       type ' '
+       type '***************************************'
+       type ' Reading the VLBA data into AIPS'
+       type '***************************************'
+       task 'fitld'
+       ncount 0; dotable 1; douvc 1; optyp 'uv';
+       intape 0; nfiles 0
+       go fitld
+       end
+*.  -------  run INDXR to generate a CL table ------
+    if (gencl > 0) then
+       type '***************************************'
+       type ' Generating a CL table'
+       type '***************************************'
+       task 'indxr'
+       cparm 1 6.5 1 0
+       go indxr
+       end
+*.
+*.  -------  plot the raw vis data ------
+    if ( plotraw > 0) then
+       type '*************************************'
+       type ' Will now plot the raw amps & phases'
+       type '*************************************'
+       keyword 'naxis4'
+       geth
+
+       numif = keyval(1)
+       if (bbc1 = 0) then
+          bbc1 = 1
+          end
+       if (bbc2 = 0) then
+          bbc2 = numif
+          end
+       keyword 'naxis3'
+       geth
+       numchn = keyval(1)
+       if (chan1 = 0) then
+          chan1 = 1
+          end
+       if (chan2 = 0) then
+          chan2 = numchn
+          end
+*.             ------ first split the data -------
+       task 'split'
+       sources ' '; qual -1; calcode ' ';
+       selband -1; selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       stokes ' '; subarray 0; antennas 0; baseline 0;
+       bchan = chan1; echan = chan2
+       bif = bbc1 ; eif = bbc2
+       docalib 1; gainuse 0; flagver 1; doband -1
+       bpver 0; smooth 0; douvc 1
+       source(1) = vlbsou
+       outcl 'vlbraw'; aparm 1 1.85 0 1 0
+       chansel 0
+       go split
+*.             ------ the run avspc on it -------
+       task 'avspc'
+       innam vlbsou; incla outcl; inseq 0; ind outd
+       outn 'raw_tst'; outcl 'sum_if'; outs 1; outd ind
+       chansel 0; avopt 'avif'; channel 0
+       go avspc
+*.
+       task 'vbplt'
+       innam 'raw_tst'; incl 'sum_if'; inseq 1
+       clr2name; niter 0; sources ' '; qual -1; calcode ' ';
+       selband -1; selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       stokes ' '; subarray 0; antennas 0; baseline 0;
+       docalib 0; gainuse 0; dopol 0; blver -1; flagver 0;
+       doband -1; bpver 0; smooth 0; polplot ''; solint 0
+       baddisk 0; dotv -1; grchan 0
+       bchan = chan1; echan = chan2
+       bif = bbc1 ; eif = bbc2
+       bparm 12 1 0 0 0 0 0 6 0
+       if (ascale(2) > 0) then
+          bparm(3) = 1
+          bparm(6) = ascale(1)
+          bparm(7) = ascale(2)
+          end
+       go 'vbplt'
+       bparm 12 2 1 0 0 0 0 6 0
+       bparm(6) = -210.
+       bparm(7) =  210.
+       go 'vbplt'
+*.
+       for i = 1 to 8; findpl(i,nplots); end
+       doplot(nplots)
+       end
+*.
+*.  -------  plot the autocorrelation spectra ------
+    if (plottp > 0) then
+       type '***************************************'
+       type ' Will now plot the total power spectra'
+       type '***************************************'
+       task 'possm'
+       inname = defoutn; incl = defoutcl; ind = outd; inseq = 0
+       sources ' '; qual -1; calcode ' '; selband -1;
+       selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       stokes ' '; bif 0; eif 0; bchan 0; echan 0; subarray 0;
+       antennas 0; baseline 0; docalib -1; gainuse 0; dopol 0;
+       doband -1; bpver 0; smooth 0; shift 0; polplot '';
+       bparm 0; outtext ' '; baddisk 0; dotv -1; grchan 0
+       codetype 'AMP'
+       aparm 0 0 0 0 0 0 1 1
+       solint -1
+       ncount 2
+       source(1) = vlbsou
+       go possm
+*.
+       for i = 1 to 8; findpl(i,nplots); end
+       doplot(nplots)
+       end
+*.  -------  do some fringe-fitting ------
+    if (dofrng > 0) then
+       inname = defoutn; incl = defoutcl; ind = outd; inseq = 0
+       task 'fring'
+       calsour ' '; qual -1; calcode ' '; selband -1;
+       selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       wtuv 0; bif 0; eif 0; bchan 0; echan 0; subarray 0;
+       antennas 0; baseline 0; docalib -1; gainuse 0; dopol 0;
+       doband -1; bpver 0; smooth 0; clr2name; ncomp 0;
+       nmaps 0; outn ' '; outcl ' '; outs 0; baddisk 0;
+       refant 0; solint 0; aparm 2 0 0 0 0 0 0
+       dparm 1 10000 100 1.85
+       snver 0; antwt 0; dofit=0; search=0;
+       calsour(1) = vlbsou
+       solint = fringint
+       refant = frngant
+       if (solint = 0) then
+          solint = 15
+          end
+       if (doprint > 1) aparm(6) = 1
+       dparm(5) = lsqoff
+       APARM(2) = 1
+       type '***************************************'
+       type ' Will now fringe-fit in each IF'
+       type ' Solution interval (mins) = ', solint
+       if (lsqoff=1) then
+          type ' Will only do FFT solutions'
+          end
+       type '***************************************'
+       go fring
+       end
+*.
+*.  -------  plot solutions ------
+    if (plotsol > 0) then
+       type '***************************************'
+       type ' Will now plot delay/rate solutions'
+       type '***************************************'
+*.
+       keyword 'naxis4'
+       geth
+       numif = keyval(1)
+*.
+       dowait = -1
+       inname = defoutn; incl = defoutcl; ind = outd; inseq = 0
+       task 'snplt'
+       sources ' '; qual -1; timer 0; stokes '';
+       selband -1; selfreq -1; freqid -1;
+       pixr 0; xinc 1; xaxis 0; doebar 0;
+       cutoff 0; dotv -1; grchan 0
+       inext 'sn'; inver 0; opcode 'plif'
+       bif 1; eif = numif; ncount = numif
+       source(1) = vlbsou
+       for i = 1 to 50
+          antenna(i) = antplot(i)
+          end
+       optyp = 'dela'
+       go snplt; wait snplt
+       optyp = 'rate'
+       go snplt; wait snplt
+*.
+       dowait 1
+       for i = 1 to 8; findpl(i,nplots); end
+       doplot(nplots)
+       end
+*.
+*.
+*.  -------  calibrate the data ------
+    if (dofrng > 0) then
+       type '***************************************'
+       type ' Will now update the CL table'
+       type '***************************************'
+*.
+       inname = defoutn; incl = defoutcl; ind = outd; inseq = 0
+       task 'clcal'
+       sources ' '; soucode ' '; calsour ' '; qual -1;
+       calcode ' '; timer 0; stokes ''; subarray 0;
+       antennas 0; selband -1; selfreq -1; freqid -1;
+       opcode 'cali'; interpol ' '; intparm 0; cutoff 0;
+       smotype ' '; snver 1; gainver 1; gainuse 2;
+       refant 0
+       source(1) = vlbsou
+       calsour(1) = vlbsou
+       go 'clcal'
+       end
+*.
+*.  -------  plot the calibrated vis data ------
+*.
+    if (plotcal > 0) then
+*.
+       keyword 'naxis4'
+       geth
+       numif = keyval(1)
+       if (bbc1 = 0) then
+          bbc1 = 1
+          end
+       if (bbc2 = 0) then
+          bbc2 = numif
+          end
+       keyword 'naxis3'
+       geth
+       numchn = keyval(1)
+       if (chan1 = 0) then
+          chan1 = 1
+          end
+       if (chan2 = 0) then
+          chan2 = numchn
+          end
+*.             ------ first split the data -------
+       task 'split'
+       inname = defoutn; incl = defoutcl; ind = outd; inseq = 0
+       sources ' '; qual -1; calcode ' ';
+       selband -1; selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       stokes ' '; subarray 0; antennas 0; baseline 0;
+       bchan = chan1; echan = chan2
+       bif = bbc1 ; eif = bbc2
+       docalib 1; gainuse 0; flagver 1; doband -1
+       bpver 0; smooth 0; douvc 1
+       source(1) = vlbsou
+       outcl 'vlbout'; aparm 1 1.85 0 1 0
+       chansel 0
+       go split
+*.             ------ the run avspc on it -------
+       task 'avspc'
+       innam vlbsou; incla outcl; inseq 0; ind outd
+       outn 'vlba_tst'; outcl 'sum_if'; outs 1; outd ind
+       chansel 0; avopt 'avif'; channel 0
+       go avspc
+*.
+       task 'vbplt'
+       innam 'vlba_tst'; incl 'sum_if'; inseq 1
+       clr2name; niter 0; sources ' '; qual -1; calcode ' ';
+       selband -1; selfreq -1; freqid -1; uvrang 0,0; timer 0;
+       stokes ' '; subarray 0; antennas 0; baseline 0;
+       docalib -1; gainuse 0; dopol 0; blver -1; flagver 0;
+       doband -1; bpver 0; smooth 0; polplot ''; solint 0
+       baddisk 0; dotv -1; grchan 0
+       source(1) = vlbsou
+*       bchan = chan1; echan = chan2
+*       bif = bbc1 ; eif = bbc2
+       bchan 0; echan 0; bif 0; eif 0
+       bparm 0 0 0 0 0 0 0 6 0
+       if (tscale(2) > 0) then
+           bparm(3) = 1
+           bparm(4) = tscale(1)
+           bparm(5) = tscale(2)
+           end
+       if (plotcal = 1) then
+          type '****************************************'
+          type ' Will now plot the calibrated amplitudes'
+          type '****************************************'
+          bparm(2) = 1
+          if (ascale(2) > 0) then
+              bparm(3) = 1
+              bparm(6) = ascale(1)
+              bparm(7) = ascale(2)
+              end
+          go 'vbplt'
+          end
+       if (plotcal = 2) then
+          type '***************************************'
+          type ' Will now plot the calibrated phases'
+          type '***************************************'
+          bparm(2) = 2
+          if (pscale(2) > 0) then
+              bparm(3) = 1
+              bparm(6) = pscale(1)
+              bparm(7) = pscale(2)
+              end
+          go 'vbplt'
+          end
+       if (plotcal = 3) then
+          type '****************************************'
+          type ' Will now plot the calibrated amps & phs'
+          type '****************************************'
+          bparm(2) = 1
+          if (ascale(2) > 0) then
+              bparm(3) = 1
+              bparm(6) = ascale(1)
+              bparm(7) = ascale(2)
+              end
+          go 'vbplt'
+          bparm 0 0 0 0 0 0 0 5 0
+          bparm(2) = 2
+          if (tscale(2) > 0) then
+              bparm(3) = 1
+              bparm(4) = tscale(1)
+              bparm(5) = tscale(2)
+              end
+          if (pscale(2) > 0) then
+              bparm(3) = 1
+              bparm(6) = pscale(1)
+              bparm(7) = pscale(2)
+              end
+          go 'vbplt'
+          end
+*.
+       for i = 1 to 8; findpl(i,nplots); end
+       doplot(nplots)
+       if (dozap = 1) then
+          intype 'uv'
+          innam 'vlba_tst'; incl 'sum_if'; inseq 1; zap
+          innam vlbsou; incl 'vlbout'; inseq 1; zap
+          innam 'raw_tst'; incl 'sum_if'; inseq 1; zap
+          innam vlbsou; incl 'vlbraw'; inseq 1; zap
+          end
+       end
+*.
+*.
+type '****************************************'
+type ' All done'
+type '****************************************'
+dowait -1
+ret; finish
+finish

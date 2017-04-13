@@ -1,0 +1,419 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Pre-configure an AIPS installation from a CDrom (readonly) device
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1998, 2001, 2004-2005, 2007
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: ./CDSETUP
+#
+# This script is intended as a bridge between INSTEP1 and a read-only
+# file system on which the AIPS distribution may be located.
+#-----------------------------------------------------------------------
+#                                       Shell functions
+#                                       shorten the echo command
+ei1 () {
+  echo "CDSETUP: $1"
+}
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "CDSETUP: $1"
+  else
+    echo "CDSETUP: $1\c"
+  fi
+}
+#                                       Bail out
+die () {
+  if [ "$1" != "" ] ; then
+    echo "CDSETUP: $1"
+  fi
+  echo "CDSETUP: Cannot continue, stopping NOW."
+  exit 1
+}
+#                                       Other shortcuts
+spc="echo"
+symtest="-h"
+[ `uname -s` = AIX ] && symtest="-L"
+#                                       Introduce ourselves
+ei1 "                         AIPS CD-rom Setup"
+ei1 "                         ================="
+$spc
+ei1 "This script will get you started in your installation of AIPS"
+ei1 "from CDrom (or other read-only random access media) to hard disk."
+ei1 "There are three operations supported:"
+$spc
+ei1 "  1.  Run from CDrom; this leaves the binaries on the CDrom, and"
+ei1 "      only installs a minimal footprint on your hard disk.  This"
+ei1 "      may incur a penalty in speed, and you need the CD mounted"
+ei1 "      to run AIPS."
+$spc
+ei1 "  2.  Full install; this copies more or less everything to your"
+ei1 "      hard disk.  You may need 500 or more Megabytes of free space"
+ei1 "      but will not have the speed penalty and do not need the CD"
+ei1 "      mounted in order to run AIPS."
+$spc
+ei1 "  3.  Alter an existing system from partial to full."
+$spc
+ei1 "  4.  Alter an existing system from full to partial."
+$spc
+opt=0
+while [ \( $opt -lt 1 \) -o \( $opt -gt 4 \) ] ; do
+   ni1 "Which option do you want? (999 to quit) "; read opt
+   [ "$opt" = "" ] && opt=0
+   [ $opt = 999 ] && die "User-requested termination"
+   case $opt in
+     1|2|3|4) ;;
+     *) ei1 "Invalid selection.  Try again."; opt=0;;
+   esac
+done
+#                                       Where is the CDrom mounted?
+dir=`dirname $0`
+[ ! -d "$dir" ] && dir="/mnt/cdrom"
+[ "$dir" = "." ] && dir="/mnt/cdrom"
+ni1 "Where is the AIPS CDrom mounted? ($dir): "; read cdmnt; $spc
+[ "$cdmnt" = "" ] && cdmnt=$dir
+[ ! -d $cdmnt ] && die "Cannot find directory $cdmnt"
+
+old=`pwd`
+cd $cdmnt
+vers=`/bin/ls -ldt [0-9][0-9]???[0-9][0-9] | grep '^d' | head -n 1 | \
+      awk '{print $NF}'`
+  [ "$vers" = "" ] && die "Cannot find AIPS in $cdmnt."
+cd $old
+ei1 "A local (write-enabled) AIPS_ROOT is needed; this is where your"
+ei1 "AIPS installation will be placed.  You need about 500 Megabytes"
+ei1 "free for a full install of a SINGLE architecture (add 350 for each"
+ei1 "additional), and about 10 Megabytes if running from CDrom."; $spc
+here=`pwd`
+prmt="Where do you want AIPS?"
+[ $opt = 3 ] && prmt="Where did you install AIPS?"
+[ $opt = 4 ] && prmt="Where did you install AIPS?"
+if [ $here = $cdmnt ] ; then
+  ni1 "$prmt :"; read AIPS_ROOT; $spc
+else
+  ni1 "$prmt ($here) :"; read AIPS_ROOT; $spc
+  [ "$AIPS_ROOT" = "" ] && AIPS_ROOT=$here
+fi
+[ "$AIPS_ROOT" = "" ] && die "No AIPS_ROOT given."
+if [ ! -d $AIPS_ROOT ] ; then
+  ei1 "Directory $AIPS_ROOT does not exist"
+  if [ $opt = 3 ] ; then
+    die "I cannot change your installation if I cannot find it!"
+  fi
+  if [ $opt = 4 ] ; then
+    die "I cannot change your installation if I cannot find it!"
+  fi
+  ni1 " - Create it? (Y) "; read yn; [ "$yn" = "" ] && yn="Y"; $spc
+  case $yn in
+    y*|Y*) mkdir -p $AIPS_ROOT;;
+    *) die "Ok, try again.  Bye.";;
+  esac
+  [ ! -d $AIPS_ROOT ] && die "Failed to create $AIPS_ROOT directory"
+fi
+case $opt in
+  1) runcd=yes;;
+  2) runcd=no;;
+  3) runcd=no;;
+  4) runcd=yes
+     opt=3
+     ;;
+esac
+#                                       Space command
+spcmd="du -sk"
+dfcmd="df -k"
+a=`du -sk $cdmnt/CDSETUP 2>&1 1>/dev/null `
+if [ "$a" != "" ] ; then
+  spcmd="du -s"
+  dfcmd="df"
+fi
+#                                       Move to target area
+cd $AIPS_ROOT
+#                                       check space available
+space=`$spcmd $cdmnt | awk '{print $1}'`
+ARCHES=""
+basespace=$space
+ei1 "This CDrom has binaries for the following architectures:"; $spc
+for i in $cdmnt/$vers/*/LOAD/AIPS.EXE ; do
+   j=`echo $i | sed -e "s,$cdmnt/$vers/\([^/]*\).*,\1,"`
+   ARCHES="$ARCHES $j"
+   s=`$spcmd $cdmnt/$vers/$j | awk '{print $1}'`
+   ei1 "$j: uses $s Kbytes for binaries and libraries"
+   sa="SPACE_$j"
+   eval "$sa=$s"
+   basespace=`expr $basespace - $s`
+done
+fitsp=`$spcmd $cdmnt/FITS | awk '{print $1}'`
+ei1 "The FITS area on the CDrom takes up $fitsp Kbytes"
+txtsp=`$spcmd $cdmnt/TEXT | awk '{print $1}'`
+ei1 "The TEXT area on the CDrom takes up $txtsp Kbytes"
+basespace=`expr $basespace - $fitsp`
+basespace=`expr $basespace - $txtsp`
+#                                       old tail grammar for Solaris
+free=`$dfcmd . | tail -1 | awk '{print $4}'`
+case $free in
+#                                       old tail grammar for Solaris
+  *%) free=`$dfcmd . | tail -1 | awk '{print $3}'`;;
+esac
+ei1 "Total space used on CDrom: $space Kbytes"
+ei1 " Base space (no binaries): $basespace Kbytes"; $spc
+ei1 "(Add the base space to whatever binaries you plan on installing"
+ei1 " to get the amount of space you need)"; $spc
+#                                       Need to modify this if more than
+#                                       two architectures are put on the
+#                                       CDROM.
+ei1 "Space free on your hard drive: $free Kbytes"
+if [ $runcd != yes ] ; then
+#                                       Gets space for ALL the CDrom;
+#                                       probably overkill if multiple
+#                                       architectures are put on it.
+  if [ $basespace -gt $free ] ; then
+    ei1 "********************************************************"
+    ei1 "There is not enough free space for the base system under"
+    ei1 "$AIPS_ROOT.  This will not work."
+    if [ $opt = 3 ] ; then
+      $spc
+      ni1 "If you are SURE there is enough space, then enter YES: "
+      read yn; $spc
+      [ "$yn" = YES ] || die "Insufficient disk space."
+    else
+      die "Insufficient disk space."
+    fi
+  elif [ $space -gt $free ] ; then
+    ei1 "========================================================"
+    ei1 "There may be be insufficient free space under $AIPS_ROOT"
+    ei1 "depending on how many architectures you choose to install."
+    $spc; ni1 "Press RETURN to continue..."; read dum; $spc
+  else
+    ei1 "There appears to be enough space free under the directory"
+    ei1 "$AIPS_ROOT."
+  fi
+  $spc
+else
+  if [ $free -lt 12000 ] ; then
+    ei1 "********************************************************"
+    ei1 "Insufficient free space under $AIPS_ROOT"
+    ei1 "(There is less than 12 Megabytes available)"
+    die "********************************************************"
+  else
+    ei1 "There appears to be enough space ($free) to install AIPS."
+    ei1 "(The minimum footprint is about 12 Megabytes)"
+    $spc
+  fi
+fi
+#                                       TEXT area
+if [ $runcd = yes ] ; then
+  [ -d ./TEXT ] && rm -fr TEXT
+  ei1 "Creating symlink to TEXT area on CDrom..."
+  ln -s $cdmnt/TEXT .
+else
+#                                       Should test for symlink...
+  rm -fr TEXT
+  ei1 "Copying TEXT area from CDrom ($txtsp Kbytes)..."
+  cp -r $cdmnt/TEXT .
+  ei1 "Done"; $spc
+fi
+#                                       These are only needed for the
+#                                       installation phase.
+if [ $opt = 3 ] ; then
+   : nothing
+else
+  rm -f BIN
+  ei1 "Creating temp symlink to BIN area on CDrom..."
+  ln -s $cdmnt/BIN
+fi
+if [ ! -d DA00 ] ; then
+  mkdir DA00
+fi
+#                                       Many things do not need redone
+if [ $opt != 3 ] ; then
+  old=`pwd`
+  cd DA00
+  for i in $cdmnt/DA00/* ; do
+    j=`basename $i`
+    rm -f $j
+    ei1 "Creating symlink in DA00 to $j area on CDrom..."
+    ln -s $i
+  done
+  cd $old
+#                                       Make version area.
+  mkdir $vers
+  cd $vers
+  mkdir SYSTEM
+  mkdir SYSTEM/UNIX
+  ln -s $cdmnt/$vers/SYSTEM/VMS SYSTEM/VMS
+  ln -s $cdmnt/$cers/SYSTEM/AREAS.DAT SYSTEM/AREAS.DAT
+  ei1 "Copying SYSTEM/UNIX files..."
+  cp -r $cdmnt/$vers/SYSTEM/UNIX/* SYSTEM/UNIX/
+  ei1 "...done."
+else
+  cd $vers
+fi
+#                                       Some areas can be symlinked
+if [ $runcd = yes ] ; then
+  if [ $opt = 3 ] ; then
+    ei1 "Removing source code areas, resorting to symlinks."
+    for i in AIPS APL DOC HELP HIST INC Q QY RUN UPDATE Y ; do
+      rm -fr $i
+      if [ $? -ne 0 ] ; then
+        die "Apparent failure removing `pwd`$i..."
+      fi
+    done
+  fi
+  ei1 "Making symbolic links to areas that are rarely needed, and"
+  ei1 "unnecessary for running AIPS.  These include:"; $spc
+  ei1 "   $vers/DOC  $vers/AIPS  $vers/APL  $vers/HIST"
+  ei1 "   $vers/Q    $vers/QY    $vers/UPDATE"; $spc
+  ei1 "These will now only be accessible when the CDrom is mounted."
+  $spc
+#                                       Populate source with symlinks
+  for i in AIPS APL DOC HELP HIST INC Q QY RUN UPDATE Y ; do
+    ln -s $cdmnt/$vers/$i .
+  done
+else
+  if [ $opt = 3 ] ; then
+    ei1 "Removing source code symlinks, resorting to full copy of code"
+    for i in AIPS APL DOC HELP HIST INC Q QY RUN UPDATE Y ; do
+      rm -f $i
+      if [ $? -ne 0 ] ; then
+        die "Apparent failure removing `pwd`/$i/..."
+      fi
+    done
+  fi
+  for i in AIPS APL DOC HELP HIST INC Q QY RUN UPDATE Y ; do
+    ei1 "Copying $vers/$i/..."
+    mkdir $i
+    cp -r $cdmnt/$vers/$i/* $i/
+    ei1 "... done."
+  done
+fi
+#                                       Some things we need to copy
+if [ $opt != 3 ] ; then
+#                                        not a complete list
+  for i in $ARCHES ; do
+    mkdir $i; mkdir $i/SYSTEM
+    cp $cdmnt/$vers/$i/SYSTEM/* $i/SYSTEM/
+  done
+fi
+$spc
+if [ $opt = 3 ] ; then
+  if [ $runcd = yes ] ; then
+    ei1 "Now to remove the local LOAD area and symlink to the CDrom..."
+  else
+    ei1 "Now to copy the LOAD and other areas to your hard disk..."
+  fi
+else
+  if [ $runcd = yes ] ; then
+    ei1 "Now to make symlinks to the LOAD and other areas, and copy"
+    ei1 "essential files only."
+  else
+    ei1 "Now to copy the LOAD and other areas to your hard disk."
+  fi
+fi
+$spc
+for i in $ARCHES ; do
+  if [ -f $cdmnt/$vers/$i/LOAD/AIPS.EXE ] ; then
+    if [ $opt = 3 ] ; then
+      if [ $runcd = yes ] ; then
+        ni1 "Remove local $i LOAD area and symlink to CDROM? (y) "
+      else
+        ni1 "Install binaries for $i? (y) "
+      fi
+    else
+      if [ $runcd = yes ] ; then
+        ni1 "Install pointers to binaries on CDrom for $i? (y) "
+      else
+        ni1 "Install binaries for $i? (y) "
+      fi
+    fi
+    read yn; [ "$yn" = "" ] && yn=y
+    $spc
+    case $yn in
+      Y*|y*)
+        if [ $opt != 3 ] ; then
+          mkdir $i/ERRORS $i/INSTALL $i/PREP $i/TEMPLATE
+	  mkdir $i/MEMORY; cp $cdmnt/$vers/$i/MEMORY/* $i/MEMORY/
+          chmod +w $i/MEMORY/*
+        fi
+        for j in LIBR LOAD ; do
+          if [ $runcd = yes ] ; then
+	    if [ $opt = 3 ] ; then
+              ei1 "Removing old `pwd`/$i/$j area on hard disk..."
+	      rm -fr $i/$j
+  	    fi
+            ln -s $cdmnt/$vers/$i/$j $i/$j
+          else
+            ei1 "Installing $j area for $i..."
+	    [ $j = LOAD ] && ei1 "(this will take a while)"
+	    if [ $opt = 3 ] ; then
+              rm -fr $i/$j
+	    fi
+            mkdir $i/$j; cp -r $cdmnt/$vers/$i/$j/* $i/$j/
+          fi
+        done
+	ei1 "Done with architecture $i"; $spc
+        ;;
+      *) ei1 "Very well, bypassing architecture $i"; $spc
+        ;;
+    esac
+  else
+    echo "No binaries for $i found on the CDrom"; $spc
+  fi
+done
+#                                       Done here.
+cd ..
+if [ $opt != 3 ] ; then
+  rm -f INSTEP1
+  ei1 "You may choose to run the install wizard at this time."
+  ei1 "You can either use the CD version of the wizard,"
+  ei1 "or you can check our web: http://www.aips.nrao.edu/"
+  ei1 "to see if we have any fixes to install.pl."
+  ei1 "Enter YES if you want to stop now and check for fixes,"
+  ei1 "Or enter NO to use the CD version (or local disk copy in `pwd`)"
+  ni1 "Stop now (y)? "; read yn; [ "$yn" = "" ] && yn=y
+  case $yn in
+    Y*|y*)
+      ei1 "Very well, go check, and when you have install.pl or"
+      ei1 "update.pl in this area (`pwd`),"
+      ei1 "you should run it.  You might need to edit line 1 of"
+      ei1 "the .pl script so it knows where you have perl here."
+      ei1 "Good luck and goodbye...."
+      ;;
+    *)
+      if [ -f install.pl ] ; then
+         ei1 "There is already an install.pl in `pwd`, using it."
+      else
+         ln -s $vers/SYSTEM/UNIX/PERL/install.pl
+      fi
+      ei1 "About to run perl on install.pl; this will clear the"
+      ni1 "screen and start the menu-based wizard.  Press ENTER: "
+      read yn
+      AIPSCDROM=YES; export AIPSCDROM
+      perl ./install.pl -c
+      ;;
+  esac
+ else
+  echo "The conversion should now be complete."
+fi

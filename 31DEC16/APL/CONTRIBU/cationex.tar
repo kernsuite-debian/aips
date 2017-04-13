@@ -1,0 +1,2224 @@
+cationex/ 40755   1022     61           0  7153515546  11742 5ustar  cflatterstaffcationex/main.cc100644   1022     61        5623  7150601767  13276 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! program to concatenate IONEX data files                           */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <cstdlib>
+#include <iostream>
+#include <list>
+#include <string>
+
+#include <Cationex.h>
+
+// Creates an object representing the cationex application using the
+// command-line arguments and runs it, returning the final status of
+// the object.
+int main(int argc, char *argv[])
+{
+    int result;	// final status
+
+    try
+    {
+	std::string command(argv[0]);	// command used to launch application
+
+	// copy the remaining command-line arguments to a list
+
+	std::list<std::string> arguments;
+	for (int argument_number = 1; argument_number != argc; argument_number++)
+	{
+	    arguments.push_back(argv[argument_number]);
+	}
+
+	Cationex cationex(command, arguments);
+	cationex.run();
+	result = cationex.status();
+    }
+    catch (bad_alloc)
+    {
+	std::cerr << "Ran out of memory" << std::endl;
+	result = EXIT_FAILURE;
+    }
+
+    return result;
+}
+cationex/Exception.h100644   1022     61        5127  7150775313  14150 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! simple exceptions                                                 */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#ifndef EXCEPTION_H
+#define EXCEPTION_H
+
+#include <string>
+
+// The Exception class represents simple exceptions with an attached
+// message.
+//
+// Invariant: message() != 0
+
+class Exception
+{
+protected:
+
+    std::string msg;
+
+public:
+
+    // Creates an exception with an associated message.
+    //
+    // Postcondition: message() == message
+
+    Exception(const std::string& message): msg(message) {}
+
+    // Returns the message associated with the exception.
+
+    std::string message()
+    {
+	return msg;
+    }
+};
+
+#endif
+cationex/IonexFile.h100644   1022     61       20355  7153032254  14105 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! IONEX data files                                                  */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#ifndef IONEX_FILE_H
+#define IONEX_FILE_H
+
+#include <ctime>
+#include <fstream>
+#include <string>
+
+
+#include <IonexFileException.h>
+
+// An IonexFile object represents an IONEX data file that is open for
+// reading.
+
+class IonexFile
+{
+protected:
+
+    std::string file_name;		// file name
+
+    std::ifstream stream;		// stream that the data is read from
+
+    std::string _system;		// three-letter code designating
+					// satellite system
+
+    time_t _first_epoch;		// epoch of first map
+
+    time_t _last_epoch;			// epoch of last map
+
+    int _interval;			// interval between maps in seconds
+
+    int _size;				// number of maps in file
+
+    std::string _mapping_function;	// elecation mapping function
+
+    float _elevation_cutoff;		// minimum elevation angle in
+					// degrees
+
+    std::string _observables;		// observables used for computations
+
+    float _base_radius;			// base radius in km
+
+    int _map_dimension;			// dimensionality of map arrays
+
+    float _height1;			// first height in maps in km above
+		    			// base radius
+
+    float _height2;			// last height in maps in km above
+    					// base radius
+
+    float _height_increment;		// height increment in km
+
+    float _latitude1;			// first latitude in degrees
+
+    float _latitude2;			// last latitude in degrees
+
+    float _latitude_increment;		// latitude increment in degrees
+
+    float _longitude1;			// first longitude in degrees
+
+    float _longitude2;			// last longitude in degrees
+
+    float _longitude_increment;		// longitude increment in degrees
+
+    int _exponent;			// current exponent value
+
+    bool at_eof;			// true if all data has been read
+
+    // Set first epoch from line
+
+    void set_first_epoch(const std::string& line) throw (IonexFileException);
+
+    // Set last epoch from line
+
+    void set_last_epoch(const std::string& line) throw (IonexFileException);
+
+    // Set interval from line
+
+    void set_interval(const std::string& line) throw (IonexFileException);
+
+    // Set number of maps from line
+
+    void set_size(const std::string& line) throw (IonexFileException);
+
+    // Set mapping function from line
+
+    void set_mapping_function(const std::string& line);
+
+    // Set elevation cutoff from line
+
+    void set_elevation_cutoff(const std::string& line) throw (IonexFileException);
+
+    // Set observables from line
+
+    void set_observables(const std::string& line);
+
+    // Set base radius from line
+
+    void set_base_radius(const std::string& line) throw (IonexFileException);
+
+    // Set map dimension from line
+
+    void set_map_dimension(const std::string& line) throw (IonexFileException);
+
+    // Set heights from line
+
+    void set_heights(const std::string& line) throw (IonexFileException);
+
+    // Set latitudes from line
+
+    void set_latitudes(const std::string& line) throw (IonexFileException);
+
+    // Set longitudes from line
+
+    void set_longitudes(const std::string& line) throw (IonexFileException);
+
+    // Set exponent from line
+
+    void set_exponent(const std::string& line) throw (IonexFileException);
+
+public:
+
+    // Creates an IonexFile object for the file with name name. Throws
+    // an IonexFileException if the file does not exist, can not be read,
+    // is not an IONEX file or has an incomplete header.
+
+    IonexFile(const std::string& name) throw (IonexFileException);
+
+    // Reads the next line of data from the IONEX file. Throws an
+    // IonexFileException if there is an error reading from the file.
+    //
+    // Precondition: !eof()
+
+    std::string read() throw (IonexFileException);
+
+    // Return true if at the end of the IONEX file.
+
+    bool eof() const
+    {
+	return at_eof;
+    }
+
+    // Returns a 3-letter code that designates the satellite system or
+    // theoretical model used to generate the TEC data.
+
+    std::string system() const
+    {
+	return _system;
+    }
+
+    // Returns the time of the first map in the file.
+
+    time_t first_epoch() const
+    {
+	return _first_epoch;
+    }
+
+    // Returns the time of the last map in the file.
+
+    time_t last_epoch() const
+    {
+	return _last_epoch;
+    }
+
+    // Returns the time interval between successive maps in the file in
+    // seconds or returns 0 if the interval between maps is variable.
+
+    int interval() const
+    {
+	return _interval;
+    }
+
+    // Returns the number of maps in the file.
+
+    int size() const
+    {
+	return _size;
+    }
+
+    // Returns the name of the elevation mapping function
+
+    std::string mapping_function() const
+    {
+	return _mapping_function;
+    }
+
+    // Returns the minimum elevation angle in degrees.
+
+    float elevation_cutoff() const
+    {
+	return _elevation_cutoff;
+    }
+
+    // Returns the specification of the observable quantitites used to
+    // derive the maps.
+
+    std::string observables() const
+    {
+	return _observables;
+    }
+
+    // Returns the base radius in km.
+
+    float base_radius() const
+    {
+	return _base_radius;
+    }
+
+    // Returns the dimensionality of the TEC and RMS maps.
+
+    int map_dimension() const
+    {
+	return _map_dimension;
+    }
+
+    // Returns the first height in the grid in km above the base radius.
+
+    float height1() const
+    {
+	return _height1;
+    }
+
+    // Returns the last height in the grid in km above the base radius.
+
+    float height2() const
+    {
+	return _height2;
+    }
+
+    // Returns the increment in heights in km.
+
+    float height_increment() const
+    {
+	return _height_increment;
+    }
+
+    // Returns the first latitude in the grid in degrees.
+
+    float latitude1() const
+    {
+	return _latitude1;
+    }
+
+    // Returns the last latitude in the grid in degrees.
+
+    float latitude2() const
+    {
+	return _latitude2;
+    }
+
+    // Returns the latitude increment in degrees.
+
+    float latitude_increment() const
+    {
+	return _latitude_increment;
+    }
+
+    // Returns the first longitude in the grid in degrees.
+
+    float longitude1() const
+    {
+	return _longitude1;
+    }
+
+    // Returns the last longitude in the grid in degrees.
+
+    float longitude2() const
+    {
+	return _longitude2;
+    }
+
+    // Returns the longitude increment in degrees.
+
+    float longitude_increment() const
+    {
+	return _longitude_increment;
+    }
+
+    // Returns the current exponent used for scaling the data
+
+    int exponent() const
+    {
+	return _exponent;
+    }
+
+};
+
+#endif
+cationex/cationex.html100644   1022     61        6201  7153515517  14534 0ustar  cflatterstaff<!doctype html public "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+   <meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+   <meta name="GENERATOR" content="Mozilla/4.7 [en] (X11; I; SunOS 5.6 sun4u) [Netscape]">
+   <title>The cationex Utility</title>
+</head>
+<body text="#000000" bgcolor="#FFFFFF" link="#0000FF" vlink="#FF0000" alink="#FF0000">
+
+<center>
+<h1>
+The <tt>cationex</tt> Utility</h1></center>
+
+<center><img SRC="rule01.gif" ></center>
+
+<p>The cationex utility is a stand-alone utility for combining data from
+multiple IONEX data files into a single IONEX data file. It is intended
+for combining data files from the CDDIS archive so that they may be used
+as input to TECOR for experiments that cross midnight.
+<h2>
+Building <tt>cationex</tt></h2>
+In order to build cationex, you will need a fairly recent version of GCC:
+I recommend Version 2.95.2 or later. It should also be possible to use
+any C++ compiler that is compliant with the ISO C++ standard but some minor
+tweaking of the source may be required.
+<br>The first step is to unpack the archive file <tt>cationex.tar.</tt>
+<pre><tt>tar xvf cationex.tar</tt></pre>
+This will create a new directory that contains the source code for <tt>cationex</tt>
+and some test data.
+<br>Change to the <tt>cationex</tt> directory and check the contents of
+<tt>Makefile</tt>. If you are using a standard installation of GCC and
+the g++ command is in your path then you should not need to make any modifications
+but there is always a possibility that you will need to make some adjustments
+to Section 1. After making any changes that might be necessary, issue the
+<tt>make</tt> command. This will build <tt>cationex</tt>.
+<br>After building <tt>cationex</tt>, you should install it in a suitable
+directory in most users' search path. I recommend placing it in <tt>$SYSLOCAL</tt>.
+If you have system manager privileges, you might prefer /<tt>usr/local/bin</tt>.
+<h2>
+Running <tt>cationex</tt></h2>
+In its basic mode, <tt>cationex</tt> takes a list of files and writes a
+new IONEX file to the standard output. The new IONEX file contains all
+of the TEC maps from the input files but discards any RMS or HEIGHT maps
+that might be present. Most optional header information will also be discarded.
+<br>You may save the output by redirecting it to a file or by specifying
+an output file using the <tt>-output </tt>flag as in this example.
+<pre>cationex jplg0550.00i jplg0560.00i jplg0570.00i -output COMBINED.DATA</pre>
+You will probably want to use an upper-case name for the output file so
+that AIPS can read it.
+<br>You may print a usage summary by typing
+<pre>cationex -help</pre>
+
+<h2>
+Notes For Linux</h2>
+The cationex utility uses Unix facilities for handling dates. Unfortunately,
+Linux does not support the <tt>altzone</tt> interface that gives the offset
+of the alternate local timezone (usually daylight savings time) from UTC.
+On Linux systems <tt>cationex</tt> assumes that the alternate timezone
+differs from the primary timezone by exactly 1 hour. This means that it
+is possible that <tt>cationex</tt> will misbehave if unusual time zone
+settings are used.&nbsp; Such problems should be rare.
+</body>
+</html>
+cationex/CationexException.h100644   1022     61        4752  7150532211  15632 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Exceptions thrown by Cationex objects                             */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <Exception.h>
+
+// The CationexException class represents exceptions thrown while
+// combining IONEX data files.
+
+class CationexException: public Exception
+{
+public:
+
+    // Creates a CationexException with an associated message.
+    //
+    // Precondition: message != 0
+    // Postcondition: message() == message
+
+    CationexException(const std::string& message): Exception(message)
+    {
+	// no body
+    }
+};
+cationex/IonexFileException.h100644   1022     61        5063  7153267045  15753 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Exceptions thrown while reading IONEX files.                      */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#ifndef IONEX_FILE_EXCEPTION_H
+#define IONEX_FILE_EXCEPTION_H
+
+#include <Exception.h>
+
+// The IonexFileExcpetion class represents exceptions thrown while
+// reading IONEX data files.
+
+class IonexFileException: public Exception
+{
+public:
+
+    // Creates a IonexFileException with an associated message.
+    //
+    // Precondition: message != 0
+    // Postcondition: message() == message
+
+    IonexFileException(const std::string& message): Exception(message)
+    {
+	// no body
+    }
+};
+
+#endif
+cationex/IonexFile.cc100644   1022     61       32267  7153477341  14262 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! IONEX data files                                                  */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <stdexcept>
+#include <strstream>
+
+#include <IonexFile.h>
+
+// Creates an IonexFile object for the file with name name. Throw an
+// IonexFileException if the file does not exist, can not be read, is not an
+// IONEX file or has an incomplete header.
+
+IonexFile::IonexFile(const std::string& name) throw (IonexFileException) :
+    file_name(name), stream(name.c_str()), _exponent(-1)
+{
+    bool first_epoch_found      = false;
+    bool last_epoch_found       = false;
+    bool interval_found         = false;
+    bool map_count_found        = false;
+    bool mapping_function_found = false;
+    bool elevation_cutoff_found = false;
+    bool observables_found      = false;
+    bool base_radius_found      = false;
+    bool map_dimension_found    = false;
+    bool heights_found          = false;
+    bool latitudes_found        = false;
+    bool longitudes_found       = false;
+    std::string line;
+
+    if (!stream)
+    {
+	throw IonexFileException("Can not open " + file_name);
+    }
+
+    // The stream is guaranteed to be open
+
+    at_eof = false;
+
+    // Check version/type record
+
+    getline(stream, line);
+    if (!stream)
+    {
+	throw IonexFileException("Can not read from " + file_name);
+    }
+
+    // Extracting the label will throw an out_of_range exception
+
+    try
+    {
+	if (line.substr(60, 20) == "IONEX VERSION / TYPE")
+	{
+	    _system = line.substr(40, 3);
+	}
+	else
+	{
+	    throw IonexFileException(file_name + " is not an IONEX file");
+	}
+    }
+    catch (std::out_of_range)
+    {
+	throw IonexFileException(file_name + " is not an IONEX file");
+    }
+
+    try
+    {
+	// The stream contains an IONEX file
+
+	getline(stream, line);
+	while (!(!stream) && (line.substr(60, 20) != "END OF HEADER       "))
+	{
+	    std::string label = line.substr(60, 20);
+	    if (label == "EPOCH OF FIRST MAP  ")
+	    {
+		first_epoch_found = true;
+		set_first_epoch(line);
+	    }
+	    else if (label == "EPOCH OF LAST MAP   ")
+	    {
+		last_epoch_found = true;
+		set_last_epoch(line);
+	    }
+	    else if (label == "INTERVAL            ")
+	    {
+		interval_found = true;
+		set_interval(line);
+	    }
+	    else if (label == "# OF MAPS IN FILE   ")
+	    {
+		map_count_found = true;
+		set_size(line);
+	    }
+	    else if (label == "MAPPING FUNCTION    ")
+	    {
+		mapping_function_found = true;
+		set_mapping_function(line);
+	    }
+	    else if (label == "ELEVATION CUTOFF    ")
+	    {
+		elevation_cutoff_found = true;
+		set_elevation_cutoff(line);
+	    }
+	    else if (label == "OBSERVABLES USED    ")
+	    {
+		observables_found = true;
+		set_observables(line);
+	    }
+	    else if (label == "BASE RADIUS         ")
+	    {
+		base_radius_found = true;
+		set_base_radius(line);
+	    }
+	    else if (label == "MAP DIMENSION       ")
+	    {
+		map_dimension_found = true;
+		set_map_dimension(line);
+	    }
+	    else if (label == "HGT1 / HGT2 / DHGT  ")
+	    {
+		heights_found = true;
+		set_heights(line);
+	    }
+	    else if (label == "LAT1 / LAT2 / DLAT  ")
+	    {
+		latitudes_found = true;
+		set_latitudes(line);
+	    }
+	    else if (label == "LON1 / LON2 / DLON  ")
+	    {
+		longitudes_found = true;
+		set_longitudes(line);
+	    }
+	    else if (label == "EXPONENT            ")
+	    {
+		set_exponent(line);
+	    }
+	
+	    getline(stream, line);
+	}
+
+	if (!stream)
+	{
+	    throw IonexFileException("Did not read a complete header from "
+				     + file_name);
+	}
+    }
+    catch (std::out_of_range)
+    {
+	throw IonexFileException("The IONEX header in " + file_name
+				 + " contained an incomplete line");
+    }
+
+    // Read a complete header. Check for missing items.
+
+    if (!first_epoch_found)
+    {
+	throw IonexFileException("Required epoch of first map is missing from "
+				 + file_name);
+    }
+    else if (!last_epoch_found)
+    {
+	throw IonexFileException("Required epoch of last map is missing from "
+				 + file_name);
+    }
+    else if (!interval_found)
+    {
+	throw IonexFileException("Required interval is missing from "
+				 + file_name);
+    }
+    else if (!map_count_found)
+    {
+	throw IonexFileException("Required number of maps is missing from "
+				 + file_name);
+    }
+    else if (!mapping_function_found)
+    {
+	throw IonexFileException("Required mapping function is missing from "
+				 + file_name);
+    }
+    else if (!elevation_cutoff_found)
+    {
+	throw IonexFileException("Required elevation cutoff is missing from "
+				 + file_name);
+    }
+    else if (!observables_found)
+    {
+	throw IonexFileException("Required observables record is missing from "
+				 + file_name);
+    }
+    else if (!base_radius_found)
+    {
+	throw IonexFileException("Required base radius is missing from "
+				 + file_name);
+    }
+    else if (!map_dimension_found)
+    {
+	throw IonexFileException("Required map dimension is missing from "
+				 + file_name);
+    }
+    else if (!heights_found)
+    {
+	throw IonexFileException("Required heights are missing from "
+				 + file_name);
+    }
+    else if (!latitudes_found)
+    {
+	throw IonexFileException("Required latitudes are missing from "
+				 + file_name);
+    }
+    else if (!longitudes_found)
+    {
+	throw IonexFileException("Required longitudes are missing from "
+				 + file_name);
+    }
+
+    // Consistency checks can be added here
+}
+
+// Set first epoch from line
+
+void IonexFile::set_first_epoch(const std::string& line)
+    throw (IonexFileException)
+{
+    struct tm epoch;
+    istrstream line_stream(line.c_str());
+
+    extern time_t timezone;
+#ifndef __linux__
+    extern time_t altzone;
+#endif
+
+    line_stream >> epoch.tm_year >> epoch.tm_mon >> epoch.tm_mday
+                >> epoch.tm_hour >> epoch.tm_min >> epoch.tm_sec;
+
+    epoch.tm_isdst = -1;	// work out whether dst is in use
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad epoch in " + file_name);
+    }
+
+    // Adjust time structure
+
+    epoch.tm_year = epoch.tm_year - 1900;
+    epoch.tm_mon  = epoch.tm_mon - 1;
+
+    _first_epoch = mktime(&epoch);
+
+    // mktime() assumes that the time structure was a local time so we
+    // need to adjust for time zone
+
+    if (epoch.tm_isdst)
+    {
+
+	// Need special treatment for Linux which is overly US-centric
+
+#ifdef __linux__
+	_first_epoch = _first_epoch - timezone - 3600;
+#else
+	_first_epoch = _first_epoch - altzone;
+#endif
+    }
+    else
+    {
+	_first_epoch = _first_epoch - timezone;
+    }
+}
+
+// Set last epoch from line
+
+void IonexFile::set_last_epoch(const std::string& line)
+    throw (IonexFileException)
+{
+    struct tm epoch;
+    istrstream line_stream(line.c_str());
+
+    extern time_t timezone;
+#ifndef __linux__
+    extern time_t altzone;
+#endif
+
+    line_stream >> epoch.tm_year >> epoch.tm_mon >> epoch.tm_mday
+                >> epoch.tm_hour >> epoch.tm_min >> epoch.tm_sec;
+
+    epoch.tm_isdst = -1;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad epoch in " + file_name);
+    }
+
+    // Adjust time structure
+
+    epoch.tm_year = epoch.tm_year - 1900;
+    epoch.tm_mon  = epoch.tm_mon - 1;
+
+    _last_epoch = mktime(&epoch);
+
+    // mktime() assumes that the time structure was a local time so we
+    // need to adjust for time zone
+
+    if (epoch.tm_isdst)
+    {
+#ifdef __linux__
+	_first_epoch = _first_epoch - timezone - 3600;
+#else
+	_first_epoch = _first_epoch - altzone;
+#endif
+    }
+    else
+    {
+	_last_epoch = _last_epoch - timezone;
+    }
+}
+
+// Set interval from line
+
+void IonexFile::set_interval(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _interval;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad interval in " + file_name);
+    }
+}
+
+// Set number of maps from line
+
+void IonexFile::set_size(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _size;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad number of maps in " + file_name);
+    }
+}
+
+// Set mapping function from line
+
+void IonexFile::set_mapping_function(const std::string& line)
+{
+    // Note that line has at least 80 characters
+
+    _mapping_function = line.substr(2, 4);
+}
+
+// Set elevation cutoff from line
+
+void IonexFile::set_elevation_cutoff(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _elevation_cutoff;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad elevation cutoff in " + file_name);
+    }
+}
+
+// Set observables from line
+
+void IonexFile::set_observables(const std::string& line)
+{
+    // Note that line has at least 80 characters
+
+    _observables = line.substr(0, 60);
+}
+
+// Set base radius from line
+
+void IonexFile::set_base_radius(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _base_radius;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad base radius in " + file_name);
+    }
+}
+
+// Set map dimension from line
+
+void IonexFile::set_map_dimension(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _map_dimension;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad map dimension in " + file_name);
+    }
+}
+
+// Set heights from line
+
+void IonexFile::set_heights(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _height1 >> _height2 >> _height_increment;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad heights in " + file_name);
+    }
+}
+
+// Set latitudes from line
+
+void IonexFile::set_latitudes(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _latitude1 >> _latitude2 >> _latitude_increment;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad latitudes in " + file_name);
+    }
+}
+
+// Set longitudes from line
+
+void IonexFile::set_longitudes(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _longitude1 >> _longitude2 >> _longitude_increment;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad longitudes in " + file_name);
+    }
+}
+
+// Set exponent from line
+
+void IonexFile::set_exponent(const std::string& line)
+    throw (IonexFileException)
+{
+    istrstream line_stream(line.c_str());
+
+    line_stream >> _exponent;
+
+    // Check for errors
+
+    if (!line_stream)
+    {
+	throw IonexFileException("Bad exponent in " + file_name);
+    }
+}
+
+// Reads a line from the IONEX file.  Throws an IonexFileException if there
+// is an error reading from the file.
+//
+// Precondition: !eof()
+
+std::string IonexFile::read() throw (IonexFileException)
+{
+    std::string line;
+
+    getline(stream, line);
+
+    // Check for errors or end-of-file on stream:
+
+    if (!stream)
+    {
+	if (stream.eof())
+	{
+	    line = "                                        "
+		   "                    "
+		   "END OF FILE         ";
+	}
+	else
+	{
+	    throw IonexFileException("Error reading from " + file_name);
+	}
+    }
+
+    // Check for end of file
+
+    if ((line.size() == 80)
+	&& (line.substr(60, 20) == "END OF FILE         "))
+    {
+	at_eof = true;
+    }
+
+    return line;
+}
+cationex/Cationex.cc100644   1022     61       51077  7153307173  14145 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Applications that combine IONEX data files                        */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+
+#include <Cationex.h>
+#include <IonexFileEarlier.h>
+#include <IonexFileException.h>
+
+// Runs the Cationex application.
+//
+// Displays application help if the argument list contains "-help" or
+// "-?".
+//
+// Displays copyright information if the argument list contains
+// "-copyright".
+//
+// Combines data from IONEX files named in the argument list and writes
+// them to the standard output or to a file named using the "-output"
+// flag otherwise.
+//
+// Sets the application status to EXIT_SUCCESS if the operation succeeds
+// or EXIT_FAILURE if an error is detected.
+
+void Cationex::run()
+{
+    try
+    {
+	std::list<std::string>::iterator position;
+
+	position = find(arguments.begin(), arguments.end(), "-help");
+	if (position != arguments.end())
+	{
+	    print_help();
+	}
+	else
+	{
+	    position = find(arguments.begin(), arguments.end(), "-?");
+	    if (position != arguments.end())
+	    {
+		print_help();
+	    }
+	    else
+	    {
+		position = find(arguments.begin(), arguments.end(),
+				"-copyright");
+		if (position != arguments.end())
+		{
+		    print_copyright();
+		}
+		else
+		{
+		    // No special flags: will combine files.
+
+		    position = find(arguments.begin(), arguments.end(),
+				    "-output");
+		    if (position != arguments.end())
+		    {
+			set_output_name(position);
+		    }
+		    process_files();
+		}
+	    }
+	}
+    }
+    catch (CationexUserException exception)
+    {
+	std::cerr << exception.message() << std::endl << std::endl;
+	print_help();
+	state = EXIT_FAILURE;
+    }
+    catch (CationexException exception)
+    {
+	std::cerr << exception.message() << std::endl;
+	state = EXIT_FAILURE;
+    }
+}
+
+// Prints application help to the standard error stream.
+
+void Cationex::print_help()
+{
+    std::cerr << command << " -help" << std::endl;
+    std::cerr << command << " -?" << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Prints this help message." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << command << " -copyright" << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Prints copyright information." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << command << " file1 file2 ..." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Merges named IONEX files and writes the combined file to the standard" << std::endl;
+    std::cerr << "output." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << command << " -output oname file1 file2 ..." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "Merges named IONEX files and writes the combined file to oname." << std::endl;
+}
+
+// Prints copyright information to the standard error stream.
+
+void Cationex::print_copyright()
+{
+    std::cerr << "cationex 1.0, Copyright (C) 2000 Associated Universities, Inc." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "This program is free software; you can redistribute it and/or modify" << std::endl;
+    std::cerr << "it under the terms of the GNU General Public License as published by" << std::endl;
+    std::cerr << "the Free Software Foundation; either version 1, or (at your option)" << std::endl;
+    std::cerr << "any later version." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "This program is distributed in the hope that it will be useful," << std::endl;
+    std::cerr << "but WITHOUT ANY WARRANTY; without even the implied warranty of" << std::endl;
+    std::cerr << "MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the" << std::endl;
+    std::cerr << "GNU General Public License for more details." << std::endl;
+    std::cerr << std::endl;
+    std::cerr << "You should have received a copy of the GNU General Public License" << std::endl;
+    std::cerr << "along with this program; if not, write to the Free Software" << std::endl;
+    std::cerr << "Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA." << std::endl;
+}
+
+// Sets the output file name from the command line arguments and removes
+// the output file specification from argument list. Throws a
+// CationexUserException if an output file name is not specified.
+//
+// Precondition: position is an iterator for arguments and
+//               *position == "-output"
+// Postcondition: The "-output" flag and its argument have been removed from
+//                arguments.
+
+void Cationex::set_output_name(std::list<std::string>::iterator position)
+    throw (CationexUserException)
+{
+    std::list<std::string>::iterator value = position;
+    value++;
+
+    if (value != arguments.end())
+    {
+	output_name = *value;
+	value++;
+	arguments.erase(position, value);
+	use_output_file = true;
+    }
+    else
+    {
+	throw CationexUserException("The -output flag must be followed by a file name.");
+    }
+}
+
+// Merges the IONEX data files named in arguments to the standard output
+// stream if output_name == 0 or to a file named output_name if
+// output_name != 0. Writes a warning message for every file in arguments
+// that does not exist, can not be read or is not in IONEX format.
+//
+// Throws a CationexUserException if there are no IONEX files named in
+// arguments.
+//
+// Throws a CationexException if the IONEX files named in arguments are not
+// compatible or overlap in time, or if there is an error reading an input
+// file or writing the combined file.
+//
+// Precondition: all flags have been deleted from arguments
+
+void Cationex::process_files() throw (CationexUserException, CationexException)
+{
+    // Construct a list of valid IONEX files named in arguments
+
+    std::list<IonexFile*> files;
+    for (std::list<std::string>::iterator name = arguments.begin();
+	 name != arguments.end(); name++)
+    {
+	try
+	{
+	    IonexFile* file = new IonexFile(*name);
+	    files.push_back(file);
+	}
+	catch (IonexFileException exception)
+	{
+	    std::cerr << exception.message() << std::endl;
+	}
+    }
+
+    if (!files.empty())
+    {
+	IonexFileEarlier earlier;
+
+	files.sort(earlier);
+	if (compatible(files))
+	{
+	    merge(files);
+	}
+	else
+	{
+	    throw CationexException("Not all of the files were compatible.");
+	}
+    }
+    else
+    {
+	throw CationexUserException("You must specify at least one valid IONEX file.");
+    }
+}
+
+// Copies a TEC map from *input to *output with correct numbering.
+// Throws a CationexException if an I/O error is detected.
+//
+// Precondition: input != 0 && output != 0
+//               && input positioned after START OF TEC MAP record
+
+void Cationex::copy_tec_map(IonexFile* input, ostream* output)
+    throw (CationexException)
+{
+    assert(input != 0);
+    assert(output != 0);
+
+    // Write start of map:
+
+    (*output) << std::setw(6) << maps_copied + 1;
+    (*output) << "                                                      ";
+    (*output) << "START OF TEC MAP    " << std::endl;
+
+    // Check for errors:
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    // Copy map records to output:
+
+    try
+    {
+	std::string line = input->read();
+	while (!input->eof()
+	       && ((line.size() != 80)
+		   || (line.substr(60, 20) != "END OF TEC MAP      ")))
+	{
+	    (*output) << line << std::endl;
+
+	    // Check for errors:
+
+	    if (!(*output))
+	    {
+		throw CationexException("Error writing to output");
+	    }
+
+	    // Check for changing exponent:
+
+	    if ((line.size() == 80)
+		&& (line.substr(60, 20) == "EXPONENT            "))
+	    {
+		current_exponent = input->exponent();
+	    }
+
+	    // Advance to next record:
+
+	    line = input->read();
+	}
+    }
+    catch (IonexFileException exception)
+    {
+	throw CationexException(exception.message());
+    }
+
+    // Check for unexpected end-of-file:
+
+    if (input->eof())
+    {
+	throw CationexException("Unexpected EOF in TEC map");
+    }
+
+    // Finish map:
+
+    (*output) << setw(6) << maps_copied + 1;
+    (*output) << "                                                      ";
+    (*output) << "END OF TEC MAP      " << std::endl;
+
+    // Check for errors:
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    // Update number of maps copied:
+
+    maps_copied = maps_copied + 1;
+}
+
+// Writes a combined header for the maps in files to *output.
+// Throws a CationexException if an I/O error is detected.
+//
+// Precondition: output != 0 && files.size() > 0
+//               && files is in time order
+
+void Cationex::write_header(const std::list<IonexFile*> files, ostream* output)
+    throw (CationexException)
+{
+    assert(output != 0);
+    assert(files.size() > 0);
+
+    time_t clock;
+    struct tm* ut;
+
+    std::list<IonexFile*>::const_iterator position = files.begin();
+    IonexFile* first = *position;
+    assert(first != 0);
+
+    std::list<IonexFile*>::const_reverse_iterator last_position = files.rend();
+    last_position++;
+    IonexFile* last = *last_position;
+    assert(last != 0);
+
+    (*output) << "     1.0            "
+	      << "Ionosphere maps     "
+	      << first->system() << "                 "
+	      << "IONEX VERSION / TYPE" << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    clock = time(0);
+    ut = gmtime(&clock);
+    (*output) << "Cationex            "
+	      << "NRAO                "
+	      << std::setw(4) << ut->tm_year + 1900 << "-"
+	      << std::setw(2) << std::setfill('0') << ut->tm_mon + 1 << "-"
+	      << std::setw(2) << std::setfill('0') << ut->tm_mday << "T"
+	      << std::setw(2) << std::setfill('0') << ut->tm_hour << ":"
+	      << std::setw(2) << std::setfill('0') << ut->tm_min << ":"
+	      << std::setw(2) << std::setfill('0') << ut->tm_sec
+	      << std::setfill(' ') << " "
+	      << "PGM / RUN BY / DATE " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << "Combined data from several IONEX files  "
+	      << "                    "
+	      << "COMMENT             " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    clock = first->first_epoch();
+    ut = gmtime(&clock);
+    (*output) << std::setw(6) << ut->tm_year + 1900
+	      << std::setw(6) << ut->tm_mon + 1
+	      << std::setw(6) << ut->tm_mday
+	      << std::setw(6) << ut->tm_hour
+	      << std::setw(6) << ut->tm_min
+	      << std::setw(6) << ut->tm_sec
+	      << "                        "
+	      << "EPOCH OF FIRST MAP  " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    clock = last->last_epoch();
+    ut = gmtime(&clock);
+    (*output) << std::setw(6) << ut->tm_year + 1900
+	      << std::setw(6) << ut->tm_mon + 1
+	      << std::setw(6) << ut->tm_mday
+	      << std::setw(6) << ut->tm_hour
+	      << std::setw(6) << ut->tm_min
+	      << std::setw(6) << ut->tm_sec
+	      << "                        "
+	      << "EPOCH OF LAST MAP   " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    // Find the interval between the maps and count the total number of maps:
+
+    std::list<IonexFile*>::const_iterator previous = files.begin();
+    int count = (*previous)->size();
+    int interval = (*previous)->interval();
+    position = previous;
+    position++;
+    while (position != files.end())
+    {
+	count = count + (*position)->size();
+	if (interval != 0)
+	{
+	    if (((*position)->interval() != interval)
+		|| (((*position)->first_epoch()
+		     - (*previous)->last_epoch()) != interval))
+	    {
+		interval = 0;
+	    }
+	}
+	position++;
+	previous++;
+    }
+
+    (*output) << std::setw(6) << interval
+	      << "                                                      "
+	      << "INTERVAL            " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << std::setw(6) << count
+	      << "                                                      "
+	      << "# OF MAPS IN FILE   " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << "  " << first->mapping_function()
+	      << "                                                      "
+	      << "MAPPING FUNCTION    " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    // Have to use sprintf to format floating-point numbers since
+    // iostream formating does not allow direct control of the number
+    // of decimal places:
+
+    char buffer[20];
+
+    sprintf(buffer, "%8.1f", first->elevation_cutoff());
+    (*output) << buffer
+	      << "                                                    "
+	      << "ELEVATION CUTOFF    " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << first->observables()
+	      << "OBSERVABLES USED    " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    sprintf(buffer, "%8.1f", first->base_radius());
+    (*output) << buffer
+	      << "                                                    "
+	      << "BASE RADIUS         " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << std::setw(6) << first->map_dimension()
+	      << "                                                      "
+	      << "MAP DIMENSION       " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    sprintf(buffer, "%6.1f%6.1f%6.1f", first->height1(), first->height2(),
+	    first->height_increment());
+    (*output) << "  " << buffer
+	      << "                                        "
+	      << "HGT1 / HGT2 / DHGT  " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    sprintf(buffer, "%6.1f%6.1f%6.1f", first->latitude1(), first->latitude2(),
+	    first->latitude_increment());
+    (*output) << "  " << buffer
+	      << "                                        "
+	      << "LAT1 / LAT2 / DLAT  " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    sprintf(buffer, "%6.1f%6.1f%6.1f", first->longitude1(),
+	    first->longitude2(), first->longitude_increment());
+    (*output) << "  " << buffer
+	      << "                                        "
+	      << "LON1 / LON2 / DLON  " << std::endl;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << std::setw(6) << first->exponent()
+	      << "                                                      "
+	      << "EXPONENT            " << std::endl;
+    current_exponent = first->exponent();	// keep synchronized with file
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+    (*output) << "                                                            "
+	      << "END OF HEADER       " << std::endl;
+
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+
+}
+
+// Returns true if the IONEX files in files are compatible and do not overlap
+// in time. Returns false if the files are incompatible or overlap in time.
+//
+// Precondition: files.size() > 0 && files is in time order
+
+bool Cationex::compatible(std::list<IonexFile*> files)
+{
+    std::list<IonexFile*>::iterator previous = files.begin();
+    std::list<IonexFile*>::iterator current = previous;
+    current++;
+    bool result = true;	// assume compatible until incompatibility found
+
+    while (result && current != files.end())
+    {
+	if ((*current)->system() != (*previous)->system())
+	{
+	    result = false;
+	}
+
+	if ((*current)->mapping_function() != (*previous)->mapping_function())
+	{
+	    result = false;
+	}
+
+	if ((*current)->observables() != (*previous)->observables())
+	{
+	    result = false;
+	}
+
+	if ((*current)->base_radius() != (*previous)->base_radius())
+	{
+	    result = false;
+	}
+
+	if ((*current)->map_dimension() != (*previous)->map_dimension())
+	{
+	    result = false;
+	}
+
+	if ((*current)->height1() != (*previous)->height1())
+	{
+	    result = false;
+	}
+
+	if ((*current)->height2() != (*previous)->height2())
+	{
+	    result = false;
+	}
+
+	if ((*current)->height_increment() != (*previous)->height_increment())
+	{
+	    result = false;
+	}
+
+	if ((*current)->latitude1() != (*previous)->latitude1())
+	{
+	    result = false;
+	}
+
+	if ((*current)->latitude2() != (*previous)->latitude2())
+	{
+	    result = false;
+	}
+
+	if ((*current)->latitude_increment() != (*previous)->latitude_increment())
+	{
+	    result = false;
+	}
+
+	if ((*current)->longitude1() != (*previous)->longitude1())
+	{
+	    result = false;
+	}
+
+	if ((*current)->longitude2() != (*previous)->longitude2())
+	{
+	    result = false;
+	}
+
+	if ((*current)->longitude_increment() != (*previous)->longitude_increment())
+	{
+	    result = false;
+	}
+
+	// Check for overlapping times:
+
+	if ((*current)->first_epoch() <= (*previous)->last_epoch())
+	{
+	    result = false;
+	}
+
+	// Move to next element
+
+	current++;
+	previous++;
+    }
+
+    return result;
+}
+
+// Merges the IONEX files in files to the standard output if
+// or to a file named output_name.
+//
+// Throws a CationexException if an error is detected reading from an
+// input file or writing the combined file.
+//
+// Precondition: files.size() > 0 && compatible(files)
+
+void Cationex::merge(std::list<IonexFile*> files) throw (CationexException)
+{
+    ostream* output;
+
+    if (use_output_file)
+    {
+	output = new ofstream(output_name.c_str());
+	if (!(*output))
+	{
+	    throw CationexException("Can not open " + output_name);
+	}
+    }
+    else
+    {
+	output = &std::cout;
+    }
+
+    write_header(files, output);
+
+    try
+    {
+	for (std::list<IonexFile*>::iterator current = files.begin();
+	     current != files.end(); current++)
+	{
+	    // Make sure output exponent matches current input file:
+
+	    if ((*current)->exponent() != current_exponent)
+	    {
+		(*output) << std::setw(6) << (*current)->exponent()
+			  << "                                        "
+			  << "              "
+			  << "EXPONENT            " << std::endl;
+
+		if (!(*output))
+		{
+		    throw CationexException("Error writing to output");
+		}
+
+		current_exponent = (*current)->exponent();
+	    }
+
+	    while (!(*current)->eof())
+	    {
+		std::string line = (*current)->read();
+
+		if (line.size() == 80)
+		{
+		    if (line.substr(60, 20) == "START OF TEC MAP    ")
+		    {
+			copy_tec_map(*current, output);
+		    }
+		    else if (line.substr(60, 20) == "EXPONENT            ")
+		    {
+			(*output) << line << std::endl;
+			current_exponent = (*current)->exponent();
+		    }
+		}
+
+	    }
+	}
+    }
+    catch (IonexFileException exception)
+    {
+	throw CationexException(exception.message());
+    }
+
+    (*output) << "                                                            "
+	      << "END OF FILE         " << std::endl;
+    (*output) << std::flush;
+
+    if (!(*output))
+    {
+	throw CationexException("Error writing to output");
+    }
+}
+cationex/Cationex.h100644   1022     61       14663  7153243706  14010 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Applications that combine IONEX data files                        */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <cstdlib>
+#include <list>
+#include <string>
+
+#include <CationexException.h>
+#include <CationexUserException.h>
+#include <IonexFile.h>
+
+// A CationexException object represents an application that combines
+// data from one or more IONEX data files to create a new IONEX data
+// file.
+
+class Cationex
+{
+protected:
+
+    // Representation invariants:
+    //
+    // state == EXIT_SUCCESS || state == EXIT_FAILURE
+
+    std::string command;		// the command used to launch the
+    					// application
+
+    std::list<std::string> arguments;	// command line arguments
+
+    std::string output_name;		// the name of the output file
+
+    bool use_output_file;		// true if using a named file for
+    					// output
+
+    int state;				// object state (EXIT_SUCCESS or
+    					// EXIT_FAILURE)
+
+    int maps_copied;			// number of TEC maps copied
+
+    int current_exponent;		// current exponent value for output
+
+    // Prints help on using the application to the standard error stream.
+
+    void print_help();
+
+    // Prints copyright information to the standard error stream.
+
+    void print_copyright();
+
+    // Sets the output file name from the command line arguments and removes
+    // the output file specification from argument list. Throws a
+    // CationexUserException if an output file name is not specified.
+    //
+    // Precondition: position is an iterator for arguments and
+    //               *position == "-output"
+    // Postcondition: output_name != 0 and the "-output" flag and its
+    //                argument have been removed from arguments.
+
+    void set_output_name(std::list<std::string>::iterator position)
+	throw (CationexUserException);
+
+    // Merges the IONEX data files named in arguments to the standard output
+    // stream if output_name == 0 or to a file named output_name if
+    // output_name != 0. Writes a warning message for every file in arguments
+    // that does not exist, can not be read or is not in IONEX format.
+    //
+    // Throws a CationexUserException if there are no IONEX files named in
+    // arguments.
+    //
+    // Throws a CationexException if the IONEX files named in arguments are
+    // not compatible or overlap in time, or if there is an error reading an
+    // input file or writing the combined file.
+    //
+    // Precondition: all flags have been deleted from arguments
+
+    void process_files() throw (CationexUserException, CationexException);
+
+    // Returns true if the IONEX files in files are compatible and do not
+    // overlap in time. Returns false if the files are incompatible or
+    // overlap in time.
+    //
+    // files.size() > 0 && files is in time order
+
+    bool compatible(std::list<IonexFile*> files);
+
+    // Merges the IONEX files in files to the standard output if
+    // or to a file named output_name.
+    //
+    // Throws a CationexException if an error is detected reading from an
+    // input file or writing the combined file.
+    //
+    // Precondition: files.size() > 0 and compatible(files)
+
+    void merge(std::list<IonexFile*> files) throw (CationexException);
+
+    // Copies a TEC map from *input to *output with correct numbering.
+    // Throws a CationexException if an I/O error is detected.
+    //
+    // Precondition: input != 0 && output != 0
+    //               && input positioned after START OF TEC MAP record
+
+    void copy_tec_map(IonexFile* input, ostream* output)
+	throw (CationexException);
+
+    // Writes a combined header for the maps in files to *output.
+    // Throws a CationexException if an I/O error is detected.
+    //
+    // Precondition: output != 0 && files.size() > 0
+    //               && files is in time order
+
+    void write_header(const std::list<IonexFile*> files, ostream* output)
+	throw (CationexException);
+
+public:
+
+    // Creates a Cationex object.
+    //
+    // Arguments:
+    //
+    // cmd	the command used to launch the application
+    // args     the command-line arguments (excluding the command)
+    //
+    // Postcondition: status() == EXIT_SUCCESS
+
+    Cationex(const std::string& cmd, const std::list<std::string>& args) :
+	command(cmd), arguments(args), state(EXIT_SUCCESS),
+	use_output_file(false), maps_copied(0), current_exponent(-1)  {}
+
+    // Runs the application according to the command line arguments and
+    // sets status() according to whether the operation succeeds or not.
+
+    void run();
+
+    // Returns the application's status.
+
+    int status()
+    {
+	return state;
+    }
+};
+cationex/IonexFileEarlier.h100644   1022     61        5201  7153266700  15367 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Comparison operator for IONEX data files                          */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#ifndef IONEX_FILE_EARLIER
+#define IONEX_FILE_EARLIER
+
+#include <cassert>
+
+#include <IonexFile.h>
+
+// IonexFileEarlier is a comparison operator used to sort IonexFile
+// objects into time order.
+
+class IonexFileEarlier
+{
+public:
+
+    // Returns true if f1 covers an earlier time than f2
+    //
+    // Precondition: f1 != 0 && f2 != 0
+    // Postcondition: result == (f1->first_epoch() < f2->first_epoch()
+
+    bool operator()(IonexFile* f1, IonexFile* f2) const
+    {
+	assert (f1 != 0);
+	assert (f2 != 0);
+
+	return f1->first_epoch() < f2->first_epoch();
+    }
+};
+
+#endif
+cationex/Makefile100644   1022     61        1324  7153476035  13476 0ustar  cflatterstaff#
+# Section 1 - Customizable definitions
+#
+
+CCC = g++
+CCFLAGS = -O
+CPPFLAGS = -DNDEBUG -I.
+LDFLAGS =
+
+#
+# Section 2 - Dynamic Macros
+#
+
+COMPILE.cc = $(CCC) $(CCFLAGS) $(CPPFLAGS) -c
+
+LINK.cc = $(CCC) $(CCFLAGS) $(CPPFLAGS) $(LDFLAGS)
+
+#
+# Section 3 - General Rules (Copied from standard Solaris rules)
+#
+
+.cc:
+	$(LINK.cc) -o $@ $< $(LDLIBS)
+
+.cc.o:
+	$(COMPILE.cc) $(OUTPUT_OPTION) $<
+
+#
+# Section 4 - Specific Rules
+#
+
+cationex: main.cc Cationex.h Cationex.o IonexFile.o
+	$(LINK.cc) -o $@ main.cc Cationex.o IonexFile.o $(LDLIBS)
+
+Cationex.o: Cationex.cc Cationex.h CationexException.h CationexUserException.h IonexFile.h IonexFileException.h IonexFileEarlier.h
+
+IonexFile.o: IonexFile.cc IonexFile.h IonexFileException.h
+
+cationex/CationexUserException.h100644   1022     61        4771  7150576205  16505 0ustar  cflatterstaff/*--------------------------------------------------------------------*/
+/*! Exceptions thrown by Cationex objects due to user error           */
+/*#                                                                   */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 2000                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+
+#include <Exception.h>
+
+// The CationexUserException class represents exceptions thrown because
+// of errors in user input.
+
+class CationexUserException: public Exception
+{
+public:
+
+    // Creates a CationexUserException with an associated message.
+    //
+    // Precondition: message != 0
+    // Postcondition: message() == message
+
+    CationexUserException(const std::string& message): Exception(message)
+    {
+	// no body
+    }
+};

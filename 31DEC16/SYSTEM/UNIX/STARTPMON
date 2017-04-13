@@ -1,0 +1,284 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2000, 2002-2004, 2009, 2012
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: STARTPMON [ -d ]
+#-----------------------------------------------------------------------
+# This procedure starts n+1 TPMON tasks, where n is the number of
+# locally defined tape drives.  It is smart enough to cycle through
+# the known TAPEn drives and check which ones are remote while counting
+# tapes.  It also checks that there are symbolic links in the $LOAD
+# area for the allowed number of TPMON tasks.
+#
+# The extra TPMON task is to handle FITS disk requests.
+#
+# Required: AIPS env variables, including LOAD, FITS, HOST, etc.
+#-----------------------------------------------------------------------
+[ "$HOST" = "" ] && HOST=`$AIPS_ROOT/SETUNAME`
+ei3() {
+   echo "STARTPMON: [$HOST] $*"
+}
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+if [ "$VERSION" = "" ] ; then
+   ei3 "VERSION not defined, cannot start anything!"
+   exit 1
+fi
+debug=no
+case $1 in
+   -d) debug=yes; ei3 "verbose comments enabled";;
+    *) ;;
+esac
+#                                       Differentiate BSD or System V
+#                                       (really POSIX), because the
+#                                       "ps" output/options differ. :-(
+case $ARCH in
+   S[OU]L*|HP*|SGI) sysv="yes";;
+   SUN*|IBM|*LINUX*|LNX64|MAC*|ALPHA|DEC|*BSD|BSD*|CVEX) sysv="no";;
+   *) ei3 "fix me!  Is $ARCH system V or Berkeley???"
+      ei3 "Assuming Berkeley form of 'ps' command.";;
+esac
+#                                       Check for LOAD variable
+#                                       Use TST if different from LOAD
+load=$TST/$ARCH/LOAD
+if [ \( "$VERSION" != "TST" \) -a \( "$VERSION" != "CVX" \) ] ; then
+   ei3 "Warning: Using TPMON in TST/CVX, not $VERSION"
+fi
+if [ ! -d "$load" ] ; then
+   ei3 "$load is not a directory!"
+   ei3 "Will NOT start any TPMON daemons."
+   exit 3
+fi
+if [ "$FITS" = "" ] ; then
+   ei3 "Environment variable FITS is not defined!"
+   ei3 "This area is needed by TPMON1 (for FITS disk access)"
+   ei3 "Will NOT start any TPMON daemons."
+   exit 4
+elif [ ! -d $FITS ] ; then
+   ei3 "The FITS area ($FITS) is not a directory!"
+   ei3 "This area is needed by TPMON1 (for FITS disk access)"
+   ei3 "Will NOT start any TPMON daemons."
+   exit 5
+fi
+if [ ! -f $load/TPMON.EXE ] ; then
+   ei3 "Cannot find $load/TPMON.EXE"
+   ei3 "Will NOT start any TPMON daemons."
+   exit 6
+fi
+#                                       Count TAPEn env variables
+done=false
+ntp=0
+i=0
+while [ $i -lt 35 ] ; do
+   i=`expr $i + 1`
+   j=`EHEX $i`
+   envar=\$TAPE$j
+   envar=`eval echo $envar`
+#                                       Skip blank and/or remote tapes
+#                                       Also on-line pseudo tape
+   if [ "$envar" != "" ] ; then
+      if [ "$envar" != "REMOTE" ] ; then
+         if [ "$envar" != "on-line" ] ; then
+            ntp=`expr $ntp + 1`
+         fi
+      fi
+   fi
+done
+#                                       Need one more for fits disks
+ntp=`expr $ntp + 1`
+[ "$debug" = "yes" ] && ei3 "need $ntp daemons..."
+#                                       Check if any TPMON's running
+#
+if [ "$sysv" = "yes" ] ; then
+   ntpd=`ps -ef 2>/dev/null | grep 'TPMON[1-9A-F]' | wc -l`
+else
+   ntpd=`ps ax 2>/dev/null | egrep 'TPMON[1-9A-F]' | wc -l`
+fi
+ntpd=`expr $ntpd + 0`
+if [ "$ntpd" -gt "$ntp" ] ; then
+   ei3 "Too many TPMON daemons possibly found????"
+   ei3 "Expected $ntp, found $ntpd."
+   ei3 "Please inform the AIPS Manager."
+fi
+if [ "$ntp" -eq 0 ] ; then
+#                                       No daemons required.
+   ei3 "No tape daemons required??  This can't happen."
+   ei3 "Quitting now.  Nothing to do here."
+   exit 1
+elif [ "$ntpd" -eq "$ntp" ] ; then
+   [ "$debug" = "yes" ] && ei3 "$ntp daemons alive"
+else
+   [ "$debug" = "yes" ] && ei3 "found $ntpd, need $ntp"
+fi
+#                                       Go through all TPMONn's and
+#                                       check if all is well with each.
+n=0
+while [ "$n" -lt "$ntp" ] ; do
+   n=`expr $n + 1`
+   tpn=`expr $n - 1`
+   tps="tape drive number $tpn"
+   [ $tpn -eq 0 ] && tps="virtual drive for FITS disk access"
+   nhex=`EHEX $n`
+   linkit=no
+   killit=no
+   zappit=no
+   startit=no
+#                                       Check if hard link is there
+   if [ ! -f $load/TPMON$nhex ] ; then
+#                                       No, mark it as needing linked
+      linkit=yes
+   else
+#                                       It is there, but is it current?
+      enode=`ls -i $load/TPMON.EXE  | awk '{print $1}'`
+      inode=`ls -i $load/TPMON$nhex | awk '{print $1}'`
+      if [ $enode -ne $inode ] ; then
+	 linkit=yes
+	 killit=yes
+	 zappit=yes
+	 startit=yes
+      else
+	 [ "$debug" = "yes" ] && ei3 "$ARCH/TPMON$nhex" \
+                                 "is a valid link to TPMON.EXE"
+      fi
+   fi
+#                                       Check if this TPMONn is running
+   if [ "$sysv" = "yes" ] ; then
+      ps -ef 2>/dev/null | grep -v grep | grep TPMON$nhex >/dev/null
+      status=$?
+   else
+      ps ax 2>/dev/null | grep -v grep | grep TPMON$nhex >/dev/null
+      status=$?
+   fi
+   if [ "$status" = 1 ] ; then
+      startit=yes
+      [ "$debug" = yes ] && ei3 "need to restart TPMON$nhex"
+   else
+      [ "$debug" = yes ] && ei3 "TPMON$nhex is already running"
+   fi
+#                                       Finished checking things.
+#                                       --------------------------------
+#                                       remove old TPMONn if needed
+   if [ "$zappit" = yes ] ; then
+      rm -f $load/TPMON$nhex
+      if [ \( $? != 0 \) -o \( -f $load/TPMON$nhex \) ] ; then
+	 ei3 "***************************************************"
+	 ei3 "FAILED to remove $load/TPMON$nhex"
+	 ei3 " - ask your friendly AIPS manager to do this, and"
+	 ei3 "   also to create a new hard link to TPMON$nhex,"
+	 ei3 "   and to restart this TPMON daemon.  You cannot"
+	 ei3 "   restart TPMON$nhex for $tps"
+	 ei3 "***************************************************"
+	 continue
+      else
+	 [ "$debug" = "yes" ] && ei3 "deleted TPMON$nhex"
+      fi
+   fi
+#                                       link if needed
+   if [ "$linkit" = yes ] ; then
+      oldpwd=`$LPWD`; cd $load
+      [ "$debug" = "yes" ] && echo \
+          ei3 "Attempting hard link TPMON$nhex"
+      ln TPMON.EXE TPMON$nhex 2>/dev/null
+      if [ ! -f TPMON$nhex ] ; then
+	 ei3 "***************************************************"
+	 ei3 "FAILED to make hard link $load/TPMON$nhex to TPMON.EXE"
+	 ei3 " - Please ask your friendly AIPS manager to check"
+	 ei3 "   the permissions on the LOAD directory, to make"
+	 ei3 "   the TPMON$nhex hard link, and to restart TPMON$nhex."
+	 ei3 "   You cannot restart TPMON$nhex for $tps"
+	 ei3 "***************************************************"
+	 continue
+      else
+	 [ "$debug" = "yes" ] && echo \
+                                 "STARTPMON: [$HOST] made TPMON$nhex"
+         chmod ug+rwx TPMON$nhex >/dev/null 2>&1
+	 status=$?
+	 if [ "$debug" = "yes" -a "$status" != "0" ] ; then
+	    ei3 "WARNING: change mode ${load}/TPMON$nhex FAILED."
+	    ei3 "This is not serious but may affect other users."
+	 fi
+      fi
+      cd $oldpwd
+   fi
+#                                       kill process if needed
+   if [ "$killit" = yes ] ; then
+      ei3 "Old TPMON$nhex link found in $load"
+      ei3 " - will TRY to replace & restart it here."
+      ei3 " - TPMON daemons on other $ARCH hosts may" \
+                 "need restarted."
+#                                       Get process ID and username
+      if [ "$sysv" = "yes" ] ; then
+	 cmd=`ps -ef 2>/dev/null | grep -v grep | grep "TPMON$nhex"`
+	 pid=`echo $cmd | awk '{print $2}'`
+         [ "$pid" != "" ] && who=`echo $cmd | awk '{print $1}'`
+      else
+	 pid=`ps ax 2>/dev/null | grep -v grep | grep "TPMON$nhex" | \
+	  awk '{print $1}'`
+	 [ "$pid" != "" ] && \
+            who=`ps aux 2>/dev/null | grep -v grep | grep $pid | awk '{print $1}'`
+      fi
+#                                       if that worked, check who's who
+      if [ "$pid" != "" ] ; then
+         [ "$LOGNAME" = "" ] && \
+	  LOGNAME="(who am I?  LOGNAME undefined!)"
+	 if [ "$who" != "$LOGNAME" -a "$LOGNAME" != "root" ] ; then
+	    ei3 "Process $pid owned by $who, not $LOGNAME!"
+	    ei3 "- this kill attempt will almost certainly NOT work"
+	 fi
+	 [ "$debug" = "yes" ] && ei3 "killing $HOST/$pid"
+	 if kill $pid ; then
+	    ei3 "killed process TPMON$nhex (pid $pid)"
+	 else
+	    ei3 "***************************************************"
+	    ei3 "FAILED to kill process $pid (TPMON$nhex) for $tps"
+	    ei3 " - Please ask your friendly AIPS manager for help."
+	    ei3 "   You cannot restart TPMON$nhex for $tps"
+	    ei3 "***************************************************"
+            continue
+	 fi
+      else
+	 [ "$debug" = "yes" ] && \
+	  ei3 " TPMON$nhex not found, assume it's not running"
+      fi
+   fi
+#                                       Finally, start it if needed
+   if [ "$startit" = "yes" ] ; then
+#                                       Change redirection if you want
+#                                       to log mount requests, etc.
+      if [ "$debug" = "yes" ] ; then
+         ei3 "Starting TPMON$nhex with output ENABLED"
+         (cd $load; TPMON$nhex &)
+      else
+         ei3 "Starting TPMON$nhex with output SUPPRESSED"
+         (cd $load; TPMON$nhex >/dev/null &)
+      fi
+   fi
+done
+#                                       End of script.

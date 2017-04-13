@@ -1,0 +1,119 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#-----------------------------------------------------------------------
+# Usage: DASETUP
+#-----------------------------------------------------------------------
+# DASETUP is used to create AIPS data directories.  It uses the DADEVS
+# environment variable created by $SYSUNIX/DADEVS.SH
+#
+# Limited to 9 disks per host at the moment.
+#
+# Change the manager and prgroup below to reflect a suitable aips
+# manager account and aips programmer group for your site.
+#-----------------------------------------------------------------------
+manager=aipsmgr
+pgmrgrp=aipspgmr
+usergrp=aipsuser
+#                                       Issue warning.
+cat << EOT
+
+      ---------------------------------------------------------------
+      WARNING! This script must NOT be used if you are running a
+      system where the AIPS data disks are served by the automounter.
+      ---------------------------------------------------------------
+
+EOT
+#                                       Posix, sort of.
+if [ "$TZ" = "" ] ; then
+   ni1 () {
+           echo -n "$*"
+          }
+else
+   ni1 () {
+           echo "$*\c"
+          }
+ni1 "Do you wish to continue (y/n) [n]? "
+read ANSWER
+[ "$ANSWER" != y ] && exit 1
+#                                       Ensure that we are $manager.
+if [ `whoami` != "$manager" ] ; then
+   echo "This script must be run as $manager.  Stopping."
+   exit 1
+fi
+#
+if [ "$DATA_ROOT" = "" ] ; then
+   ni1 "DATA_ROOT is not defined.  What should it be?  (/DATA) "
+   read DATA_ROOT
+   [ "$DATA_ROOT" = "" ] && DATA_ROOT="/DATA"
+   export DATA_ROOT
+fi
+#                                       Ensure $DATA_ROOT exists.
+if [ ! -d "$DATA_ROOT" ] ; then
+   echo "Directory $DATA_ROOT not found.  Cannot proceed!"
+   exit 1
+fi
+#                                       Ensure $DATA_ROOT is owned by $manager.
+if [ ! -o "$DATA_ROOT" ] ; then
+   echo "Directory $DATA_ROOT not owned by $manager and it has to be!"
+   exit 1
+fi
+#                                       Make sure $DATA_ROOT has the right
+#                                       attributes.
+chgrp $pgmrgrp $DATA_ROOT
+chmod 2775 $DATA_ROOT
+
+if [ "$AIPS_ROOT" = "" ] ; then
+  ni1 "AIPS_ROOT not defined.  What should it be?  (/AIPS) "
+  read AIPS_ROOT
+  [ "$AIPS_ROOT" = "" ] && AIPS_ROOT=/AIPS
+  export AIPS_ROOT
+fi
+#                                       Define DADEVS.
+. $SYSUNIX/DADEVS.SH
+
+#                                       Create data directories.
+for dahost in $DADEVS ; do
+  lvol=0
+  while [ $lvol -lt `echo $dahost | awk -F. '{print $2}'` ] ; do
+    lvol=`expr $lvol + 1`
+
+    dahostr=`echo $dahost | awk -F. '{print $1}'`
+    set dadir=$DATA_ROOT/${dahostr}_$lvol
+    echo "Create $dadir"
+
+    mkdir $dadir
+    chgrp $usergrp $dadir
+    chmod 2775 $dadir
+  end
+end
+
+echo ""
+echo "Directory of $DATA_ROOT"
+ls -agl $DATA_ROOT
+
+exit 0

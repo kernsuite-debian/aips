@@ -1,0 +1,139 @@
+Image Catalog File:         IC10000n
+
+
+
+A.  Overview
+
+
+Function:  The image catalog contains data for images stored on
+     the TV device that identify the images, refer them back to
+     their original map files, and specify scaling of the X-Y and
+     intensity coordinates.  There is a separate image catalog which
+     performs the same functions for graphics devices (e.g. TEK4012
+     storage screens).
+
+Name and Location:  There is one image catalog file for each
+     television device whose physical name corresponds to IC10000n,
+     where n = the device number (0 for graphics, 1 - n for TVs).
+     They reside on disk 1 and must be created at AIPS installation.
+
+
+
+B.  Data Structures
+
+
+   General:  For each grey-scale image plane of the TV device, the IC
+contains N 1-block (256-word) records for cataloging up to N
+subimages, plus a (N-1)/51+1 block directory.  The directory immediately
+precedes the catalog blocks for each image plane.  For each TV graphics
+overlay plane there is one, undirectoried, catalog block.  These blocks
+follow immediately after the last grey-scale block.
+
+     The IC for pure graphics devices (called TK devices) has one
+image catalog block for each device in the system including all "local"
+TK devices followed by all remote-entry devices.  Record number n in
+this file is associated with TK device number n (NTKDEV in /DCHCOM/).
+
+   The image catalog blocks themselves are essentially duplicates of
+the map catalog blocks except that scaling information replaces the
+extension file index of the map catalog.
+
+
+Record Formats:
+
+
+   Directory Block (Grey-scale image)
+
+OFFSET LENGTH TYPE    DESCRIPTION
+     0      2  I*2    Sequence number of last sub-image cataloged
+                         on this plane
+     2      2  I*2    Seq. no. of sub-image in slot 1; 0 if slot empty
+     4      8  I*2(4) TV pixel positions of corners of 1st sub-image,
+                      x1,y1,x2,y2
+    12      2  I*2    Seq. no. of sub-image in slot 2; 0 if empty
+    14      8  I*2(4) TV pixel positions of corners of 2nd sub-image
+     .      .
+     .      .
+     .      .
+
+   Catalog Block for each image or subimage:
+
+     Most of the Image Catalog block is identical to the map
+catalog block of the source of the image.  (See section on CB files.)
+The information on antenna pointing, alternate frequency/velocity
+axis descriptions, and extension files is replaced in the IC by:
+
+OFFSET LENGTH TYPE  POINTER      DESCRIPTION
+
+  472     8   R*4(2) IRRAN=119   Map values displayed as min & max
+                                 brightness (units are those of file,
+                                 not the physical ones)
+  508     4   I*4    IIVOL=128   Disk volume from which map came
+  512     4   I*4    IICNO=129   Catalog slot number of orig. map
+  516    16   I*4(4) IIWIN=130   Map pixel positions of corners of
+                                 displayed image (rel. to orig. map)
+  532    20   I*4(5) IIDEP=134   Depth of displayed image in 7 -
+                                 dimensional map (axes 3 - 7)
+  552    16   I*2(4) IICOR=139   TV pixel positions of corners of
+                                 image on screen
+  568     4   I*4    IITRA=143   2-char code for transfer function
+                                 used to compute TV brightness from
+                                 map intensity values.
+  572     4   I*4    IIPLT=144   Code for type of plot.
+  576   100   I*4(25) IIOTH=145  Misc. plot type dependent info.
+                                 (at the moment no more than 20 used)
+
+The standard pointer values are computed by VHDRIN and are available
+through the common /HDRVAL/ via includes DHDR.INC and CHDR.INC.  They
+are machine-dependent and are used in the same way as the normal
+catalog pointers.
+
+
+C.  Usage notes
+
+
+   We assume that single images only are stored on graphics planes;
+they are not directoried.
+
+   When a grey-image plane is cleared, its directory is zeroed.
+As images are added to the plane, their coordinates are written
+into an open directory slot for that plane, along with the current
+value of the plane sequence number.  The sequence number is then
+incremented.  If an old image is completely overwritten by a new
+one, its directory slot is cleared.  For partially overlapping
+images, the sequence # allows the user to select the one most
+recently loaded into a given part of the plane.
+
+
+D.  Subroutines:
+
+
+   YCINIT  clears the Image Catalog for a given plane
+   YCOVER  are there any overlapped images in each on quadrant?
+   YCWRIT  adds a new block to the catalog
+   YCREAD  returns the block corresponding to a given TV pixel
+   YFIND   determines desired image, asks user if > 1 visible
+These routines expect the "plane number" as an argument.  TV gray scale
+planes are numbered 1 - NGRAY, TV graphics overlay planes are numbered
+NGRAY+1 - NGRAY+NGRAPH, and TK devices are referenced by any plane
+number > NGRAY+NGRAPH.
+
+
+E.  Commons:
+
+
+     The COMMON /TVCHAR/ referenced by 'DTVC.INC' and 'CTVC.INC'
+contains TV device characteristics such as:
+     NGRAY  =  # of grey-scale planes on this device
+     NGRAPH =  # of graphics planes
+     MAXXTV(2) Maximum number of pixels in x,y directions in image
+
+     The common /DCHCOM/ contains two important parameters in this
+regard: NTVDEV and NTKDEV.  The subroutine ZDCHIN sets these to the
+actual number of such devices present locally.  Then, the routines
+ZWHOMI (in AIPS only) and GTPARM (in all tasks) reset them to the
+device number assigned to the current user.  ZWHOMI determines these
+assignments.
+
+See Chapter VII for a discussion of the full contents of this common
+and of the imaging subroutines.

@@ -1,0 +1,105 @@
+@@
+Account file      AC100000
+
+A. Overview
+
+
+Function:  The account file is used to accumulate information on the
+use of the AIPS system.
+
+Details:  All user programs in the AIPS system are required to place
+information on task name, user number, start date/time, elapsed time,
+and CPU time for each execution in the accounting file.  This
+information is used by AIPS System Managers for a variety of purposes
+including the identification of problem programs and the maintaining
+of financial and usage accounting.
+
+Name:  The file name is AC100000. It is a permanent file and must be
+created at AIPS system installation.  A good initial size is about
+100 blocks, but the file will expand itself one granule at a time as
+necessary.
+
+
+B. File structure
+
+
+     The file consists of logical records each 9 words long.  There are
+28 logical records in each 256-word physical record.  The first logical
+record contains
+
+    FIELD    TYPE             DESCRIPTION
+
+      1      I*4         Maximum logical record # now recorded
+      2      I*4         Max logical record # which will fit in file
+      3      I*4         number of words / logical record
+      4      I*4         Number of logical records / physical record
+      5      I*4(5)      Reserved
+
+where fields 3 and 4 are clearly just for convenience.  All other
+logical records have the structure:
+
+    FIELD     TYPE             DESCRIPTION
+
+     1       H*4(2)      Task root name (4 characters/word)
+     2       I*4         POPS number
+     3       I*4         Logon user number
+     4       I*4(2)      Start time (packed YY/MM/DD, HH/MM/SS)
+     5       I*4         Total I/O count (when possible)
+     6       R*4         Total real time in seconds
+     7       R*4         Total CPU time in seconds
+
+When a program initializes its entry in the file, field 6 is set to
+zero and field 7 is set to the current CPU time.  When a program closes
+its entry, field 6 is reset to the difference in the current time and
+that in field 4 and field 7 is reset to the difference between the
+current CPU time and that previously in field 7.  Thus, system
+overhead times are not fully charged to the program and programs
+which abort are identifiable by field 6 equal to zero.  I/O count is
+handled like CPU time.
+
+
+C. Usage notes
+
+
+     No normal program other than those listed below should access
+this file.  Of course, AIPS System Managers may need to construct
+additional, special account management programs.
+
+
+D. Routines and commons for writing the account task data file
+
+
+      The primary routine for accessing the file is ACOUNT (IOP,
+buffer), where IOP = 2 means the entry is being closed and all other
+values of IOP mean the entry is being opened.  The AIPS, AIPSC, AIPSB,
+and BATER programs call ACOUNT directly at appropriate times.  Tasks
+must call GTPARM to obtain their full identity and their adverb values.
+Therefore, as soon as the identity is known, GTPARM calls ACOUNT.
+When tasks end, they must issue a close message, resume the initiating
+AIPSxx, and close the account entry.  The subroutine DIETSK (RETCOD,
+RQUICK, buffer) has been constructed to perform all of these
+operations.  The last executable statement in every task must be a call
+to DIETSK.  Subroutines DIE and TSKEND perform this call for some
+tasks.
+
+     The common /MSGCOM/ now carries a parameter, NACOUN, which gives
+the position in the accounting file being used by the current program.
+No routine, but ACOUNT, should change this parameter.
+
+
+E. Routines and commons for reading the task data file
+
+
+     A service program, PRTAC, has been written for use by AIPS System
+Managers and other interested users.  It can be run either as an AIPS
+task or as a stand-alone program.  It prints the contents of the
+account file in the forms: (1) sequential listing, (2) totals by POPS
+number, (3) totals by user number, and (4) totals by program name
+(sorted by CPU and sorted by number of occurrences).  PRTAC
+accumulates tasks and AIPS-like programs separately for types (2) and
+(3).  The user may limit which of these displays he receives.  He may
+also limit the summing and displays to a specific program name, a
+range of POPS numbers, a range of user numbers, only programs using
+more than x seconds of CPU, and/or only programs starting after a
+specific date.  PRTAC has a separate operation code which will clear
+the file for AIPS Managers only.

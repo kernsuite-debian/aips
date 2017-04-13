@@ -1,0 +1,139 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! perform the building of a subset of AIPS tasks for validation.
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997, 2000, 2005, 2015
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: INSTEP3
+#
+#-----------------------------------------------------------------------
+LOGFILE=INSTEP3.LOG
+export LOGFILE
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f /tmp/SEARCH.$$; echo "INSTEP3   : Abort!" | \
+   tee -a $LOGFILE; exit 1' 1 2 3 15
+if [ -f $LOGFILE ] ; then
+   echo "INSTEP3   : Resumes    `date`" | tee -a $LOGFILE
+else
+   echo "INSTEP3   : Begins     `date`" | tee -a $LOGFILE
+fi
+#                                       Sanity checks.  Make sure
+#                                       programming logicals are
+#                                       defined and that directories
+#                                       for binary files exist.
+if [ "$APLNOT" = "" ] ; then
+#                                       Programming logicals probably
+#                                       not defined.
+   echo "INSTEP3   : Programming variables seem not to be defined" \
+                                                 | tee -a $LOGFILE
+   echo "INSTEP3   : Type \$CDNEW or \$CDTST (whichever is"     \
+      "appropriate)"                             | tee -a $LOGFILE
+   echo "INSTEP3   : and execute INSTEP3 again." | tee -a $LOGFILE
+   echo "INSTEP3   : Aborts!    `date`"          | tee -a $LOGFILE
+   exit 1
+fi
+echo ""                                          | tee -a $LOGFILE
+echo "INSTEP3   : Start compilation/linkage of program subset." \
+                                                 | tee -a $LOGFILE
+echo ""                                          | tee -a $LOGFILE
+#                                       Create '@' file containing the
+#                                       subset of program pathnames
+#                                       used to exercise AIPS, if it
+#                                       doesn't already exist.
+if [ ! -s INSTEP3.LIS ] ; then
+   echo "INSTEP3   : Create subset list of programs to"   \
+     "compile/link."                                    | \
+     tee -a $LOGFILE
+   echo ""                                              | \
+     tee -a $LOGFILE
+#                                       Make a list of targets.
+   LIST3="$AIPPGM/FILAIP $AIPNOT/SETPAR $AIPPGM/POPSGN"
+   LIST3="$LIST3 $AIPPGM/ZSTRTA $AIPPGM/AIPS $APLPGM/DISKU"
+   LIST3="$LIST3 $APGNOT/FITLD $APGNOT/FITTP $APLPGM/PRTAC"
+   LIST3="$LIST3 $APLPGM/UVSRT $APLPGM/UVDIF $QYPGM/UVMAP $APLPGM/COMB"
+   LIST3="$LIST3 $QYPGM/APCLN $APLPGM/SUBIM $APLPGM/CCMRG $QPGNOT/CALIB"
+   LIST3="$LIST3 $QYPGM/VTESS $APLPGM/REMAG $APGOOP/OGEOM"
+   LIST3="$LIST3 $AIPNOT/TPMON $AIPNOT/TEKSRV $AIPNOT/MSGSRV"
+   LIST3="$LIST3 $AIPNOT/TVSERV $APLPGM/RTIME $APGNOT/FITAB $QPGOOP/IMAGR"
+#                                       For each target
+   touch INSTEP3.LIS
+   for target in $LIST3 ; do
+#                                       See which is the right module
+      PROPER=`SEARCH $target 2>/tmp/SEARCH.$$`
+      cat /tmp/SEARCH.$$ | tee -a $LOGFILE
+      if [ "$PROPER" != "" ] ; then
+         echo $PROPER >>INSTEP3.LIS
+      else
+         echo "INSTEP3   : Aborts!    `date`" | tee -a $LOGFILE
+         exit 1
+      fi
+   done
+   echo ""                                                 | \
+      tee -a $LOGFILE
+   echo "INSTEP3   : Begin compilation/linkage of program"   \
+      "subset of"                                          | \
+      tee -a $LOGFILE
+   echo ""                                                 | \
+      tee -a $LOGFILE
+else
+   echo "INSTEP3   : File       `pwd`/INSTEP3.LIS"         | \
+      tee -a $LOGFILE
+   echo "INSTEP3   : already exists (no need to create)."  | \
+      tee -a $LOGFILE
+   if grep '^[^-]' INSTEP3.LIS > /dev/null
+   then
+      echo "INSTEP3   : Resume compilation/linkage of program"  \
+         "subset at"                                          | \
+         tee -a $LOGFILE
+   else
+      echo "INSTEP3   : All         `pwd`/INSTEP3.LIS"         | \
+         tee -a $LOGFILE
+      echo "INSTEP3   : compilations/linkages marked as done." | \
+         tee -a $LOGFILE
+      echo "INSTEP3   : Ends       `date`"                     | \
+         tee -a $LOGFILE
+      exit 0
+   fi
+fi
+#                                       Use INSTEP3.LIS to drive
+#                                       COMLNK.  '-' in first column
+#                                       means that the module is
+#                                       already done.
+sed -n -e 's/^[^-].*/INSTEP3   : &/p' INSTEP3.LIS | tee -a $LOGFILE
+#                                       Compile/link via COMLNK.
+if COMLNK @INSTEP3.LIS $LOGFILE
+then
+   echo "INSTEP3   : Compilation/linkage of AIPS program subset ends" \
+      "successfully."                   | tee -a $LOGFILE
+else
+   echo "INSTEP3   : Compilation/linkage of AIPS program subset ends" \
+      "with fatal error(s)."            | tee -a $LOGFILE
+   echo "INSTEP3   : Aborts!    `date`" | tee -a $LOGFILE
+   exit 1
+fi
+echo "INSTEP3   : Ends       `date`" | tee -a $LOGFILE
+exit 0

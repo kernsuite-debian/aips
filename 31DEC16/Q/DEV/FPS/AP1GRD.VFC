@@ -1,0 +1,125 @@
+          DEFINE AP1GRD(UV,VIS,WT,L,INCF,N2,M,LROW,CNT,NFREQ)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Grids uv data.
+"# AP-appl
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+          LOCAL UV1,UV2,IWORK1,IWORK2,NOSHF,NOTAP,FCNT,IFQ
+"
+"     AP1GRD GRIDS VISIBILITY DATA THAT HAS BEEN LOADED INTO THE AP
+"     PREVIOUSLY.  IF REQUESTED, POSITIONS ARE SHIFTED AND THEN
+"     A TAPER IS APPLIED TO THE WEIGHTS IF REQUESTED BEFORE GRIDDING.
+"     MULTIPLE FREQUENCY CHANNELS MAY BE GRIDDED TOGETHER FOR
+"     BANDWIDTH SYNTHESIS.  TWO WORK WORDS ARE ASSUMED BEFORE THE
+"     FIRST VISIBILITY.
+"
+"                UV = BASE ADDRESS OF U,V VECTOR
+"                VIS = BASE ADDRESS OF VISIBILITY
+"                WT = BASE ADDRESS OF WEIGHTS
+"                L  = LENGTH OF VISIBILITY RECORD
+"                INCF = INCREMENT BETWEEN VISIBILITY & WEIGHTS, STEPPING
+"                      IN FREQUENCY.
+"                N2 = INT ( (NO. CELLS USED ON A ROW)/2 )
+"                M = NUMBER OF ROWS KEPT IN AP (MUST BE ODD)
+"                LROW = LENGTH OF A ROW (V)
+"                CNT =  NUMBER OF VISIBILITY POINTS.
+"                NFREQ  =  NUMBER OF FREQUENCIES TO GRID.
+"                 IF NFREQ IS NEGATIVE THEN TAPERING IS REQUESTED.
+"                 IF CNT IS NEG, DO NOT SHIFT DATA.
+"
+"     EXPECTS NECESSARY CONSTANTS IN FOLLOWING AP LOCATIONS:
+"
+"           8 = ROW NUMBER OF LOWEST CENTRAL ROW TO GRID
+"           9 = -SIG(U)**2 (CELLS**2) FOR TAPER
+"          10 = -SIG(V)**2 (CELLS**2) FOR TAPER
+"          11 = U SCALING TO CELLS
+"          12 = V SCALING TO CELLS
+"          13 = W SCALING TO CELLS
+"          14 = DXC = -2 * PI * DELTA RA (IN 1/CELLS) FOR 1ST
+"          15 = DYC = -2 * PI * DELTA DEC         FREQUENCY CHANNEL
+"          16 = DZC = -2 * PI * DELTA Z
+"          17 = AP ADDRESS CONTAINING ADDRESS OF BASE ADDRESS OF ROW
+"               CONVOLVING FN. (Y ON SKY)
+"          18 = AP ADDRESS CONTAINING ADDRESS OF BASE ADDRESS OF COL.
+"               CONVOLVING FN. (X ON SKY)
+"          19 = AP ADDRESS CONTAINING ADDRESS OF BASE ADDRESS OF GRID.
+"          20...20+NFREQ-2 = DIFFERENTIAL FREQUENCY SCALING TABLE
+"               FOR CHANNELS AFTER THE FIRST ONE.
+"               FREQ(N) = (1+MD(16+N-1)) * FREQ(N-1) FOR N>1
+"
+"
+         SP09 = UV
+         UV1 = SP09 + 1
+         UV2 = SP09 + 2
+         FCNT = 0
+         IWORK1 = VIS-2
+         IWORK2 = IWORK1+1
+"                                       Check if tapered
+         NOTAP = NFREQ
+         IF NFREQ > 0 GOTO A1
+            NFREQ = -NFREQ
+"                                       Check shift
+A1:      NOSHF = CNT
+         IF CNT=0 GOTO S999
+         IF CNT>0 GOTO A
+         CNT = -CNT
+"                                       Scale u,v,w to cells.
+A:       CALL VSMUL (UV,L,11,UV,L,CNT)
+         CALL VSMUL (UV1,L,12,UV1,L,CNT)
+         CALL VSMUL (UV2,L,13,UV2,L,CNT)
+         GOTO B1
+"                                       Frequency looping, rescale uv
+FLOOP:      IFQ = 19 + FCNT
+            CALL VSMA (UV,L,IFQ,UV,L,UV,L,CNT)   "update u
+            CALL VSMA (UV1,L,IFQ,UV1,L,UV1,L,CNT)   "update v
+            CALL VSMA (UV2,L,IFQ,UV2,L,UV2,L,CNT)   "update w
+B1:      FCNT = FCNT + 1
+         IF NOTAP > 0 GOTO NOTAPE
+"                                       Taper
+            CALL VMUL(UV,L,UV,L,IWORK1,L,CNT)
+            CALL VMUL(UV1,L,UV1,L,IWORK2,L,CNT)
+            CALL VSMUL(IWORK1,L,9,IWORK1,L,CNT)
+            CALL VSMA(IWORK2,L,10,IWORK1,L,IWORK1,L,CNT)
+            CALL VEXP(IWORK1,L,IWORK1,L,CNT)
+            CALL VMUL(WT,L,IWORK1,L,WT,L,CNT)
+"                                       Check if shift is requested.
+NOTAPE:  IF NOSHF<0 GOTO GRID
+"                                       Shift position.
+            CALL VSMUL(UV,L,14,IWORK1,L,CNT)
+            CALL VSMA(UV1,L,15,IWORK1,L,IWORK1,L,CNT)
+            CALL VSMA(UV2,L,16,IWORK1,L,IWORK1,L,CNT)
+            CALL VSIN(IWORK1,L,IWORK2,L,CNT)
+            CALL VCOS(IWORK1,L,IWORK1,L,CNT)
+            CALL CVMUL(IWORK1,L,VIS,L,VIS,L,CNT,1)
+"                                       Grid
+GRID:    CALL APGRD4(UV,VIS,WT,19,17,18,N2,M,LROW,L,CNT,8)
+         VIS = VIS + INCF
+         WT = WT + INCF
+         NFREQ = NFREQ - 1
+         IF NFREQ>0 GOTO FLOOP
+S999:    END

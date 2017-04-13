@@ -1,0 +1,1231 @@
+; MX
+;---------------------------------------------------------------
+;! makes images and deconvolves using UV data directly.
+;# TASK AP IMAGING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1997, 1999, 2002, 2007
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+MX        LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+MX:  Task to map and CLEAN.  IMAGR is a better task to use!
+INNAME                             Input UV data (name)
+INCLASS                            Input UV data (class)
+INSEQ                              Input UV data (seq. #)
+INDISK                             Input UV data disk drive #
+IN2NAME                            UV work file name
+IN2CLASS                           UV work file class
+IN2SEQ                             UV work file seq
+IN2DISK                            UV work file disk
+BCHAN            0.0     8192.0    Low freq. channel 0 for cont.
+ECHAN            0.0     8192.0    Highest freq channel
+CHANNEL                            Restart channel number
+NCHAV                              Number of chan. to average.
+CHINC                              Channel incr. between maps.
+STOKES                             Stokes parameters (see HELP)
+BIF                                First IF in average.
+EIF                                Last IF in average.
+OUTNAME                            Output image name (name)
+OUTDISK                            Output image disk drive #
+OUTSEQ          -1.0     9999.0    Output seq. no.
+CELLSIZE      1.E-12               (X,Y) size of grid in asec
+IMSIZE          0.0      4096.     Minimum image size
+NFIELD          0.         64.     Number of fields (max. 64)
+FLDSIZE         0.       4096.     Size of each field.
+RASHIFT                            RA shift per field (asec)
+DECSHIFT                           DEC shift per field (asec)
+NBOXES             0.0        50.0 Number of boxes for CLEAN
+                                   NB: field 1 only.
+CLBOX              0.0      4096.0 Four coordinates for each box
+UVTAPER         0.                 (U,V) Gaussian taper
+                                     units are kilo-lambda
+UVRANGE         0.                 Min & max baseline (klambda)
+UVWTFN                             UV dist. weight function
+                                     blank => uniform
+UVBOX           0.         128.    Additional rows and columns
+                                   used in weighting.
+ZEROSP                             0-spacing flux and weight
+XTYPE           0.         10.     Conv. function type in x
+                                     default spheroidal
+YTYPE           0.         10.     Conv. function type in y
+                                     default spheroidal
+XPARM                              Conv. function parms for x
+YPARM                              Conv. function parms for y
+GAIN     *         0.0         2.0 CLEAN loop gain
+FLUX     *                         Minimum CLEAN component (Jy)
+MINPATCH *         0.0             Min. BEAM half-width in AP.
+NITER    *         0.0             Maximum # of CLEAN components
+BCOMP                              Begin at BCOMP component
+                                   Specify for each field.
+BMAJ     *      -999.9             FWHM(asec) major axis CLEAN
+         *                         restoring beam.
+BMIN     *      -999.9             FWHM(asec) minor axis CLEAN
+         *                         restoring beam.
+BPA      *      -360.0       360.0 CLEAN beam position angle
+PHAT               0.0       999.0 Prussian hat height.
+FACTOR   *        -5.0         5.0 Speedup factor see HELP
+DOTV     *                         If >0 display residual field
+         *                         number DOTV
+CMETHOD  *                         Modeling method:
+         *                         'DFT','GRID','    '
+GUARD             -1.0         0.9 x,y guard band fractional
+                                   radius
+MAXPIXEL *         0.0    500000.0 Maximum pixels searched in
+                                   each major cycle.
+BADDISK           -1.0      1000.0 Disks to avoid for scratch.
+----------------------------------------------------------------
+MX
+Type:  Task:
+
+      **********     IMAGR is recommended over MX now     **********
+      MX does not apply flag tables or calibration even if FG and/or
+      SN tables accompany the input file.  It is also limited in a
+      large number of ways compared to IMAGR even if one does not use
+      thae advance options of IMAGR.  Robust weighting and TV
+      interaction alone are reasons to abandon MX.
+      ***************************************************************
+
+ Use:  MX is a task for mapping and/or cleaning which is more
+       general and accurate than the use of UVMAP and APCLN.
+       The main advantages of MX are: Map, with one execution,
+       up to 64 independent fields of view, up to 46655
+       frequency channels or combine up to 2048 channels on the
+       same grid; simultaneous cleaning of up to 64 fields using
+       a Clean algorithm which subtracts components from the
+       un-gridded (u-v) data which permits cleaning of the
+       entire field of view, rather than just the inner quarter
+       as with APCLN.
+            MX may be restarted if further Cleaning is desired.
+            Data in an arbitrary sort order may be used.
+Adverbs:
+  INNAME.....Input UV data file (name).       Standard defaults.
+  INCLASS....Input UV data file (class).      Standard defaults.
+  INSEQ......Input UV data file (seq. #).     0 => highest.
+  INDISK.....Input UV data file disk drive #. 0 => any.
+  IN2NAME....UV data work file name.  This file is used
+             as the scratch file and may be used when restarting
+             MX or to examine the final residuals.
+             Default=OUTNAME
+  IN2CLASS...UV work file class. Default='UVWORK'
+  IN2SEQ.....UV work data file sequence number.
+             Default = highest existing + 1.
+  IN2DISK....UV work data file disk number.
+  BCHAN......First channel number to image, 0=>1.
+             Channel numbers are 1 relative as defined in the
+             input data file.
+  ECHAN......Highest channel number to image, 0=>BCHAN
+             There is a limit of 46655 channels.
+  CHANNEL....To restart a map/CLEAN with a given frequency
+             channel, specify that (input) channel in CHANNEL
+  NCHAV......If NCHAV is the number of channels to be averaged
+             together in in the gridding process.
+  CHINC......Number of input channels to skip between images.
+  STOKES.....Make images with this STOKES parameter.  Unlike
+             UVMAP only one STOKES is permitted per execution.
+             (A beam is made for each frequency channel)
+             'I', 'Q','U', 'V', 'R' (=RCP), 'L' (=LCP)
+  BIF........The lowest numbered IF to include.  Multiple IFs
+             can be included in a bandwidth synthesis average.
+             0 => 1.
+  EIF........The highest numbered IF to include. 0 =>highest.
+             Note: not all data sets will have IFs.
+  OUTNAME....Output image name (name).       Standard defaults.
+  OUTDISK....The disk drive # of output images.  0 => highest with
+             space (note: map and Beam go on same disk.  Note:
+             OUTCLASS='xCLnnn' where x=Stokes, nnn=field number and
+             'xBM001' is the beam CLASS.  If NITER=0,
+             OUTCLASS='xIMnnn'
+  OUTSEQ.....Output sequence number.
+             Note: All maps and beam have same sequence number.
+             0 => highest to produce unique maps and beam.
+  CELLSIZE...(X,Y) pixel separation in asec.
+  IMSIZE.....(X,Y) The minimum desired size of the fields.
+             regardless of the FLDSIZE for component search.
+  NFIELD.....The number of fields to map in the antenna beam.
+             Up to 64 are allowed but should be non overlapping.
+  FLDSIZE....(X,Y) field size in pixels for the component
+             search during cleaning; one per field. Should be in
+             the range 32X32 to 4096X4096. Output image size
+             will be increased to the next highest power of two,
+             but only the region  specified will be searched for
+             components.  Default is IMSIZE-10
+  RASHIFT....RA shift of the phase center of each field from the tangent
+             point of the uv data in asec.  Map center = tangent point +
+             shift. If X>0 shifts map center to east.  NOTE: RASHIFT is
+             a shift in RA scaled by cos (Dec_0) as
+                Ra_new(i) = RA_0 + RASHIFT(i) / cos (Dec_0)
+             where _0 => the tangent point in the uv data.  This is a
+             change for 15OCT99 from shifts in -SIN projection (which
+             do not work for -NCP data and large angles).  If the UV
+             data have been rotated then RASHIFT and DECSHIFT refer to X
+             and Y in the new coordinate system.
+             THE DO3DIMAG OPTION OF IMAGR IS NOT SUPPORTED BY MX.
+  DECSHIFT...Declination shift of map center from tangent point of each
+             field in asec.  Map center = tangent point + shift.  If Y>0
+             shifts map center to north.
+  NBOXES......Number (<=50) of rectangular search boxes
+              To search on the first field; the clean window
+              in all other fields is given by  FLDSIZE.
+              0 => use FLDSIZE to determine windows on field 1.
+  CLBOX.......A 4x50 array with the BLC and TRC of each box.
+              0 => use window specified in FLDSIZE.
+              NOTE: CLBOX is not used to determine the size of the
+              image to be made;  IMSIZE or FLDSIZE must set the
+              size of the image.
+  UVTAPER....(U,V) Gaussian taper (kilo-lambda) at 30% level
+  UVRANGE....(Minimum,Maximum) baseline (kilo-lambda) in map.
+  UVWTFN.....Weighting function of (u-v) place.
+             blank=>Uniform; 'NA'=>Natural
+             'O '=> Set weights to One and do uniform weighting.
+             'V '=>VLBI weighting, forth root of input weight,
+              and do uniform weighting.
+             'NO'=>Set weights to one and use natural weighting.
+             'NV'=>VLBI weight and use natural weighting.
+  UVBOX......(U,V) box size for smoothing.  See EXPLAIN MX
+  ZEROSP.....(1)= zero spacing flux density for the polarization
+                being processed.
+             (2), (3), (4) unused
+             (5) = the weight for zero spacing flux.
+  XTYPE......Convolution function type in X-direction
+             1=Pill-box, 2=exponential, 3=Sinc, 4=Exp*Sinc,
+             5=Spheroidal, 6=exp*BESSJ1(x)/x.
+              <= 0 or > 5  -> 5.
+  YTYPE.....Convolution function type in Y-direction
+  XPARM.....Array containing parameters for XTYPE.
+            See HELP UVnTYPE when n=convolution type.
+  YPARM.....Array containing parameters for YTYPE.
+  GAIN......The CLEAN loop gain.  0 => 0.10.
+            Can be changed by TELL.
+  FLUX......Stop CLEAN when abs(resid. image max) < FLUX (Jy)
+            IF FLUX < 0 then Clean stops at first negative
+            Clean Component.  Can be changed by TELL.
+            IF FLUX < -99, then FLUX is milli-precent change in
+            total flux density between major cycles
+            (ie FLUX=-1000 => stop clean if < 1 % change)
+  MINPATCH..Minimum half width of the portion of the beam
+            which is used in the AP minor CLEAN. (< 3 => 127)
+            Use 51 for deep CLEANs of extended sources.  Use
+            a large value if the beam has big side-lobes.
+            Can be changed by TELL.  Upper limit 1024.
+  NITER.....CLEAN iteration limit. 0 => no CLEANing.
+            Can be changed by TELL (if initially > 0).
+  BCOMP.....Restart CLEAN using BCOMP(i) components for each
+            field i. If >0, you must completely specify the
+            OUTNAME and OUTSEQ of the clean map(s).
+  BMAJ......The FWHM (asec) major axis of the restoring beam.
+            If 0; value obtained from fitting to the beam.
+            If <0; output will contain the residual image.
+            Can be changed by TELL (if not = 0.0)
+  BMIN......The FWHM (asec) minor axis of the restoring beam.
+            Can be changed by TELL (if not = 0.0)
+  BPA.......The position angle in the unrotated image of BMAJ.
+            Can be changed by TELL.
+  PHAT......The offset added to the pixel at the beam peak.
+            Should be about <noise**2>/2*<signal**2> but
+            you may well need to experiment.
+  FACTOR....FACTOR>0 causes deeper CLEAN in each major cycle,
+            speeding CLEAN, maybe "eating" extended structure.
+            FACTOR=0 => the normal Clark CLEAN. FACTOR=-0.3 is
+            good for deep CLEANs of extended structure.
+            Can be changed by TELL.
+  DOTV......Display residuals on TV channel 1. > 0 =>
+            display the inner 512X512 of field number DOTV - 1.
+            Can be changed by TELL.
+            If true, you may stop the CLEANing with TV button
+            D after each residual map is displayed.
+  CMETHOD...This determines the method used to compute the
+            model visibility values.
+            'DFT' uses the direct Fourier transform, this
+               method is the most accurate.
+            'GRID' does a gridded-FFT interpolation model
+               computation.
+            '    ' allows the program to use the fastest
+               method.
+            Can be changed by TELL: once set to 'DFT' it can
+            no longer be changed, however.
+  GUARD.....Fraction of the x and y radius for which uv samples
+            are not allowed.  < 0 => just enough to avoid
+            mathematical errors in the convolution.
+            0 => 0.3 * SQRT(taper weight at 0.3 from edge).
+  MAXPIXEL..The maximum number of pixels that are searched
+            for components inside the ``AP'' in each major
+            cycle.  < 3000 => 20050.  This number affects the
+            cpu usage significantly.  Too many causes the task
+            to search over many points it will never use.  Too
+            few causes the task to do many more small major
+            cycles, also at great expense.  Use this with great
+            caution, but big wins are possible using larger
+            sizes on very large cleans.  Can be changed by TELL.
+  BADDISK...This array contains the numbers of disks on which
+            it is desired that scratch files not be located.
+            BADDISK has no effect on input and output maps.
+----------------------------------------------------------------
+MX:  Task which makes and CLEANs a map from UV data on disk
+     using AP
+DOCUMENTERS: W. Cotton NRAO (mostly from UVMAP and APCLN)
+             G. Langston NRAO
+RELATED PROGRAMS: UVLOD,UVSRT,APCLN,UVMAP,BLOAT,HORUS,RSTOR
+
+                          PURPOSE
+
+     MX combines the functions of mapping, CLEANing and
+subtracting components from the un-gridded uv data (ie. the
+functions of UVMAP, APCLN and UVSUB).  Because the CLEAN
+components are subtracted from the un-gridded data, the entire
+region of a map can be CLEANed; as opposed to the method used
+in APCLN which can only CLEAN a quarter of the map area.  Data
+in an arbitrary sort order may be deconvolved.
+
+     MX permits up to 64 independent fields in the antenna beam
+and 46655 frequency channels to be mapped and CLEANed in one
+execution.  Multi-band data can be gridded together before
+mapping.  If the machine crashes before the end of the execution
+MX should be fairly easily restartable.
+
+     MX is recommended over UVMAP and APCLN for the following
+problems:
+
+(1)  Snap-shot observations with a small number of visibility
+points run much faster with MX than UVMAP and APCLN when only
+the region with the source is mapped.  With MX there is no need
+to confine the source to the inner quarter area of the mapped
+region, although the source should not extend to the boundary of
+the field of view.
+
+(2)  For observations at low frequency and at high sensitivity.
+Radio emission is often detected over the entire primary beam.
+It is then prohibitively expensive to make and clean one large
+map. MX will permit you to choose up to 64 rectangular fields in
+the sky, map each and then simultaneously clean the entire set.
+It is often possible to choose a small number of fields which
+contains virtually all of the radio emission so that the total
+area processed by MX will be relatively small.  MX is
+particularly valuable for radio maps which contain a few
+'confusing' sources at large angular distance from the source of
+interest.  In order to determine the appropriate parameters for
+MX, first make a very low resolution map in order to determine
+the approximate location and size of each of the rectangular
+fields.  Insert the appropriate parameters of the fields into MX
+and run the task at the desired resolution.
+
+(3)  Only MX can produce and clean 4096X4096 maps at the present
+time.  Make sure you have enough disk space to make these maps!
+
+(4)  Use MX if you need >1000:1 dynamic range for a relatively
+extended source.  By subtracting components from the un-gridded
+(u-v) data aliasing of side-lobes inside the field of view is
+avoided.  Finally, components very far from the phase center but
+near the field center, will be subtracted from the (u-v) data
+with the proper w-phase terms.
+
+(5)  MX can average frequency channels in the gridding process
+by gridding each channel independently onto the same grid; this
+reduces the delay smearing problem in the maps to the amount
+due to the individual channel rather than the total bandwidth.
+This option can also be used to smooth line maps as the number
+of channels to grid together and the channel increment is
+independent.
+
+(5)  Only one Stokes' Parameter map can be made with one
+execution.  If you must have identical coverage for your I, Q,
+U or V maps, use UVMAP.  However, any differences among the
+different Stokes' parameters are usually minimal.
+
+                   ADVERBS PECULIAR TO MX
+
+     Most of the adverbs used by MX are duplicates of those used
+by UVMAP and APCLN and need no further explanation.  The adverbs
+peculiar to MX are:
+
+IN2NAME, IN2CLASS, IN2SEQ, IN2DISK
+     MX keeps a scratch file with the current uv data with the
+current list of components subtracted.  This file is cataloged
+and may be used to restart MX.  IN2NAME etc. can be used to
+specify this file.  If an existent version of this file is
+specified, is compatible with the current use, and has the same
+number of components subtracted as the requested number for
+restarting then the existing file will be used as the input uv
+data for the current frequency channel.  Note that IN2SEQ
+especially should be specified.  This will speed restarting MX
+considerably.
+
+     The MX uv work file will, in general, be different in many
+ways from the original input data and may give difficulties to
+some of the existing uv data handling routines.  The data will
+be in the form of a single Stokes' (or circular) polarization
+with the number of frequency channels being summed into one
+grid.  The direction of the baseline (but not the BASELINE code)
+will have been flipped as appropriate to make U positive.  The
+data will have been selected by the criterion given explicitly
+or implicitly to MX.  The weights will have the uniform
+weighting correction made.
+
+CHANNEL
+     This adverb, if >0, is used to restart MX.  If CHANNEL=N,
+then restart MX at frequency channel N (N=1 for continuum).
+When restarting a clean, use BCOMP as described below.
+
+NCHAV
+     The number of channels to be combined on the same grid
+before mapping.  Use this option to obtain one map from several
+channels of uv data at slightly different frequencies.  Up to
+2048 channels can be combined in the gridding stage.
+
+CHINC
+     The number of (u-v) planes to skip between maps.  If
+NCHAV>1, CHINC refers to the first plane going into the map.
+
+STOKES
+     Only one Stokes' parameter can be made at one time.  A
+beam is made for each polarization and each frequency channel.
+
+BIF,EIF
+     These define the first and last IFs to be included in a
+bandwidth synthesis average.  An IF consists of a set of
+one or more equally spaced frequency channels;
+multiple IFs with arbitrary frequency spacings are allowed.
+
+IMSIZE
+     The minimum desired size for all of the fields.  The limits
+are 32x32 to 4096x4096 and must be a power of 2.  The adverb
+FLDSIZE define the region over which clean components are
+searched for.
+
+NFIELD
+     The number of independent fields to map.  Up to 64 are
+permitted for each frequency channel specified by BCHAN, ECHAN
+and CHINC. Each field comes out as a separate cataloged file.
+Clean components subtracted from one field will not be restored
+to other fields even if the images overlap.
+
+FLDSIZE, RASHIFT, DECSHIFT
+     For each independent field, specify
+the center of the field by its RA offset and DEC offset in
+arc-seconds from the phase center.  A positive RA and DEC offset
+means that the field center is East and North of the phase
+center.  The FLDSIZE is the area in each image where clean
+components will be searched for.  It is limited to the range
+32x32 to 4096x4096 but need not be a power of 2.  The output
+image size will be increase to the next power of 2 or to IMSIZE
+if it is larger.  For maps smaller than 256x256, the size may
+be doubled for more accurate cleaning.
+
+     THE DO3DIMAG OPTION OF IMAGR IS NOT SUPPORTED BY MX.
+
+NBOXES, CLBOX (TVBOX)
+     For the first field, up to 50 CLEAN windows can be
+specified via CLBOX as an alternate to FLDSIZE.  This allows more
+flexibility than a single window centered on the phase center.
+If NBOXES is greater than 0 then the contents of CLBOX is used to
+specify the input window.  Since these values are in pixels
+care should be taken that they are determined from an image
+made with the same cellsize and shift.
+     NOTE: the values contains in CLBOX are not used to determine
+the size of the image for field 1.  IMSIZE and/or FLDSIZE must
+be used for this.  In the case that CLBOX and NBOXES are used,
+this is the only use made of FLDSIZE for field 1.  Its use for
+higher numbered fields is unaffected.  If CLBOX is 0's then the
+value of FLDSIZE (or its default) is used for CLBOX.
+     NBOXES and CLBOX specify the size and location of the
+rectangular boxes comprising the "CLEAN Window" area A.  You
+make the best use of prior knowledge about the source to help
+MX do its job when you restrict A as closely as possible to
+the true boundaries of its emission. Recall that CLEAN attempts
+to optimize F(n) as a representation of the sky, with zeroes
+everywhere else.  The more information you provide about where
+the "real" emission is, the more likely MX is to converge on
+a unique, credible solution.
+     The verb TVBOX may conveniently be used to set the BLC and
+TRC limits of the boxes after NBOXES has been typed in.
+Following a prompt on your terminal, position the TV cursor at
+the BLC of the first CLBOX and press any track-ball button.  Then
+position the cursor at the TRC of this box and press button B.
+Repeat this for all desired boxes. This will fill the CLBOX array
+for the MX inputs.  The terminal prompt will also give
+instructions for resetting any previously set corners should
+you need to do so. Note: since MX will remake the image, be
+sure to run TVBOX on an image made with the same cellsize and
+shift as will be used for MX.
+
+UVWTFN
+     When using MX to make several small maps over a large field
+of view, use Natural weighting rather than Uniform weighting in
+order to obtain the signal to noise and resolution which are
+comparable to that obtained from one large map over the field of
+view. For map sizes of 256 or less, the loss of signal to noise
+using Uniform weighting can be a factor of two or three.
+     Uniform weighting in MX, HORUS and UVMAP is defined as
+dividing the weights of visibilities in a UV grid cell by the
+number of visibilities in that UV grid cell.  (Note: this is not
+defined as the dividing by the sum of the weights of the
+visibilities, unless all visibilities have the same weight.)
+The result of this weighting is to decrease the significance of
+UV data falling in regions of the UV plane where large amounts
+of UV data are present. (For the VLA, the region is near U=V=0.)
+    MX also allows the input UV weights data to be reset in two
+ways.  The first is to reset all visibility weights to One.
+This is useful in the high signal-to-noise case.  It also forces
+all UV grid cells to have the same contribution to the image
+after Uniform Weighting.  (UVWTFN='O' or UVWTFN='NO')
+    The second weighting is "VLBI" weighting which resets the
+weights to sqrt(sqrt(input weight)).  This is important for
+observations were one telescope has significantly higher
+signal-to-noise ratio that others.  If the range of the input
+weights was not compressed by this weighting, the Fourier
+transform of the UV data consists only of baselines with the
+dominant antenna.  (UVWTFN='V' or UVWTFN='NV')n
+
+BCOMP
+     The default (BCOMP=0) restarts the CLEAN from scratch.
+Other values of BCOMP are used when MX is to be restarted from
+an intermediate step in the process.  When set >0, it specifies
+the maximum number of components from each subfield of a
+previous clean to be subtracted from the uv data to obtain the
+residual map for the first new iteration.  Each value in BCOMP
+corresponds to a field.
+     Restarts are sometimes needed after the computer has
+crashed during a long MX.  Under these circumstances, the
+iteration number at the end of the last major cycle is stored in
+the AIPS clean components file headers.  Provided that the crash
+has not destroyed relevant image files (or the CC extension
+file) on disk, the CLEAN may be restarted by setting BCOMP equal
+to the number of iterations shown in the image header for the
+CLEAN map - if this disagrees with the number in the internal
+file header (as may happen if the crash comes at an unfortunate
+point in a cycle), AIPS will adjust BCOMP downwards in a
+"fail-safe" way. (PRTCC might be run to check the state of the
+components list in such cases).  To restart MX cleaning from a
+set of fields set BCOMP to the highest of the number of clean
+components from the set.
+     When you set BCOMP>0, you must set the OUTNAME and OUTSEQ
+parameters explicitly to those of the Clean Map(s) whose CC
+extension file(s) contains the components which are to be
+subtracted.  This Clean Map file will be overwritten by the new
+Clean Map, so if you wish to preserve it you should either
+write it to tape using FITTP or create a second copy of it
+on disk using SUBIM. NOTE: there is one CC file per output
+frequency channel with version number = output channel number.
+     A components file F(N) can be re-convolved with a different
+Clean Beam H by restarting MX with NITER=BCOMP=n.  This is an
+effective tool for making SMALL changes the resolution of a
+Clean Map.  Do NOT use it for making large (factors >2) changes
+in resolution, e.g. to "find" extended components of a source.
+If a structure has been resolved out over the longer baselines,
+these baselines contribute only noise, not signal, to maps of
+that structure, and should be excluded from any search for the
+structure.  CLEANing a noisy map and then convolving it to
+much lower resolution makes no sense.  In such cases, you should
+re-map with an appropriate taper and run MX on a dirty map
+with a more appropriate resolution.
+
+BMAJ, BMIN, BPA
+     IF BMAJ is less than zero, the output image will be the
+residual image without the clean components restored.  Examining
+this image for waves or other artifacts is helpful for finding
+bad UV data.  The task RSTOR can quickly restore the clean
+components.
+
+CMETHOD
+     MX has two different routines for computing the model
+visibility from the CLEAN components.  The first ('DFT ')
+method does a direct Fourier transform of the CLEAN
+components for each visibility point.  This method probably
+gives slightly better accuracy but can be slow if there are
+many components and/or visibilities.
+(See TIMING section for more detail).
+     The second model computation method is to grid the CLEAN
+components, do a hybrid DFT/FFT ('GRID') onto a grid and
+interpolate each visibility measurement form the grid using
+(currently) ninth order Lagrange interpolation and a uv grid
+with half the spacing of the mapping grid.  This method is
+called the gridded-FFT method and CAN be MUCH faster than
+the DFT method for large data bases and large numbers of
+components.  Since the w correction must be done for each
+field separately the length of time this routine takes is
+proportional to the number of fields in which there are CLEAN
+components in any major cycle.  To increase the accuracy of
+the interpolation, the size of the model grid used for the
+interpolation is twice the size of the data grid for images
+up to 2048x2048.  This means the output scratch files (three
+of them) may be four times the size of the largest output file.
+     CMETHOD allows the user to specify the method desired or
+to allow MX to decide which one will be faster.  CMETHOD equal
+to '    ' (or any values but 'DFT 'or 'GRID') indicates that
+the decision is left to MX, CMETHOD = 'GRID' causes MX to use
+the  gridded-FFT method and CMETHOD = 'DFT ' forces MX to use
+the DFT method.
+     In cases where there are bright, localized regions far
+from the map center (eg. strong hot spots in double lobed
+sources) the gridded subtraction may be inadequate.  The
+principle failure should be to over estimate the brightness of
+the bright regions far from the map center (should be under a
+percent) and slightly increase the noise elsewhere.  This
+problem will be greatly reduced if the first few major cycles
+use the DFT subtraction method until the brightest regions are
+removed.  If CMETHOD is set to '    ' the first few major
+cycles will probably use the DFT.
+
+                EXAMPLES OF COMMON MX PARAMETERS
+
+1)  Emulate UVMAP and APCLN:
+     Set the appropriate parameters for normal UVMAP and APCLN
+execution.  To emulate a 1024x1024 map and with a clean of the
+inner 512x512 (500X500) use the following adverbs;
+
+      IMSIZE=512; NFIELD=1
+      FLDSIZE=500; RASHIFT=0; DECSHIFT=0
+      NITER=200; CMETHOD=''; UVWTFN='UN'
+
+MX will effectively clean nearly all of a 512x512 map with 200
+iterations.  MX will decide (CMETHOD='') which of the two
+component subtraction methods is most economical.  For a data
+base with less than about 1,000,000 data points, MX will run
+much faster than UVMAP and APCLN on a 1024x1024 map.
+Furthermore, the cleaning subtraction in MX is more accurate
+than that in APCLN. The relative execution time between MX and
+(UVMAP and APCLN) depend on the number of visibility points
+and clean components and are given in the TIMING section.
+Uniform weight was chosen to give highest resolution.
+
+2)  Piecemeal mapping and cleaning using MX
+     Set the usual input and output parameters, then
+
+     IMSIZE=128; NFIELD=3
+     FLDSIZE=32,32,256,256,20,20
+     RASHIFT=-40,5,200
+     DECSHIFT=120,2,400
+     UVWTFN='NA'
+     NITER=500; CMETHOD=''
+
+     MX will produce the following set of maps.
+  a.  64x64 map centered on (-40",120") with clean components
+      searched in the inner 32x32 area.
+  b.  256x256 map centered on (5",2") with clean components
+      searched over the entire 256x256 area.
+  c.  64x64map centered on (200",400") with clean components
+      searched over the inner 20x20 area.
+  d.  256x256 beam centered on (0",0").  The beam size is taken
+      to be the size of the biggest map or 1024, whichever
+      is smaller.
+
+It may be best to choose Natural weighting for the UV weight
+function.  In making relatively small fields over a wide area,
+Natural weight emulates the resolution and signal to noise of
+a single map made over the wide area.  The uniform weighted
+map for the 64x64 fields may be several times more noise than
+the naturally weighted map.
+
+3)  MX used with a multi-frequency u-v data base.
+
+     A range of spectral channels to image can be given by BCHAN
+and ECHAN which are the low and high channel numbers to be
+imaged in the the input file.  If CHINC is greater than 1 then
+every CHINC'th channel is selected between BCHAN and ECHAN.  If
+NCHAV is greater than 1 then NCHAV channels will be averaged
+starting with each channel selected by BCHAN, ECHAN and CHINC.
+If MX needs to be restarted then CHANNEL specifies the first
+channel that needs to be processed.  An image and a beam are
+made for each channel.  There is a limit of 46655 channels in an
+output image.
+   The default value for BCHAN is 1, for ECHAN is BCHAN, CHINC
+is 1 and NCHAV is 1.
+
+Example:
+     BCHAN=1; ECHAN=6; NCHAV=2; CHINC=2; STOKES='I'
+
+   Will cause channels 1&2, 3&4, 5&6 to be combined and imaged
+using the Stokes' I polarization data.
+
+Prudence
+     If running MX on a complicated source with low GAIN you may
+need to work to large final values of NITER.  As MX is the major
+consumer of CPU time in most map analyses, it is prudent to
+preserve intermediate clean maps by writing them to a FITS tape
+with FITTP.  This allows you to recover from disasters such as
+crashes, over CLEANing, etc. with minimal impact on total
+execution time, your time, and on disk space.
+
+                        TIMING
+
+  The amount of time it takes for MX to run depends on the
+amount of data, the size and complexity of the source and the
+current load on the computer.  The following formula give the
+approximate times for specific operations measured on an
+otherwise empty VAX11/780 plus an FPS AP-120B array processor:
+
+Making maps, gridding correction, statistics etc.
+  T(real) = No. Fields * ( No. vis. * 0.4E-3  +
+            (SQRT(NX*NY)/1024)**1.3 * 180    seconds
+
+Subtraction (DFT method)
+  T(real) = 6.0E-6 * No. vis * No. CLEAN components   seconds
+
+Subtraction (FFT method)
+  T(real) = No. Fields * (No. vis * 0.4E-3
+            + SQRT (4*NX*NY) * 4.0E-2
+            + No. Clean components * 1.0E-3   seconds
+
+Cleaning (in-AP)
+  T(real) = 3.0E-6 * No. Clean components
+            * No. residual map points         seconds
+
+
+                   GENERAL COMMENTS
+
+     General comments concerning mapping and cleaning follow.
+Most of the comments have been taken from the EXPLAIN files for
+UVMAP and APCLN.
+
+                      MAPPING
+
+     MX makes dirty maps and beams from (u,v) data using a Fast
+Fourier Transform (FFT).  The data may be in any sort order.
+The data are convolved onto the regularly spaced grid which is
+used for the Fourier transform.  Maps of several frequency
+channels, and a beam, can be made with one execution.  One
+polarization per execution.
+     A fairly complete description of the mapping functions
+performed by MX is given in Lecture 2 of the Proceedings of
+the NRAO-VLA Workshop on Synthesis Mapping.  Observers who are
+unfamiliar with interferometry are recommended to study this
+volume.
+
+OUTDISK :
+     If OUTDISK = 0, the map and beam will be put on the same
+disk.
+
+FLDSIZE,IMSIZE,CELLSIZE :
+     For effective CLEANing of the maps, the number of pixels
+per beam should be such that the pixel value immediately north
+or east of the beam center is no less than about 50% of the
+peak. However, if tapering is used, the outlying (u,v) points
+may not have any significant weight in the map.
+     Strong aliased sources should be CLEANed in separate fields
+unless they are close to the object of interest.
+     MX will make maps which have a power of two pixels on a
+side; between 32 and 4096 on the X-axis and between 32 and 4096
+on the Y-axis.  FLDSIZE defines the region to be searched for
+CLEAN components.
+     If for some reason it is desirable to map a region much
+larger than the region being CLEANed, IMSIZE can specify the
+minimum size of a map.  Components will be CLEANed from the
+region specified by FLDSIZE but the output image size will be as
+specified by IMSIZE.  Values in IMSIZE must be powers of 2.
+
+STOKES :
+     If you do not expect your source to show significant
+circular polarization, as is normally the case with galactic
+and extra-galactic continuum sources, making a V map can be a
+useful diagnostic for calibration problems, correlator offsets,
+etc.  The V map should be a pure noise map close to the
+theoretical sensitivity if your data base is well calibrated
+and edited.
+
+UVWTFN :
+     The default uniform weighting option gives higher
+resolution than natural weighting.  However, uniform weighting
+gives a lower signal to noise ratio.  Natural weighting is
+therefore preferable for detection experiments. With uniform
+weighting the dirty beam size decreases slightly with larger
+maps, other parameters remaining unchanged. In cases of very
+centrally condensed uv coverage such as that resulting from the
+VLA in the D array uniform weighting with a UVBOX greater than
+0.0 may be desirable.
+
+ZEROSP :
+     To improve CLEANing of extended sources, the zero-spacing
+flux should be included in MX.  The weight assigned should
+normally be in the range 10-100 but you may need to experiment,
+as the optimal value depends on your (u,v) coverage.  Inclusion
+of the zero-spacing flux will allow CLEAN to interpolate into
+the inner region of the (u,v) plane more accurately, provided
+that this flux does not exceed the average visibility at the
+short spacing by too much.  You must also CLEAN deeply to derive
+the full benefit of this (see the EXPLAIN file for APCLN).
+     Jacqueline van Gorkom claims that the only proper weight
+for the zero spacing flux density is the number of cells
+missing in the center of the uv plane as long as the zero
+spacing flux density doesn't greatly exceed the amount
+observed on the shortest baselines.
+
+UVBOX :      UVBOX MUST be 0 for UV data which is NOT XY sorted!
+     If uniform weighting (UVWTFN other than 'NA') is
+requested, the weight of each visibility is divided by the
+number of visibilities occurring in a box in uv space centered
+on the box containing the visibility point in question.  If
+UVBOX=0 the counting box is the same as the uv cell, UVBOX=1
+uses 3X3 uv grid cells centered on the cell containing the
+visibility UVBOX=2 uses 5X5 cells etc.  The effect of
+increasing UVBOX is to further down weight data occurring in
+densely populated regions of the uv plane.  Since must arrays
+have centrally condensed uv coverage the effect of increasing
+UVBOX is to decrease the beam size at a cost of reduced
+sensitivity and a slightly messier beam.  UVBOX=2 occasionally
+appears to have a dramatic effect on the beam size for VLA data
+from the D array.
+
+XTYPE,YTYPE :
+     The default convolution function Spheroidal (5) is now
+recommended for nearly all maps.
+
+                      CLEANing
+
+     MX de-convolves a dirty beam from a dirty map image using
+the CLEAN algorithm [Hogbom 1974] as modified to take advantage
+of the Array Processor [Clark 1980] and doing the subtraction
+from the un-gridded uv data.
+     CLEAN iteratively constructs discrete approximant F(n) to
+a solution F of the convolution equation:
+                           B^F = D                          (1)
+where D denotes the discrete representation of the dirty map,
+B of the dirty beam, the symbol ^ here denoting convolution.
+The initial approximant F(0)=0 everywhere.  At the n'th
+iteration, CLEAN searches for the extremum of the residual map
+R determined at the (n-1)'th iteration:
+                      R(n-1) = D - B^F(n-1)                 (2)
+A delta-function "CLEAN component", centered at this extremum,
+and of amplitude g (the loop GAIN) times its value, is added to
+F(n-1) to yield F(n).  The search over R is restricted to an
+area A called the "CLEAN window".  A is specified as a number
+NFIELD of rectangular sub-areas.
+     Iterations continue until either the number of iterations n
+reaches a preset limit N (=NITER), or the absolute value of the
+extremum of the residual map decreases to a preset value FLUX.
+If FLUX is negative, the clean stops at the first negative
+Clean Component.
+    To diminish any spurious high spatial frequency features in
+the solution, F(N) is normally convolved with a "hypothetical"
+Gaussian "Clean Beam" H to construct a final "Clean Map" C:
+                        C = H^F(N) + R(N)                   (3)
+The clean beam H may be specified by the user through the
+parameters BMAJ, BMIN, BPA, or it may be defaulted to an
+elliptical Gaussian fitted to the central region of the dirty
+beam B.  MX writes the array of "Clean Components" F(N) to
+the CC extension files of the clean map image file.
+     The Clark algorithm speeds up the deconvolution process by
+splitting it into "major" and "minor" iteration cycles.  At the
+beginning of the m'th major cycle, it loads into the AP a
+RESTRICTED residual map R'(m) containing only the LARGEST
+(positive and negative) values in the current residual map R(m).
+It then performs a "minor" cycle of iterations wherein new CLEAN
+components are sought with (a) the restricted residual map R'(m)
+replacing the full residual map R and (b) the dirty beam B being
+approximated by its values inside a small area (the "beam
+PATCH") with zeroes outside.
+     A minor cycle is terminated at iteration n' when the peak
+in the restricted residual map R'(n') falls to a given multiple
+[Clark 1980] of the largest value that was ignored in R(m) when
+R'(m) was passed to the the AP.  At the end of the cycle of
+minor iterations, the current clean component list F(n') is
+Fourier transformed, subtracted from the ungridded uv data,
+re-gridded and FFT-ed back the map plane, thereby performing
+step (2) EXACTLY with the components list F(n') obtained at
+the end of the minor cycle.
+Errors introduced in the minor cycle through use of the
+restricted beam patch are corrected to some extent at this step.
+This ends the m'th major cycle, the (m+1)th beginning when the
+new restricted residual map R'(m+1) is loaded into the AP.
+CLEANing ends (with the transform steps used at the end of a
+major cycle) when either the total number of minor iterations
+reaches NITER, or the residual value being CLEANed at a minor
+iteration reaches FLUX.
+
+                    Prussian Hats
+     When dealing with two-dimensional extended structures,
+CLEAN can produce artifacts in the form of low-level high
+frequency stripes running through the brighter structure.  These
+stripes derive from poor interpolations into unsampled or poorly
+sampled regions of the (u,v) plane.  [When dealing with quasi
+one-dimensional sources (jets), the artifacts resemble knots
+(which may not be so readily recognized as spurious)].
+     MX invokes a modification of CLEAN that is intended to
+bias it towards generating smoother solutions to the
+deconvolution problem while preserving the requirement that the
+transform of the CLEAN components list fits the data.  The
+mechanism for introducing this bias is the addition to the dirty
+beam of a delta-function (or "spike") of small amplitude
+(PHAT) while searching for the CLEAN components.  [The beam
+used for the deconvolution thereby resembles the helmet worn by
+German military officers in World War I, hence the name
+"Prussian Helmet Clean"].  The theory underlying the algorithm
+is given by Cornwell (1982, 1983), where it is described as the
+Smoothness Stabilized CLEAN (SSC).
+
+Don't CLEAN
+===================
+     If there is so little signal in your map that no side-lobes
+of any source in it exceed the thermal noise, then no side-lobe
+deconvolution is necessary, and CLEANing is a waste of your
+time and of CPU cycles.
+
+General - You can help CLEAN when you map
+===============================================
+     Other things being equal, the accuracy of the deconvolution
+process is greatest when the shape of the dirty beam is well
+sampled.  When mapping complicated fields, it is often necessary
+to compromise between cell size and field of view; if you are
+going to CLEAN a map image, you should set up your mapping
+parameters in MX so that there will be at least three or four
+cells across the main lobe of the dirty beam.
+     It is also important to make the CLEANed region large
+enough that no strong sources whose side-lobes will affect your
+map have been aliased by the FFT. This can be done by making a
+small map field around each confusing source.
+     Consider making a strongly tapered map of a wide
+field around your source at low resolution to diagnose confusion
+before running MX on a high resolution map(s) (especially when
+processing snapshot data from the lower VLA frequencies).
+     It is helpful to regard CLEAN as an attempt to interpolate
+missing samples in the (u,v) plane.  The accuracy of the
+interpolation is greatest where the original sampling is dense
+or where the visibility function varies slowly.  The accuracy is
+least where you ask CLEAN to Extrapolate into poorly sampled or
+unsampled regions of the (u,v) plane where the visibility
+function changes rapidly.
+     One such region is the center of the (u,v) plane in any
+map made from data where all of the fringe visibilities were
+less than the integrated flux density of the source.  You can
+help CLEAN to guess what may have happened in the center of the
+(u,v) plane (and thus to guess what the more extended structure
+on your map should look like) by including a zero-spacing flux
+density when you make your map.    This gives CLEAN
+a datum to "aim at" in the center of the (u,v) plane.  Extended
+structure can often be reconstructed well by deep CLEANing when
+the zero-spacing flux density is between 100% and 125% of the
+average visibility amplitude at the shortest spacings.  If your
+data do not meet this criterion, there may be no RELIABLE way
+for you to reconstruct the more extended structure.  (Some cases
+with higher ratios of zero-spacing flux density to maximum
+visibility amplitude can be successfully CLEANed, but
+success is difficult to predict).  If you see an increase in the
+visibility amplitudes on the few shortest baselines in your
+data, but not to near the integrated flux density, you may
+get better maps of the FINE structure by excluding
+these innermost baselines.
+     Another unsampled region lurks in the outer (u,v) plane in
+many VLA maps of sources at declinations south of +50, if the
+source has complicated fine structure.  To see why, consult the
+plots of (u,v) coverage for the VLA in Section 4 of the "Green
+Book" [Hjellming 1982].  At lower declinations, some sectors of
+the outer (u,v) plane are left poorly sampled, or unsampled,
+even by "full synthesis" mapping.  (There are missing sectors in
+the outer (u,v) plane in ANY snapshot map). If the visibility
+function of your source has much structure in the unsampled
+sectors, CLEAN may work poorly on a high resolution map unless
+it gets good "clues" about the source structure from the
+well-sampled domain.  If the clues are weak, badly extrapolated
+visibilities in the unsampled regions can cause high frequency
+ripples on the CLEAN map.  In such cases, CLEAN may give maps
+with better dynamic range if you are not too resolution-greedy,
+and restrict your data to the well-sampled "core" of the (u,v)
+plane.
+     Before applying CLEAN, examine your (u,v) coverage and
+think whether you will be asking the algorithm to guess what
+happened in such unsampled regions.
+
+Frailties, Foibles and Follies
+==============================
+     There are excellent discussions of CLEAN's built-in
+idiosyncrasies by Schwarz (1978, 1979), by Clark (1982) and by
+Cornwell (1982).
+     Another way of looking at CLEAN is to think of it as
+attempting to answer the question "What is the distribution of
+amplitudes at the CLEAN component positions [F(N)] which best
+fits the visibility data, if we define the sky to be blank
+everywhere else ?"  The algorithm can then be thought of as
+a "search" for places where F should be non-zero, and an
+adjustment of the intensities in F(N) to obtain the "best"
+agreement with the data.
+     The re-convolution of F(N) with the hypothetical "clean
+beam" H produces a "clean map" C whose transform is no longer a
+"best fit" to the data (due to differences between the
+transforms of H and of the dirty beam B).  The merit of the
+re-convolution is that it produces maps whose noise properties
+are pleasing to the eye.  It may also be used to "cover up"
+instabilities in CLEAN stemming from poor extrapolation into the
+unsampled regions of the (u,v) plane, by making H significantly
+wider than the main lobe of B.
+     Note also that step (3) of the standard CLEAN combines this
+re-convolution with the residual map, which contains faint sky
+features convolved with the DIRTY beam B.  If there is
+significant signal remaining in the residual map, the effective
+resolution of the Clean Map C varies with brightness.  You must
+therefore be particularly careful when comparing Clean maps made
+at different frequencies or in different polarizations; you
+should CLEAN all such maps sufficiently deeply that the
+integrated flux density in the CLEAN components F(N) is much
+greater than that in the residual map R(N).
+     A recurrent question about CLEAN concerns the uniqueness of
+the Clean Map.  In the absence of noise, CLEAN could adjust the
+amplitudes of the components in F(N) to minimize the rms
+difference between the observed visibility function and the
+transform of F(N) [Schwarz 1978, 1979].  If the number of
+degrees of freedom in F(N) is less than the number in the data,
+CLEAN can (and in many practical cases does) converge on a
+solution that is sensibly independent of your input parameters.
+Noise and approximations in the algorithms complicate this
+[Cornwell 1982], but realize that the solution CANNOT be unique
+if the number of positions at which you end up with CLEAN
+components exceeds the number of independent (u,v) data points.
+     Be suspicious if your Clean Map contains structures which
+resemble those of the dirty beam. This may mean either that you
+have not CLEANed deeply enough,or that CLEAN has had difficulty
+in some unsampled sector of the (u,v) plane in your case.  This
+test is particularly important in the case of snapshot maps,for
+which the side-lobes of the dirty beam have a pronounced star
+(snowflake) structure.
+
+GAIN and NITER
+     The depth to which CLEAN carries out its deconvolution is
+approximately measured by the product NITER*GAIN.  The first
+CC extension file version corresponds to the first output
+frequency channel.
+     A value of 0 for NITER is recognized to indicate that no
+CLEANing is desired.  In this case the dirty beam is always the
+size of the largest field and the CLASS of the output images
+are "IIMnnn" rather than "ICLnnn".
+     The value of NITER and the execution time needed
+to reach a given CLEANing depth are minimized by setting GAIN =
+1.0, but setting GAIN > 0.5 is recommended only when removing
+the side-lobes of a single bright unresolved component from
+surrounding fainter structure.  Note that TELL may be used to
+lower the GAIN after the first major cycles have removed the
+bright point objects.
+     When CLEANing diffuse emission, GAIN = 0.1 (the
+default) will be much better, for the following reason.  The
+search step of the algorithm begins its work at the highest peak
+(which in an extended source may be a random noise "spike").
+After one iteration, the spike is replaced in R by a negative
+beam shape, so the next highest peaks are more likely to be found
+where the spike would have had its biggest negative side-lobes
+[see the diagram on p.11 of Clark (1982)].  If GAIN is high,
+subsequent iterations tend to populate F(n) around the negative
+sidelobe regions of the highest peaks.  This "feedback" can be
+turned off by making GAIN small enough that the negative
+sidelobes of the first peaks examined in an extended structure
+are lost in the noise, i.e. GAIN * (worst negative sidelobe
+level) < signal-to-noise on the extended structure.  In practice
+setting GAIN << 0.1 makes CLEAN unacceptably slow (NITER too
+large for a given CLEANing depth) so a compromise is needed.
+GAINs in the range 0.1 to 0.25 are most commonly used.
+     If the source has some very bright compact features
+embedded in weaker diffuse emission, it is illuminating to
+examine the Clean Map when only the brightest structure has been
+CLEANed, to check whether subsequent CLEANing of weaker diffuse
+emission causes it to "go lumpy" via the sidelobe feedback
+effect. This could be done with GAIN = 0.3-0.5, using either
+NITER or the FIELD selection to ensure that the search does not
+stray into the extended emission.  Then MX can be restarted
+with lower GAIN, higher NITER and wider fields to tackle the
+diffuse structure.  TELL may be used to lower the gain during
+execution of MX.  If the weak emission "goes lumpy" you may
+need to rerun MX with different combinations of GAIN and
+NITER to find the most effective one for your particular case.
+     Ultimately you will stop MX when the new CLEAN component
+intensities approach the noise level on your map.  On a map of
+Stokes I, the appropriate stopping point will be indicated by
+comparable numbers of positive and negative components appearing
+in the CC list.  On maps of Stokes Q and U, which can and will
+be legitimately negative, you need to know the expected
+sensitivity level of your observation to judge how deep to go.
+     It is NEVER worth increasing NITER and restarting MX
+once many negative CLEAN components appear in the CC list of an
+I map.  When this occurs, you are using CLEAN to shuffle the
+noise in the residual map, which is about as sensible as
+rearranging the deck chairs on the Titanic after it hit the
+iceberg.
+
+FLUX
+     This provides an alternative to NITER for terminating the
+iterations in a given run of CLEAN.  In practice, most users
+prefer to control CLEAN by limiting each execution with NITER.
+FLUX should then be set to your expected rms noise level times
+the dynamic range of the dirty beam (peak/worst sidelobe), to
+ensure that you do not inadvertently waste time iterating to a
+high value of NITER while in fact CLEANing emission whose
+sidelobes are lost in the noise.
+     If FLUX is between -99 and -1, then clean stops on first
+negative clean component.  If FLUX < -99, then FLUX is
+milli-precent change in total flux density between major cycles
+(ie FLUX=-1000 => stop clean if < 1 % change)  A new adverb
+will be added to replace the convoluted FLUX logic.
+
+BMAJ, BMIN, BPA
+     The default values of 0 for these parameters invoke an
+algorithm whereby the central portion of the dirty beam B is
+fitted with an elliptical Gaussian function whose parameters are
+then used to specify the Clean Beam H.  The algorithm can be
+"fooled" by positive or negative sidelobes near the main
+lobe of B, and has been known to prescribe unsatisfactory forms
+for H, particularly for snapshot maps.
+     It is normally preferable to specify BMAJ, BMIN and BPA
+explicitly from your own examination of the dirty beam, or after
+a trial fit using the default.  The Clean Map C may be easier to
+interpret if BMIN is set equal to BMAJ, so that H is a circular
+Gaussian, and any elongated structures are therefore seen in
+their correct orientation.  The frailties of CLEAN's
+deconvolution will be least apparent if both are set equal to
+the LONGEST dimension of the dirty beam.
+     Attempts to "super resolve" the source by setting BMAJ and
+BMIN to the SHORTEST dimension of the dirty beam (or shorter)
+skate on the proverbial thin ice, the more so if the number of
+clean components in F(N) is comparable to, or larger than, the
+number of independent visibility data used to make the dirty
+map.
+     Note that if BMAJ, BMIN and BPA differ greatly from those
+of the main lobe of the dirty beam, the parts of the Clean Map
+derived from F(N) and from R(N) at step (3) will have greatly
+different resolutions.  This is very dangerous if R(N) contains
+significant residual emission.
+     If BMAJ is set <0, then the output map contains the
+residual map R(N) instead of the clean map C.  This option
+allows you to display, take hard copy of, or back up, the
+residual map while deciding further strategy, retaining the
+ability to regenerate the Clean Map later.
+
+NFIELD, FLDSIZE
+     A practical detail: when NFIELD=1 and FLDSIZE specifies an
+area <= 127 by 127, the entire residual map can be loaded into
+an AP with 64k, and CLEAN can proceed very efficiently.  This
+speeds up execution enormously.  If NFIELD>1, even if the area
+in the fields adds up to less than 127 by 127, this economy is
+lost.
+     A particularly large economy in run time is achieved when
+this default is used with 128 by 128 (or smaller) maps.  In the
+128 by 128 case not only will the Clean Window default to 128
+by 128, but the necessary FFTs can be done entirely within the
+AP; under these circumstances MX proceeds at a headlong gallop.
+
+FACTOR
+     This knob protrudes from the inner workings of the Clark
+algorithm, enabling the user to vary the criterion [Clark 1980]
+by which minor iteration cycles are ended.
+     [For those with an interest in the gory details - MX
+first notes the ratio between the brightest point which was
+ignored when the residual map R'(m) was passed to the AP and the
+maximum residual R'(n') at some later iteration n'; it then
+uses the Clark criterion with this ratio raised to the power
+FACTOR replacing unity in Clark's summation].
+     FACTOR = 0 (the default) recovers the Clark criterion.
+     FACTOR > 0 allows the minor cycles to go on longer,
+speeding up the CLEAN slightly (about 20% for FACTOR = 1), but
+allowing you to get closer to the situation where residuals R'
+in the AP become smaller than values which were ignored when the
+AP was loaded.  The search for new components becomes less and
+less accurate (compared with a Hogbom algorithm using all of R
+in step (2)), and the representation of extended structure in
+the final F(N) deteriorates.
+     FACTOR < 0 makes the termination criterion more
+conservative and thus improves the accuracy of the CLEANing at
+the expense of forcing more major cycles with a corresponding
+overhead in the FFTs done at the end of each one.
+     It is recommended that experiments with FACTOR normally be
+confined to the range -0.3 < FACTOR < +0.3, negative values
+being used when CLEANing complex extended structures, and
+positive values when CLEANing very simple compact structures.
+
+MINPATCH
+    This parameter specifies the minimum half-width of the beam
+patch that will be allowed in a minor cycle.  A smaller beam
+patch allows the CLEAN to go faster at the expense of less
+accurate subtraction at each iteration. The inaccuracy can lead
+to errors which will not be recovered completely at the end of
+the major cycle, especially if high GAINs are used or the
+source has complex structure.  MINPATCH=51 is recommended for
+CLEANing complicated sources.  If the BEAM has large sidelobes
+far from the beam center, the MINPATCH should be as large
+as possible (<= 1024).  (The BEAM often has large sidelobes for
+VLA snap-shot images.)
+
+     The beam patch and the residuals to be cleaned in each
+minor iteration must fit in the (pseudo) AP memory.  This may
+limit the number of pixels cleaned when MINPATCH is large.  This
+is not a consideration on most modern computers where we set the
+AP size to 1 Megaword or more.
+
+DOTV
+     Use of DOTV > 0 is STRONGLY recommended when CLEANing a
+source for the first time.  It causes the residual map of field
+number DOTV to be displayed on the TV after each major cycle,
+allowing you to monitor what emerges as the CLEAN progresses.
+DOTV > 0 produces a 15-sec pause after each major cycle to
+give you time to inspect the display and to assess whether
+it is reasonable to proceed.  Pressing track-ball D during
+this pause terminates MX in an orderly fashion. Pressing
+buttons A,B,C (or allowing the pause time to elapse) starts
+the next major cycle.
+     When CLEANing a very complicated source for the first time,
+it is often worth going beyond this interactive approach, by
+taking hard copy of various stages of the CLEAN to compare
+carefully later.  Consider setting NITER to a value in the range
+50-200 at first.  Then take hard copy of
+the lightly CLEANed map for later reference, and restart MX
+with a higher value of NITER.  Doing this increasing NITER by
+factors of order 2 each time can be very instructive in showing
+you what CLEAN is doing to the extended structures in your
+source.  Spectral line users may wish to CLEAN a typical channel
+in this way before deciding how best to parameterize MX for
+their production runs.  (Note that the trial channel should be
+reanalyzed using the final choice of parameters, for
+consistency; MX's final Clean maps depend in detail on the
+relative numbers of major and minor cycles which have been
+performed).
+
+Sorting of UV data:
+     For historical reasons, there are two parallel data paths
+for gridding and model subtraction within MX; one for XY sorted
+UV data and the other for unsorted UV data.  (Data must be
+Time-Baseline (TB) sorted for the calibration process.)  The XY
+sorted algorithm was written first, and was kept although the
+newer un-sorted algorithm has the identical functionality.
+Subroutines UVTBUN, UVGRTB and ALGSTB are process un-sorted data
+while UVUNIF, UVGRID, and ALGSUB process XY sorted data.
+
+                       REFERENCES
+
+    Proceedings of the NRAO-VLA Workshop on Synthesis Mapping
+1982, ed. A.R.Thompson and L.R.D'Addario.
+
+Clark, B.G. (1980).  "An Efficient Implementation of the
+     Algorithm "CLEAN", Astron.Ap., 89, 377-378
+Clark, B.G. (1982).  "Large Field Mapping", Lecture #10 in the
+     NRAO-VLA Workshop on "Synthesis Mapping"
+Cornwell, T.J. (1982).  "Image Restoration (and the CLEAN
+     Technique)", Lecture #9 in the NRAO-VLA Workshop on
+     "Synthesis Mapping"
+Hjellming,R.M. (1982).   "An Introduction to the NRAO Very Large
+     Array", Section 4.
+Hogbom,J.A. (1974).  "Aperture Synthesis with a Non-Regular
+     Distribution of Interferometer Baselines",Astron.Ap.Suppl.,
+     15, 417-426
+Schwarz, U.J. (1978).  "Mathematical-statistical Description of
+     the Iterative Beam Removing Technique", Astron.Ap.,65, 345.
+Schwarz, U.J. (1979).   "The Method "CLEAN" - Use, Misuse and
+     Variations", in Proc. IAU Colloq. No.49, "Image Formation
+     from Coherence Functions in Astronomy", ed. C. van
+     Schooneveld, (Dordrecht:Reidel), p. 261-275.
+Cornwell,T.J. (1982).  "Can CLEAN be Improved ?",VLA Scientific
+     Memorandum No. 141.
+Cornwell,T.J. (1983).  "A Method of Stabilizing the CLEAN
+     Algorithm", preprint.

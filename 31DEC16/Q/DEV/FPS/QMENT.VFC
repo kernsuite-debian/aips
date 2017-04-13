@@ -1,0 +1,161 @@
+      DEFINE QMENT (APBASE, DOGRDS, IMG, DEF, RES, STP, NELEM)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: MEM routine.
+"# AP-appl Obselete
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+"
+" Q-Routine for Maximum entropy programs. Calculates gradients
+" and their dot products.
+"
+" Input :
+"   APBASE   I*4      Base address in PS-AP, all others relative
+"   DOGRDS   I*4      Do gradients ? If > 0 then yes else no.
+"   IMG      I*4      Pointer in PS-AP to MEM image line
+"   DEF      I*4      Pointer in PS-AP to default image line
+"   RES      I*4      Pointer in PS-AP to residual image line
+"   STP      I*4      Pointer in PS-AP to step image line
+"   NELEM    I*4      Number of elements in a line
+"
+" Input via AP :
+"   Location        Variable
+"      0            - ALPHA
+"      1            - BETA
+"      2              GGC
+"      3              1.0
+"
+" Input/Output via AP :
+"   Location        Variable
+"      4             GRDHSQ
+"      5             GRDESQ
+"      6             GRDFSQ
+"      7             GRDHE
+"      8             GRDHF
+"      9             GRDEF
+"     10             FLUX
+"     11              RJ1
+"    STP        step in mem image
+"
+"    All locations are relative to APBASE. Location 12 is used for
+" scratch. Locations 13-16 are free for future use.
+"
+" Programmer : T.J. Cornwell                   January 1986
+"---------------------------------------------------------------------
+      LOCAL ALP, BET, GGC, RH, WRK, GRDS, RONE
+      LOCAL GHS, GES, GFS, GHE, GHF, GEF, FLX, TMP, RJ1
+"---------------------------------------------------------------------
+"                                      Pointers for variables
+      ALP = APBASE
+      BET = ALP + 1
+      GGC = ALP + 2
+      RONE = ALP + 3
+"                                      Storage for gradients, etc
+      GHS = ALP + 4
+      GES = ALP + 5
+      GFS = ALP + 6
+      GHE = ALP + 7
+      GHF = ALP + 8
+      GEF = ALP + 9
+      FLX = ALP + 10
+      RJ1 = ALP + 11
+      TMP = ALP + 12
+"                                      Storage for work areas
+      RH  = STP + NELEM
+      WRK = RH  + NELEM
+"
+"            FLUX = FLUX + IMG
+"
+         CALL SVE (IMG, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, FLX, 1, FLX, 1, 1)
+"
+"               RH = IMG / (1.0 + GGC*IMG)
+"
+         CALL VSMSA (IMG, 1, GGC, RONE, RH, 1, NELEM)
+         CALL VDIV  (RH, 1, IMG, 1, RH, 1, NELEM)
+"
+"               GRADH = -LOG (IMG/DEF)
+"
+         CALL VDIV (IMG, 1, DEF, 1, IMG, 1, NELEM)
+         CALL VLN  (IMG, 1, IMG, 1, NELEM)
+"
+"            GRADJ = GRADH - ALPHA*RES - BETA
+"
+         CALL VSMA (RES, 1, ALP, IMG, 1, WRK, 1, NELEM)
+         CALL VSADD (WRK, 1, BET, WRK, 1, NELEM)
+"
+"            RJ1 = RJ1 + STP*GRADJ
+"
+         CALL VMUL (STP, 1, WRK, 1, STP, 1, NELEM)
+         CALL SVE (STP, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, RJ1, 1, RJ1, 1, 1)
+         IF DOGRDS < 0 GOTO S999
+         CALL VMOV (WRK, 1, STP, 1, NELEM)
+"
+"            STP = GRADJ*RH
+"
+         CALL VMUL (STP, 1, RH, 1, STP, 1, NELEM)
+"
+"               GFS = GFS + RH
+"
+         CALL SVE (RH, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GFS, 1, GFS, 1, 1)
+"
+"               GHS = GHS + RH * GRADH**2
+"
+         CALL VSQ (IMG, 1, WRK, 1, NELEM)
+         CALL VMUL (WRK, 1, RH, 1, WRK, 1, NELEM)
+         CALL SVE (WRK, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GHS, 1, GHS, 1, 1)
+"
+"               GES = GES + RH * GRADER**2
+"
+         CALL VSQ (RES, 1, WRK, 1, NELEM)
+         CALL VMUL (WRK, 1, RH, 1, WRK, 1, NELEM)
+         CALL SVE (WRK, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GES, 1, GES, 1, 1)
+"
+"            GHE = GHE + RH * GRADER * GRADH
+"
+         CALL VMUL (RES, 1, IMG, 1, WRK, 1, NELEM)
+         CALL VMUL (WRK, 1, RH, 1, WRK, 1, NELEM)
+         CALL SVE (WRK, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GHE, 1, GHE, 1, 1)
+"
+"            GEF = GEF + RH * GRADER
+"
+         CALL VMUL (RES, 1, RH, 1, WRK, 1, NELEM)
+         CALL SVE (WRK, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GEF, 1, GEF, 1, 1)
+"
+"            GHF = GHF + RH * GRADH
+"
+         CALL VMUL (IMG, 1, RH, 1, WRK, 1, NELEM)
+         CALL SVE (WRK, 1, TMP, NELEM)
+         CALL VADD (TMP, 1, GHF, 1, GHF, 1, 1)
+"
+S999:    END

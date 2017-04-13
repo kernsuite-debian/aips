@@ -1,0 +1,619 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1997, 2001, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: FC [directory-path/][@]source[.FOR,.f] [AIPS-style-options]
+#           [UNIX-style-options] [file.LOG]
+#
+# Compile Fortran module under UNIX/AIPS.
+# Object modules or binaries from successful compilations are left in
+# the architecture-specific $PREP area, if the source code is somewhere
+# in the $AIPS_VERSION directory tree (excluding $APLCONTR), otherwise
+# the current directory.
+#
+# This script uses file OPTIMIZE.LIS to determine the optimization level
+# via the FCLEVEL.SH script.
+#
+# Inputs (can appear in any order):
+#
+#    1) [directory-path/][@]sourcef[.f]
+#
+#       At least one (uppercase) preprocessed Fortran source with or
+#       without the '.f' extension.  If not a pathname, the current
+#       working directory is assumed and prepended.  The special
+#       character '@', if prepended to the filename, indicates an "at"
+#       or list file containing a list of source module pathnames.
+#
+#    2) [AIPS-style-options]
+#
+#       These are translated into local syntax based on the definitions
+#       in the file OPTIMIZE.LIS in $SYSLOCAL, and $SYSUNIX/FDEFAULT.SH.
+#       Recognized AIPS-style options include:
+#
+#       DEbug   - generate code suitable for debugger(s).
+#       DIrty   - compile letting declarations default (not recommended)
+#       LISt    - generate source code listing (only for compilation)
+#       LINk    - Generate output binary (.EXE), not object file (.o)
+#       MAp     - generate link map
+#       OPTn    - optimization level (n = 0 to 9), also NOOPT
+#       PRofile - generate code suitable for profiling
+#       PUrge   - delete .f, log files and object module after
+#                 successful compilation.  DEBUG causes PURGE to leave
+#                 the preprocessed source intact, however.
+#
+#       Uppercase part of option is minimum required for recognition.
+#       The above can be prefixed with NO to negate the option, e.g.
+#       NOPURGE will cancel any deleting of files.
+#
+#    3) [UNIX-style-options]
+#
+#       Theses are passed on to the local Fortran compiler.
+#
+#    4) [file.LOG]
+#
+#       Optional log filename of the form '*.LOG'.  If not given, log
+#       files are automatically generated (or appended to) for each
+#       source being processed.  If purging is enabled either by default
+#       or by specifying PURGE on the command line and all goes well,
+#       these automatic log files as well as preprocessed forms of the
+#       source involved are deleted.  If the user specifies a '.LOG'
+#       file on the command line, it is either generated or appended to
+#       but never deleted.
+#
+# Input Variables
+#   $AREA - Original AIPS area containing module (e.g. $QPSAP, expanded)
+# Generic UNIX version.
+#-----------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f $PREP/FC.${HOST}.$$ $PREP/FC$$.${HOST}.LIS \
+ $PREP/AT.${HOST}.$$; exit 1' 1 2 3 15
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Any command line argument(s)?
+if [ "$*" = "" ] ; then
+   echo "Usage: FC [directory-path/][@]source[.FOR,.f]" \
+      "[AIPS-style-options] \\"
+   echo "          [UNIX-style-options] [file.LOG]"
+   exit 1
+fi
+#                                       If the compiler is not set
+if [ -z "$COMPILER" ] ; then
+#                                       set the default compiler
+  if [ -f $SYSLOCAL/FDEFAULT.SH ] ; then
+    . $SYSLOCAL/FDEFAULT.SH
+  else
+    if [ -f $AIPS_VERSION/$ARCH/SYSTEM/FDEFAULT.SH ] ; then
+       . $AIPS_VERSION/$ARCH/SYSTEM/FDEFAULT.SH
+    else
+       . $SYSUNIX/FDEFAULT.SH
+    fi
+  fi
+fi
+#                                       Initialize FCOPTS, OPTS and
+#                                       ULOG.
+FCOPTS=$COMP
+OPTS=""
+ULOG=""
+#                                       Track command line options
+OPTSPEC=""
+OPTLEVEL=""
+DBGSPEC=""
+DBGLEVEL=""
+#                                       Parse arguments.
+for i
+do
+   case $i in
+      *.LOG | *.log)
+         case $i in
+            */*) ULOG=$i ;;
+            *)   ULOG=`$LPWD`/$i ;;
+         esac
+      ;;
+      *@*)
+#                                       An '@' file list of pathnames.
+#                                       Form pathname if a $AT is a
+#                                       simple filname.
+         case $AT in
+            */*) AT=`echo $i | sed -e 's/@//'` ;;
+            *)   AT=`echo $i | sed -e 's/@//'`
+                 AT=`$LPWD`/$AT ;;
+         esac
+         if [ -s $AT ] ; then
+#                                       Append it to pathname list.
+            sed -n -e 's/^[^-]/&/p' $AT >> $PREP/FC.${HOST}.$$
+         else
+            echo "FC        : '@' file $AT"
+            echo "FC        : not found or zero size!"
+            rm -f $PREP/FC.${HOST}.$$ $AT
+            echo "FC        : Dies of unnatural causes"
+            exit 1
+         fi
+      ;;
+      *.FOR | *.f | *.* | */*)
+#                                       Source module.
+         case $i in
+            */*.f | */*.FOR) echo $i       >> $PREP/FC.${HOST}.$$ ;;
+            *.f | *.FOR)     echo `$LPWD`/$i >> $PREP/FC.${HOST}.$$ ;;
+#                                       Bad extension.  Skip.
+            *.* | */*.*) ;;
+#                                       No extension/type.  Try one...
+            *) if [ -f ${i}.FOR -o -f ${i}.f ] ; then
+                  NEWEST `$LPWD`/${i}.FOR `$LPWD`/${i}.f >> \
+                   $PREP/FC.${HOST}.$$
+               else
+                  echo "FC        : Neither    ${i}.FOR"
+                  echo "FC        : nor        ${i}.f"
+                  echo "FC        : found!"
+                  rm -f $PREP/FC.${HOST}.$$
+                  echo "FC        : Dies of unnatural causes"
+                  exit 1
+               fi
+            ;;
+         esac
+      ;;
+#                                       UNIX-style option.
+      -*)
+         FCOPTS="$FCOPTS $i"; OPTS="$OPTS$i " ;;
+#                                       possible AIPS options
+      *) case $i in
+            [Dd][Ee] | [Dd][Ee][Bb] | [Dd][Ee][Bb][Uu] | \
+            [Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'DE(BUG)'.
+#                                       Turn on debug mode.
+               OPTS="$OPTS$i"
+               DBGLEVEL=$DEBUG
+               DBGSPEC="TRUE"
+            ;;
+            [Nn][Oo][Dd][Ee] | [Nn][Oo][Dd][Ee][Bb] | \
+            [Nn][Oo][Dd][Ee][Bb][Uu] | [Nn][Oo][Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'NODE(BUG)'.
+#                                       Turn off debug mode.
+               OPTS="$OPTS$i "
+               DBGLEVEL=$NODEBUG
+               DBGSPEC="TRUE"
+            ;;
+            [Nn][Oo][Oo][Pp][Tt])
+#                                       Some form of 'NOOPT'.
+#                                       Suppress all optimization.
+               OPTS="$OPTS$i "
+#                                       Keep option level
+               OPTLEVEL=$NOOPT
+               OPTSPEC="TRUE"
+            ;;
+
+            [Ll][Ii][Ss] | [Ll][Ii][Ss][Tt])
+#                                       Some form of 'LIS(T)'
+#                                       Turn on source list generation.
+               OPTS="$OPTS$i "
+               LIST=TRUE
+            ;;
+
+            [Nn][Oo][Ll][Ii][Ss] | [Nn][Oo][Ll][Ii][Ss][Tt])
+#                                       Some form of 'NOLIS(T)'
+#                                       Turn off source list generation.
+               OPTS="$OPTS$i "
+               LIST=FALSE
+            ;;
+
+            [Mm][Aa] | [Mm][Aa][Pp])
+#                                       Some form of 'MA(P)'
+#                                       Turn on link map generation.
+               OPTS="$OPTS$i "
+               OPTION=$MAP
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to FCOPTS.
+                  FCOPTS="$FCOPTS $OPTION"
+               fi
+            ;;
+
+            [Nn][Oo][Mm][Aa] | [Nn][Oo][Mm][Aa][Pp])
+#                                       Some form of 'NOMA(P)'
+#                                       Turn off link map generation.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$MAP'
+               OPTION=`eval echo $XLATE`
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+               fi
+            ;;
+
+            [Oo][Pp][Tt][0-9])
+#                                       Some form of 'OPT[0-9]'
+               OPTS="$OPTS$i "
+#                                       Translate OPT?
+               XLATE=\$$i
+               OPTLEVEL=`eval echo $XLATE` ; export OPTLEVEL
+               OPTSPEC="TRUE"
+            ;;
+
+            [Dd][Ii] | [Dd][Ii][Rr] | [Dd][Ii][Rr][Tt] | \
+            [Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'DI(RTY)'
+#                                       Turn on default declarations.
+               OPTS="$OPTS$i "
+               OPTION=$DIRTY
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to FCOPTS.
+                  FCOPTS="$FCOPTS $OPTION"
+               fi
+            ;;
+
+            [Nn][Oo][Dd][Ii] | [Nn][Oo][Dd][Ii][Rr] | \
+            [Nn][Oo][Dd][Ii][Rr][Tt] | [Nn][Oo][Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'NODI(RTY)'
+#                                       Turn off default declarations.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DIRTY'
+               OPTION=`eval echo $XLATE`
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+               fi
+            ;;
+
+            [Pp][Uu] | [Pp][Uu][Rr] | [Pp][Uu][Rr][Gg] | \
+            [Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'PU(RGE)'
+#                                       Turn on module purging.
+               OPTS="$OPTS$i "
+               PURGE=TRUE
+            ;;
+
+            [Nn][Oo][Pp][Uu] | [Nn][Oo][Pp][Uu][Rr] | \
+            [Nn][Oo][Pp][Uu][Rr][Gg] | [Nn][Oo][Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'NOPU(RGE)'
+#                                       Turn off module purging.
+               OPTS="$OPTS$i "
+               PURGE=FALSE
+            ;;
+
+            [Pp][Rr] | [Pp][Rr][Oo] | [Pp][Rr][Oo][Ff] | \
+            [Pp][Rr][Oo][Ff][Ii] | [Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'PR(OFILE)'
+#                                       Turn on execution profiling.
+               OPTS="$OPTS$i "
+               OPTION=$PROFILE
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to FCOPTS.
+                  FCOPTS="$FCOPTS $OPTION"
+               fi
+            ;;
+
+            [Nn][Oo][Pp][Rr] | [Nn][Oo][Pp][Rr][Oo] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff] | [Nn][Oo][Pp][Rr][Oo][Ff][Ii] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'NOPR(OFILE)'
+#                                       Turn off execution profiling.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$PROFILE'
+               OPTION=`eval echo $XLATE`
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of FCOPTS.
+                  FCOPTS=`echo $FCOPTS | sed -e 's/ *'$OPTION'//'`
+               fi
+            ;;
+
+            [Ss][Aa] | [Ss][Aa][Vv] | [Ss][Aa][Vv][Ee])
+#                                       Some form of 'SA(VE)' - ignore
+            ;;
+
+            [Nn][Oo][Ss][Aa] | [Nn][Oo][Ss][Aa][Vv] | \
+            [Nn][Oo][Ss][Aa][Vv][Ee])
+#                                       Some form of 'NOSA(VE)' - ignore
+            ;;
+
+            *)
+#                                       Not a recognizable AIPS-style
+#                                       option.  Try some Fortran ext.
+#                                       if it exists, add to list
+               if [ -f ${i}.FOR -o -f ${i}.f ] ; then
+                  NEWEST `$LPWD`/${i}.FOR `$LPWD`/${i}.f >> \
+                   $PREP/FC.${HOST}.$$
+               else
+                  echo "FC        : Neither    `$LPWD`/${i}.FOR"
+                  echo "FC        : nor        `$LPWD`/${i}.f"
+                  echo "FC        : found!"
+                  rm -f $PREP/FC.${HOST}.$$
+                  exit 1
+               fi
+            ;;
+
+         esac
+
+      ;;
+
+      *)
+#                                       User error.
+         echo "Usage: FC [directory-path/][@]source[.FOR,.f]" \
+            "[AIPS-style-options] \\"
+         echo "          [UNIX-style-options] [file.LOG]"
+         rm -f $PREP/FC.${HOST}.$$
+         echo "FC        : Dies of unnatural causes"
+         exit 1
+      ;;
+
+   esac
+
+done
+#                                       Squeeze out extra blanks
+FCOPTS=`echo $FCOPTS | sed -e 's/  */ /g'`
+#                                       Any source modules to compile?
+if [ ! -f $PREP/FC.${HOST}.$$ ] ; then
+   echo "Usage: FC [directory-path/][@]source[.FOR,.f]" \
+      "[AIPS-style-options] \\"
+   echo "          [UNIX-style-options] [file.LOG]"
+   echo "FC        : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Remove
+#                                       Compile modules one at a time.
+cat $PREP/FC.${HOST}.$$ | \
+{
+   while read PATHNAME
+   do
+#                                       Save $PATHNAME in case we are
+#                                       being '@' file driven.
+      ATNAME=$PATHNAME
+#                                       Make sure the source module
+#                                       actually exists.
+      if [ -f $PATHNAME ] ; then
+#                                       Separate directory and filename.
+         FILE=`basename $PATHNAME | sed -e 's/\..*//'`
+#                                       Find original file directory
+         if [ -z "$AREA" ] ; then
+            AREA=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+         fi
+#                                       Preprocess into a different dir
+         case $PATHNAME in
+            $APLCONTR*)     DIR="$APLCONTR" ;;
+            $AIPS_VERSION*) DIR="$PREP"     ;;
+            *)              DIR="$AREA"     ;;
+         esac
+#                                       If optimization not specified
+         if [ -z "$OPTSPEC" ] ; then
+#                                       Read in optimization for file
+            if [ -f $SYSUNIX/FCLEVEL.SH ] ; then
+               OPTHIS=`(. $SYSUNIX/FCLEVEL.SH)`
+            else
+#                                       No optimization default file
+               OPTHIS=""
+            fi
+#                                       IF Override debug
+            if [ "$DBGSPEC" = "TRUE" ] ; then
+#                                       Remove specification
+               if [ "$DEBUG" != "" ] ; then
+                  OPTHIS=`echo $OPTHIS | sed -e 's/ *'$DEBUG'//'`
+               fi
+               if [ "$NODEBUG" != "" ] ; then
+                  OPTHIS=`echo $OPTHIS | sed -e 's/ *'$NODEBUG'//'`
+               fi
+#                                       Put in user request
+               OPTHIS="$OPTHIS $DBGLEVEL"
+            fi
+         else
+#                                       Optimization specified
+            OPTHIS="$OPTLEVEL $DBGLEVEL"
+         fi
+#                                       Check log filename
+         if [ "$ULOG" = "" ] ; then
+            LOG=$DIR/${FILE}.LOG
+            rm -f $LOG
+         else
+            LOG=$ULOG
+         fi
+#                                       Need to preprocess?
+         case $PATHNAME in
+
+            *.FOR)
+#                                       Preprocess.  PP returns filename
+#                                       or an error message.
+               PATHNAME=`PP $PATHNAME 2> $PREP/PP.${HOST}.$$`
+               cat $PREP/PP.${HOST}.$$ | tee -a $LOG
+               rm -f $PREP/PP.${HOST}.$$
+               if [ "$PATHNAME" = "" ] ; then
+                  echo "FC        : Preprocessing fails!" | \
+                     tee -a $LOG
+                  rm -f $PREP/FC.${HOST}.$$
+                  break
+               fi
+            ;;
+
+         esac
+#                                       List source code?
+         if [ "$LIST" = "TRUE" ] ; then
+            grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+               >> $PREP/FC$$.${HOST}.LIS
+         else
+#                                       Delete old list file if any
+            rm -f $DIR/${FILE}.LIS
+         fi
+#                                       Remove any .o or .EXE file
+         cd $DIR
+#         if [ "$LINK" = "TRUE" ] ; then
+#            rm -f ${FILE}.EXE
+#            OF="-o ${FILE}.EXE "
+#         else
+#            rm -f ${FILE}.o
+#            OF=""
+#         fi
+#                                       Record input in $LOG.
+         echo "FC        : Date       `date`"      | tee -a $LOG
+         echo "FC        : Interpret  FC $OPTS \\" | tee -a $LOG
+         echo "FC        :            $PATHNAME"   | tee -a $LOG
+         echo "FC        : as         LIST=$LIST PURGE=$PURGE" \
+                                                   | tee -a $LOG
+         echo "FC        : plus       $COMPILER $FCOPTS $OPTHIS $OF\\" \
+                                                   | tee -a $LOG
+         echo "FC        :            $PATHNAME"   | tee -a $LOG
+#                                       Compile.  Need to check status
+#                                       so don't use pipes for output.
+         outfile=$PREP/FCOUT.${HOST}.$$
+         $COMPILER $FCOPTS $OPTHIS $OF $PATHNAME >$outfile 2>&1
+         status=$?
+         if [ -s $outfile ] ; then
+            cat $outfile | awk -f $SYSUNIX/WIDTH132.AWK | tee -a $LOG
+         fi
+         rm -f $outfile
+#                                       Did it work?
+         if [ $status -eq 0 ] ; then
+#                                       If so, is there an output file?
+            chkfil=$DIR/${FILE}.o
+            X=""
+#            if [ "$LINK" = "TRUE" ] ; then
+#                                       Make sure it's executable.  As
+#                                       -x is not available everywhere,
+#                                       use output of ls -l instead.
+#               chkfil=$DIR/${FILE}.EXE
+#               [ -s $chkfil ] && \
+#                X=`ls -l $DIR/${FILE}.EXE | grep '^...-'`
+#            fi
+            if [ -s $chkfil -a "$X" = "" ] ; then
+#                                       Success!
+#                                       If Driven by '@' file,
+#                                       auto-edit the '@' file prefixing
+#                                       this $PATHNAME with a '-' to
+#                                       indicate it as done.
+               if [ "$AT" != "" ] ; then
+                  sed -e 's#^'$ATNAME'#-&#' $AT > $PREP/AT.${HOST}.$$
+                  cp $PREP/AT.${HOST}.$$ $AT
+                  rm $PREP/AT.${HOST}.$$
+                  echo "FC        : Changed    $ATNAME"  | tee -a $LOG
+                  echo "FC        : in         $AT"      | tee -a $LOG
+                  echo "FC        : to         -$ATNAME" | tee -a $LOG
+               fi
+#                                       Good news.
+               echo "FC        : Compile of $PATHNAME" | tee -a $LOG
+               echo "FC        : ends successfully."   | tee -a $LOG
+               if [ "$LIST" = "TRUE" ] ; then
+                  echo "FC        : Generated  $DIR/${FILE}.LIS" | \
+                     tee -a $LOG
+                  cat $LOG          >  $DIR/${FILE}.LIS
+                  echo ""           >> $DIR/${FILE}.LIS
+                  cat $PREP/FC$$.${HOST}.LIS >> $DIR/${FILE}.LIS
+               fi
+               rm -f $PREP/FC$$.${HOST}.LIS
+#                                       Delete $PATHNAME?
+               if [ "$PURGE" = "TRUE" ] ; then
+#                                       Whoa!  Not if we're in DEBUG!!
+                  if [ "$DBGSPEC" != "TRUE" ] ; then
+                     echo "FC        : Delete     $PATHNAME" \
+                          | tee -a $LOG
+                     rm -f $PATHNAME
+                  fi
+               fi
+#                                       If non-user-specified log
+#                                       file, delete it.
+               if [ "$ULOG" = "" ] ; then
+                  echo "FC        : Delete     $LOG"  | tee -a $LOG
+                  rm -f $LOG
+               fi
+               continue
+            else
+#                                       Failure (status ok, no .o file)
+               echo "FC        : Compile of $PATHNAME"     | tee -a $LOG
+               echo "FC        : ends with no output file!" |tee -a $LOG
+#                                       In case it's zero size
+               rm -f $DIR/${FILE}.o
+#               [ "$LINK" = "TRUE" ] && rm -f $DIR/${FILE}.EXE
+               if [ "$LIST" = "TRUE" ] ; then
+#                                       Preprend .LOG files to source
+#                                       listing already created above.
+                  echo ""           >> $LOG
+                  cat $PREP/FC$$.${HOST}.LIS >> $LOG
+                  rm -f $PREP/FC$$.${HOST}.LIS
+               else
+#                                       Automatically generate a source
+#                                       listing and append it to the
+#                                       .LOG file.
+                  echo "" \
+                     >> $LOG
+                  grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+                     >> $LOG
+               fi
+               echo "FC        : Examine    $LOG"
+               echo "FC        : and        $PATHNAME"
+               rm -f $PREP/FC.${HOST}.$$
+               break
+            fi
+         else
+#                                       Non-zero status return.
+            echo "FC        : Compile of $PATHNAME"      | tee -a $LOG
+            echo "FC        : ends with fatal error(s)!" | tee -a $LOG
+#                                       In case it's zero size
+            rm -f $DIR/${FILE}.o
+#             [ "$LINK" = "TRUE" ] && rm -f $DIR/${FILE}.EXE
+            if [ "$LIST" = "TRUE" ] ; then
+#                                       Preprend .LOG files to source
+#                                       listing already created above.
+               echo ""           >> $LOG
+               cat $PREP/FC$$.${HOST}.LIS >> $LOG
+               rm -f $PREP/FC$$.${HOST}.LIS
+            else
+#                                       Automatically generate a source
+#                                       listing and append it to the
+#                                       .LOG file.
+               echo "" >> $LOG
+               grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+                  >> $LOG
+            fi
+            echo "FC        : Examine    $LOG"
+            echo "FC        : and        $PATHNAME"
+            rm -f $PREP/FC.${HOST}.$$
+            break
+         fi
+      else
+#                                       Non-existent source module.
+         echo "FC        : File       $PATHNAME"
+         echo "FC        : not found!"
+         rm -f $PREP/FC.${HOST}.$$
+         break
+      fi
+   done
+}
+if [ -f $PREP/FC.${HOST}.$$ ] ; then
+   echo "FC        : Ends successfully"
+   rm $PREP/FC.${HOST}.$$
+   exit 0
+else
+   echo "FC        : Dies of unnatural causes"
+   exit 1
+fi

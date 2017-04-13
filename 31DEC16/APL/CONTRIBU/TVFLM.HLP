@@ -1,0 +1,269 @@
+; TVFLM
+;---------------------------------------------------------------
+;!
+;#
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+TVFLM     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+TVFLM:   Task to queue the TV screen image to the film writer
+COPIES          0.0       200.0    Number of copies. 0=>1
+STRA1                              Type of film to use: 'XXYY'
+                                     XX: '35' 35-mm film
+                                         '2"' 2"x2" sheet film
+                                         '4"' 4"x5" sheet film
+                                     YY: 'CP' Color positive 
+                                         'CN' Color negative
+                                         'BW' B/W (negative)
+                                     '    ' => '35CP'
+OUTPRINT                           User comment to go into the
+                                     Dicomed film log
+----------------------------------------------------------------
+TVFLM
+Type: Task
+Use:  TVFLM queues a copy of the TV screen image to the
+      Dicomed film writer.  The exposures will be done auto-
+      matically by the computer operator periodically and
+      delivered to the user.
+      If the TV device is equipped with an ALU, an exact screen
+      copy is made (i.e., the screen may be split, zoomed, 
+      scrolled, or contain an intensity-hue image), provided
+      that the highest TV channel is not in use.  If there is
+      no ALU, the current image (provided a single image is
+      shown) will be copied with the current transfer function
+      and color tables, but not zoomed.  All graphics planes
+      that are on are included in the image in their original
+      colors; in case of B/W images, colored graphics will
+      show as white, black as black.
+      Associated task: IMFLM.
+Adverbs:
+  COPIES.....Number of copies to be made.  
+  STRA1......Specifies the requested film type and size.  The
+             first two characters specify the film size, the
+             last two the type:
+               '35' 35-mm film
+               '2"' 2"x2" sheet film (this really means: expose
+                    the center 2"x2" of a 4"x5" sheet)
+               '4"' 4"x5" sheet film
+               'CP' Color positive film (standard color slides)
+               'CN' Color negative film (print film; only 
+                    occasionally used)
+               'BW' Black-and-white (negative) film
+             The default is '35CP'
+  OUTPRINT...User comment (up to 48 characters) to be included
+             in the Dicomed film log.  This may be used for
+             special mailing instructions or to remind oneself
+             what the image was.
+----------------------------------------------------------------
+                         TVFLM
+                  Arnold Rots - 900510
+
+1. Introduction
+
+     Since you have asked for all the gory detail there is on 
+TVFLM, that is what you will get.
+     TVFLM takes a copy of the TV screen and queues it for 
+exposure on the film recorder.  It tries to do this as 
+efficiently as possible and as truthfully as possible.  Although
+this may seem a simple philosophy in a system like AIPS that is 
+supposedly device-independent, in reality there are quite a few 
+buts and ifs which the following sections will attempt to 
+explain to a resonable level of completeness.  The reasons for 
+many of the exceptions lie in the fact that some hardware does 
+not fit the standard while also the AIPS Y-routine libraries for 
+the various devices are not always complete and truly device-
+independent.  TVFLM is using generic AIPS Y-routine calls to 
+access the TV, but in practice allowance had to be made for the 
+peculiarities of the actual devices and/or their associated Y-
+routine libraries.  As it stands at the moment, I will only 
+guarantee that TVFLM works for IIS Model-70 and IIS IVAS 
+devices.
+     TVFLM was originally designed as an AIPS verb, rather than
+a task.  It can be very easily converted back to a verb by
+discarding the main program and calling subroutine TVDICO.
+     The mechanics of queueing the image involves construction 
+of an image file in the Dicomed Image Exchange Format and 
+spooling it for recording to the film recorder.  In the process,
+a number of scratch files may or may not be created; one should 
+be aware of them since, if the program crashes, they may be left
+around.  The DIEF file is deleted after it has been spooled.  
+There are two aspects to this that are of interest: again, if 
+the program crashes, it is left around; and if the file system 
+for the spooled files is full (or the spooler somehow fails), 
+the image is lost.  
+     The DIEF is a device-independent file format that is 
+defined elsewhere.  In summary, the file consists of 512-byte 
+ASCII header (organized in eight lines of 64 characters) that 
+completely describes the image file, followed, optionally, by 
+look-up tables and/or color tables (as specified in the header),
+followed by data in one, two, or three bytes (unsigned integers)
+per pixel.
+     One more warning: be aware that the color order in the DIEF
+files is RGB.  This same order is retained in all arrays in
+TVFLM, but the Y-routines use the inverse order, BGR.  This is
+the reason for some of the coloer index juggling, like 4-ICOLOR
+or IEOR(ICOLOR,2*IAND(ICOLOR,1)).
+
+2. ALU/Feedback
+
+     If the TV has an ALU/Feedback unit, and at least two 
+refresh memory planes, the ALU is used, since it provides the 
+only way to get a true copy of the screen, including zoom, split
+screen, RGB, hue-intensity, etc.  However, it requires the use 
+of a scratch plane and therefore TVFLM will insist that you not 
+use the highest numbered refresh memory.  
+     The procedure for constructing the DIEF file is as follows.
+Each of the color pipelines (red, green, and blue) is fed back 
+into the scratch plane, read out, and written to a scratch file.
+Then all three are read out simultaneously, merged, and written 
+to the DIEF file which will contain no tables.  Graphics 
+information may be taken along in the ALU/Feedback operation or 
+inserted in the merging stage, depending on how many and which 
+graphics planes are on.
+     If no ALU/Feedback unit is available, the following 
+restrictions apply.  All zoom information is lost; only single 
+images can be handled: i.e., no split screen, RGB, or hue-
+intensity.  Somebody with spare time and an appropriate 
+inclination may later write a task to handle multiple images.  
+B/W images will only include a single look-up table, color 
+images three look-up tables and three color tables.  Unless any 
+graphics is turned on: then the look-up/color table application 
+will be done in the DIEF file writing stage; B/W files will 
+contain one, color files three bytes per pixel.
+     At the NRAO all IIS Model 70 image devices have an ALU and 
+four refresh memories; all IVAS devices have three refresh 
+memories and no ALU.
+
+
+3. Graphics
+
+     Graphics information will be included "wysiwyg", with two 
+exceptions.  In devices with an ALU, an effort is made to 
+include the graphics in the Feedback operation.  However, if one
+also wants to preserve the colors, only one graphics plane can 
+be handled that way.  This option is used if only one graphics 
+plane is on, or if only two are on, one of which is the "black 
+background" plane (which is then left out).  For B/W images all 
+graphics (except the black background) will come out as white.  
+In this case all graphics planes (including the black 
+background) can be handled through the ALU/Feedback operation.
+     If the graphics cannot be handled through the ALU/Feedback 
+(either no ALU, or color with more than one graphics plane, 
+excluding the black background, on) the graphics is first read 
+out and written to a scratch file.  During construction of the 
+DIEF file, the graphics information is merged with the image 
+data.  This mode of operation, obviously, precludes the use of 
+look-up and color tables.
+     For the IVAS AIPS Y-routine library I had to write YGGRAM 
+since it was non-existent; my version only allows READ 
+operations.
+     There is one more quirk to be aware of.  The color graphics
+RAM contains 256 entries, 0 through 255.  On an IIS Model-70 
+with four graphics planes one would naively expect these to get
+their color information from elements 0 through 15.  That is not
+so; it comes from elements 112 through 127.  Since the M70 
+version of YGGRAM does not take care of it, I have inserted some
+code that ORs the first 16 elements with the corresponding ones
+112 elements further down; this should not hurt anybody and
+prevent surprises (e.g. graphics disappearing when the colors
+are set by non-AIPS code) on the M70s.  The only case in which
+this scheme fails is when one turns on graphics in AIPS, then
+modifies the colors elsewhere.  The results will be, for all
+practical purposes, unpredictable; first do a "GROFF" before
+entering other software that modifies the graphics RAM. 
+
+
+4. B/W
+
+     The exceptions applying to B/W images as far as the 
+handling of graphics information is concerned, are spelled out 
+in the previous section.  B/W data is sent across with one byte 
+per pixel.  It is assumed that you have a true B/W image on the 
+screen; i.e., that the look-up tables for each (RGB) color and 
+the color tables for each color are identical.  If I am not 
+mistaken, TVFLM uses, rather arbitrarily, the blue pipeline for 
+ALU operations of B/W images; if there is no ALU, I think also 
+the blue tables are used.
+     B/W images with tables only have a look-up table.  
+Nevertheless, for the IVAS one has to construct this table from 
+a double look-up through the LUT and OFM.  A bug in the FIVAS 
+library necessitated a change in the IVAS YLUT routine which now
+returns (on READ) a unit table.
+
+
+5. Speed
+
+     With the introduction of the IKON/GPIT board sets on the 
+NRAO Convexes, performance has degraded immensely.  The reason 
+seems to be that there is 50 msec of dead time introduced with 
+every physical I/O transaction.  This is less noticeable with 
+write operations (like image loading) since these can be 
+buffered and many logical I/O operations can be gathered into 
+one physical I/O transaction.  Reading, though, requires a 
+constant direction reversal and can therefore not be buffered.  
+The solution is to read larger blocks of data.  The AIPS YIMGIO 
+routine restricts the number of pixels that can be read in one 
+call to the number of pixels in a single line.  I made a change 
+that would allow larger blocks to be read.  However, the gains 
+were considerably less than what I had hoped for.  I had aimed 
+for reading 4096 pixels per call.  On the M70, it turns out that
+the last 52 pixels of such an operation get replaced by the last
+52 of the previous operation; I have not been able to find the 
+cause for this (it is not the device) and have scaled the block 
+down to 2048 pixels.  On the IVAS, only the first 1024 pixels 
+contain valid data, while trying to read more results in some 
+kind of time-out not detected by the system; I am sure the 
+culprit is in the FIVAS routines and have scaled to blocksize 
+down to 1024 pixels.  In TVFLM the decision on 1024 or 2048 
+pixels (Model 70 or IVAS) is made on the basis of whether an ALU 
+is available, rather arbitrarily.
+     Another peculiarity of AIPS' YIMGIO is that reading 
+graphics planes is artificially restricted to one plane at a 
+time.  My versions of YIMGIO allow one to specify a graphics 
+plane bit mask.
+     To really solve the sluggishness problem one ought to get 
+rid of the 50 msec delay.  The situation is absolutely 
+unacceptable: TVFLM should not take more than 15 seconds to run,
+instead of the several minutes it takes now.  It can be in the 
+Convex driver, the IKON board, or the GPIT board.  I would vote 
+for the driver, since IIS had never heard of the problem - but 
+then they have never had it hooked up to a MultiBus.
+     Real-time time estimates are hard to give, since the actual
+numbers depend strongly on the load factors.  For a load factor
+of 6 I would estimate the following:
+
+          Device    No. graphics planes on     Real time (min)
+
+          Model 70            <2                     2
+          Model 70            >1                     3
+          IVAS                 0                     2
+          IVAS                >0                    >5
+
+These times are for color images.  The numbers for B/W images
+may be a factor 2 to 3 less for the Model 70; for the IVAS it
+may only be slightly less when graphics planes are on, while no
+gain is expected when all graphics is off.

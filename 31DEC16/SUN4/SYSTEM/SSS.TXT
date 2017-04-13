@@ -1,0 +1,395 @@
+-----------------------------------------------------------------------
+;  Copyright (C) 1995
+;  Associated Universities, Inc. Washington DC, USA.
+;
+;  This program is free software; you can redistribute it and/or
+;  modify it under the terms of the GNU General Public License as
+;  published by the Free Software Foundation; either version 2 of
+;  the License, or (at your option) any later version.
+;
+;  This program is distributed in the hope that it will be useful,
+;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;  GNU General Public License for more details.
+;
+;  You should have received a copy of the GNU General Public
+;  License along with this program; if not, write to the Free
+;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;  MA 02139, USA.
+;
+;  Correspondence concerning AIPS should be addressed as follows:
+;         Internet email: aipsmail@nrao.edu.
+;         Postal address: AIPS Project Office
+;                         National Radio Astronomy Observatory
+;                         520 Edgemont Road
+;                         Charlottesville, VA 22903-2475 USA
+-----------------------------------------------------------------------
+
+These notes are quite old and do NOT reflect the drastic revisions made
+for the 15APR92 release.  Caveat emptor.  There are some details here that
+may be of interest to programmers, however.
+
+
+			     AIPS TV Server
+
+     The AIPS TV Server is a concept originally employed to enable users
+of the very early Sun workstations to use AIPS with an image display.
+It employed the Sunview windowing system which has subsequently fallen
+into disuse at most sites running AIPS.  Subsequently, the model behind
+this "SSS" server was used in the construction of XAS and XVSS, the
+former for X11 (X-windows) and the latter server for any X11 system with
+the XView toolkit libraries.  The Y routines for SSS, XVSS and XAS were
+merged several versions ago and now populate the $YSS area.
+
+     The model of AIPS TV on a workstation display consists of a set of
+Y routines which bundle commands into buffers and call Z routines which
+send the buffers over a socket to a cooperating program (the AIPS TV
+server).  The latter converts the commands into instructions to the
+window package (X server or SunView server) to drive the display.  Data
+and error codes can be sent back to AIPS from the TV server as well.
+
+     The AIPS installation process will offer to attempt to build the
+XAS screen server as part of INSTEP1.  In most cases you should not have
+to do anything other than check that the X11 include and library areas
+INSTEP1 shows you are correct.  If there are problems, you will need to
+investigate and possibly change the unpacked source in $YSERV/XAS/ and
+possibly modify the Makefile as well.
+
+     The main implementation of AIPS now supported uses internet sockets
+for inter-process communication from AIPS (or AIPS tasks) to the XAS TV
+server.  However, the Y routines in $YSS actually support either
+internet sockets or Unix sockets, and the former can be set to use
+buffered I/O (not used currently) or regular I/O.  However, since the
+15APR92 version, use of unix sockets has not been possible (well, at
+least not easy) with the network setup.  The way the Y routines pick up
+on what sort of socket to use is the value of the environment variable
+TVDEVnn, where nn is the (extended hex, i.e. base 36) TV number set by
+default in the TVDEVS.SH shell script.  If this is, e.g.
+
+          SSSINB:foobar
+
+then the SSSIN service will be used for internet sockets (on a host
+called "foobar") and buffered I/O is used.  If it is
+
+          SSSIN:foobar
+
+then the SSSIN service is also used for internet sockets to host foobar
+but buffered I/O is not used.  Finally, if it is something like
+
+          $AIPS_ROOT/SOCKETS/aips_screen_nn
+
+(where nn is the TV number) then Unix based sockets (actually named
+files) are used.  This latter configuration has not been used at NRAO
+since 1991.
+
+		  STRATEGY - A HISTORICAL PERSPECTIVE
+
+     What follows is a mixture of the original contents of this file
+(SSS.TXT) with a perspective on how it actually worked out.
+
+     AIPS or other AIPS tasks talks to what it considers to be a simple
+TV (image display) device with simple read/write commands. The "device"
+is actually a program that maintains an appropriate window (the original
+notes mentioned the possibility of this program being an interface to a
+simpler device).
+
+     Communication consists of the process passing simple opcodes and
+related data, and receiving in turn status and data. The screen is
+always passive, and the protocol and opcode/data structure is kept
+deliberately simple.  The original document expressed the hope that new
+devices would be added with virtually no new Y routine development.  The
+almost universal acceptance of the X windowing system in the technical
+field for image display and manipulation has meant that the XAS tv
+server is the one most likely to be used at any given site.
+Notwithstanding that, the merging of the Y routines for the three known
+TV servers (SSS, XVSS and XAS) also greatly simplified things.
+
+			COMMUNICATIONS PROTOCOL
+
+The data flow is as follows:
+
+Send    Opcode          ; Operation TV Server is to do
+        DAT1            ; Fixed data word 1, always sent
+        DAT2            ;                 2
+        DAT3            ;                 3
+        DAT4            ;                 4
+Send    NWVD            ; Number of words of VDATA to send, often 0.
+[Send   VDATA]          ; Variable length DATA words, typically an image line.
+                        ; Only sent if the opcode and DAT1-4 warrant it.
+
+
+Get     STATUS          ; Status word, 0 normally means success, other values
+                        ; are opcode specific. Generally -1 will mean unknown
+                        ; opcode, and -2 will mean improper DATA length.
+Get     NWSD            ; Number of words of status data to expect. Often 0.
+[Get    SDATA]          ; NWSDATA words of status data, e.g. cursor position.
+
+The granularity of opcodes and status and data is the FORTRAN I*2 (short
+int) equivalent.  Original document mentions that this was expected to
+change as the AIPS overhaul introduced FORTRAN (I*4) integers in place
+of I*2, and some opcodes would pack their arguments, particularly VDATA.
+The first item did not happen as the basic C routines that implement the
+protocol use short ints.
+
+Every time an opcode + NWVD [+ DATA] is sent, a STATUS + NWSD [+ SDATA] is
+returned. Note that the protocol is designed so that the client and server
+are guaranteed to be able to transfer data in sync, even if they don't know
+how to interpret the opcodes and status.
+
+Opcodes
+-------
+
+Reserved number ranges:
+
+0  - 20         Used for open/close/reset type non-graphics operations.
+21 - 40         Read / Write image and graphics planes.
+41 - 60         Colour/grey LUT and OFM manipulation.
+61 - 80         Cursor/button opcodes.
+81 - 100        Zoom and scroll opcodes.
+
+
+#    Opcode     Parms   Description
+========================================================================
+
+11   OPEN               Opens the device. Currently NOP since the server
+                        should only accept one client at a time, and
+                        ZSSSOP connects to the socket.
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    0
+                SDATA   none
+
+12   CLOSE              Closes the device, allowing new connections.
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+
+13   INTGT              Interrogate the TV server to determine its
+                        properties. It is assumed to conform (since it
+                        can be coded to do so) to the aips screen
+                        model. (* Not yet implemented, do it in YTVOPN*)
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    88 (currently)
+                SDATA   The first 88 values are listed in the "Going
+                        AIPS" manual, pp. 10-5,10-6 dated 25MAR87, and
+                        have the same meanings.
+
+14   WINDO              Interrogate server to find current window size.
+                DAT1    Window BLC x: any 0 in input => read only
+                DAT2    Window BLC y  all > 0 => order this window size!
+                DAT3    Window TRC x
+                DAT4    Window TRC y
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    4
+                SDATA   Actual window corners now set
+
+15   CLEAR              Clears some or all image and graphics planes,
+                        doesn't affect ZOOM or Scroll "registers".
+                DAT1    Channel mask to clear, 0 means all.
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    0
+                SDATA   none
+
+21   IMWRT              Write an image line to the screen (not vector
+                        line).  For an image plane excess bits are
+                        ignored.  For a graphics plane the lowest bit
+                        must be on, all else is irrelevant (since it
+                        will be shifted and OR'd appropriately).
+                        (actually this is currently untrue, 0 means off,
+                        anything else on).  Note that these are encoded
+                        into WORDS and are not packed with this opcode.
+                DAT1    X start position
+                DAT2    Y
+                DAT3    Channel (1 - NGRAPH+NGRAY)
+                DAT4    IANGL (1-4) (only 1-2 for now)
+                NWVD    number of pixels (NPIX)
+                VDATA   NWVD pixels, encoded *1* per word
+                STATUS
+                NWSD    0
+                SDATA   none
+
+22   IMRD               Read an image line from the screen (not vector
+                        line).  For an image plane excess bits are
+                        ignored.  For a graphics plane the lowest bit
+                        must be on, all else is irrelevant (since it
+                        will be shifted and OR'd appropriately).
+                        (actually this is currently untrue, 0 means off,
+                        anything else on).  Note that these are encoded
+                        into WORDS and are not packed with this opcode.
+                DAT1    X start position
+                DAT2    Y
+                DAT3    Channel (1 - NGRAPH+NGRAY)
+                DAT4    IANGL (1-4) (only 1-2 supported now)
+                NWVD    1
+                VDATA   1. NPIX
+                STATUS
+                NWSD    NPIX
+                SDATA   NPIX of data, 1 per word (0 or 1 for graphics)
+
+41    WLUT              Write LUT to the device.
+                DAT1    !=0 implies red
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4    Channel - bit mask
+                NWVD    Number of entries (MAXINT+1)
+                STATUS
+                NWSD    0
+                SDATA   None
+
+42    RLUT              Read LUT from the device.
+                DAT1    !=0 implies red    (only 1 should be non zero)
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4    Channel - bit mask
+                NWVD    0
+                STATUS
+                NWSD    Number of entries (MAXINT+1)
+                SDATA   LUT
+
+43    WOFM              Write OFM to the device.
+                DAT1    !=0 implies red
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4
+                NWVD    Number of entries (OFMINP+1)
+                STATUS
+                NWSD    0
+                SDATA   None
+
+44    ROFM              Read OFM from the device.
+                DAT1    !=0 implies red    (only one should be on)
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4
+                NWVD    0
+                STATUS
+                NWSD    Number of entries (OFMINP+1)
+                SDATA   OFM
+
+45    GRAPH             Turn graphics channel on/off
+                DAT1    channel
+                DAT2    0 => off, 1=> on
+                DAT3
+                DAT4
+                NWVD    0
+                STATUS
+                NWSD    0
+                SDATA   None
+
+46    SPLIT             Turn image channels on/off
+                DAT1    channel bit mask quadrant 1
+                DAT2
+                DAT3
+                DAT4
+                NWVD    1
+                STATUS
+                NWSD    0
+                SDATA   None
+
+
+
+61   RCURS              Gets current cursor position, uncorrected for
+                        zoom or scroll.
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    2
+                SDATA   1. Cursor X position
+                        2.        Y
+
+62   RBUTT              Determine which buttons have been pressed since
+                        last time they were polled (and how many times).
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    4
+                SDATA   1. Number of times "A" has been pressed
+                        2.                  B
+                        3.                  C
+                        4.                  D
+
+
+63   WCURS              Sets the current cursor position, uncorrected
+                        for zoom or scroll.
+                DAT1    X
+                DAT2    Y
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+implemented by BG but now dropped and deprecated by EWG
+ 81    WZOOM            Zoom the SCREEN
+                DAT1    Magnification (<=1 implies none)
+                DAT2    X Zoom centre
+                DAT3    Y  "     "
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+never implemented and now deprecated
+82     WSCROL           Write the "scroll registers". Actually sets the
+                        centre of view, and the sss displays as much as
+                        possible in the window. Currently all channels
+                        must be scrolled together.
+                DAT1    Channel (0->all, !=0 returns an error currently)
+                DAT2    X  centre
+                DAT3    Y  "     "
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+added by EWG
+83     WZSCR            Write the zoom and scroll by setting the
+                        magnification and the pixel which begins in the
+                        upper left of the screen (not the visible
+                        window).
+                DAT1    Channel (0->all, !=0 returns an error currently)
+                DAT2    Magnification factor (< 1 => error)
+                DAT3    X pixel in upper left corner
+                DAT4    Y pixel in upper left corner
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+

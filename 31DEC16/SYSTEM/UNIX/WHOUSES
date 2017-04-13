@@ -1,0 +1,106 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1996
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: WHOUSES [-v] [-d] <subroutine_name>
+#-----------------------------------------------------------------------
+#  This shell script searches the symbol tables of all of the AIPS
+#  executables in area LOAD for references to the given subroutine and
+#  prints the names of all programs which use the named subroutine.
+#
+#  Generic Unix version: may blow up on some systems if there is not
+#  enough memory available to glob '*.EXE'. If it does blow up, split up
+#  the second "for" loop.
+#
+#  If the -v qualifier is specified, verbose comments are displayed on
+#  stderr, while the module name is still echoed on stdout.  Thus one
+#  can do, e.g. WHOUSES -v FOOBAR >FOOBAR.AT to generate an "at" listing
+#  of programs to COMLNK.
+#
+#  If the -d qualifier is used, only the *.EXE filenames are printed;
+#  otherwise the complete pathname to the source file will be printed.
+#  This is slightly faster.
+#-----------------------------------------------------------------------
+verbose=0
+module=""
+dryrun=0
+usage() {
+   echo "Usage: WHOUSES [-v] subroutine-name"
+}
+if [ "`echo -n YES`" = "YES" ] ; then
+   ni1 () {
+      echo -n "$*"
+   }
+else
+   ni1 () {
+      echo "$*\c"
+   }
+fi
+
+for i
+do
+   case $i in
+      -v|-V) verbose=1;;
+      -d|-D) dryrun=1;;
+      *) if [ x$fname = x ] ; then
+	    fname=$i
+	 else
+	    usage && exit 42
+	 fi
+	 ;;
+   esac
+done
+[ x$fname = x ] && usage && exit 42
+#                                       sanity check
+if [ "$LOAD" = "" ] ; then
+   echo "WHOUSES: AIPS environment not defined (no LOAD definition)!"
+   exit 42
+fi
+#                                       Search for subroutine:
+if [ ! -d $LOAD ] ; then
+   echo "WHOUSES: $LOAD is not a directory?????"
+   exit 42
+fi
+if cd $LOAD ; then
+   for executable in *.EXE ; do
+      [ $verbose -eq 1 ] && ni1 "searching $executable..." 1>&2
+      if nm $executable | fgrep -i $fname > /dev/null ; then
+         if [ $verbose -eq 1 ] ; then
+            echo "found $fname!" 1>&2
+         fi
+         if [ $dryrun -eq 0 ] ; then
+            PROG `echo $executable | sed -e 's/\.EXE//'`
+         else
+            echo $executable
+         fi
+      else
+         [ $verbose -eq 1 ] && echo "" 1>&2
+      fi
+   done
+else
+   echo "WHOUSES: cannot cd to $LOAD!"
+   exit 42
+fi

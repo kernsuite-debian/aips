@@ -1,0 +1,145 @@
+; VBMRG
+;---------------------------------------------------------------
+;! Merge VLBI data, eliminate duplicate correlations
+;# TASK VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 2006
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+VBMRG     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VBMRG     Task to merge 'BT' sorted VLBI data.
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ           -1.0     9999.0   Output UV file name (seq. #)
+OUTDISK           0.0        9.0   Output UV file disk unit #.
+YINC              0.0     99999.   Integ. time of data (sec)
+----------------------------------------------------------------
+VBMRG
+Task:  This task will consolidate a 'BT' sorted VLBI uv dataset.  The
+       last visibility with the heighest weight for each correlator
+       will be passed.  The purpose of this task is to remove
+       redundant processings of data.
+
+       This task will read (and then write) compressed data.  However,
+       the results will be different from those obtained with
+       uncompressed data.  Compressed data assigns a single weight to
+       all IFs and spectral channels equal to the highest weight found
+       in any of them.  If different IFs have different weights, then
+       the uncompressed data sets will allow different processings to
+       be selected for different IFs.  Compressed data will select the
+       same processing for all IFs.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+             Input UV sort must be 'BT'.
+  OUTNAME....Output UV file name (name).     Standard defaults.
+  OUTCLASS...Output UV file name (class).    Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).   0 => highest unique
+  OUTDISK....Disk drive # of output UV file. 0 => highest w room
+  YINC.......The integration time of the data.  Times within a
+             window of this width will be considered identical.
+             Value is in sec. Default = minimum = 0.2 sec.
+----------------------------------------------------------------
+VBMRG:  Task to eliminate duplicate correlations of VLBI data.
+DOCUMENTOR: Jim Ulvestad NRAO/CV
+RELATED PROGRAMS: UVSRT, MSORT
+
+                            PURPOSE
+
+     VBMRG consolidates a VLBI data base which has been sorted in
+baseline-time ('BT') order.  The task is necessary because the
+multiple processings on a 10+ station processor that are required in a
+many-antenna experiment will cause some baselines to be correlated
+more than once.  VBMRG searches the old data base picking out only one
+record for each baseline at each time; it writes a new data base
+specified by OUTNAME.  This new data base will contain only a single
+record for each baseline within the time window specified by YINC.
+     VBMRG cannot be run on processed data sorted in time-baseline
+('TB') order.  That data must first be run through UVSRT with the
+sorted order 'BT' specified.  See comments below.
+
+                            COMMENTS
+
+INNAME:
+     The input file must be sorted in 'BT' order.
+
+OUTDISK:
+     Although VBMRG will create a new data set that is somewhat
+smaller than the old set, the user must be sure there will be enough
+space on the OUTDISK to accommodate the new data base.  Running
+several UVSRTs and VBMRG on a large data set will quickly eat up the
+available disk space, so old versions of the data base should be
+deleted as soon as they're no longer needed.  OUTDISK = 0 will cause
+the task to try all disks.
+
+YINC:
+     The default value of this parameter should be used in most cases.
+     If YINC is specified, it must not be set to be longer than the
+     integration time for a single record, which will result in the
+     discarding of good, unduplicated visibility records.
+
+INTERACTION WITH OTHER PROGRAMS:
+     As mentioned above, VBMRG can be run only on data sorted in 'BT'
+order.  Before VBMRG can be run, UVSRT must be run to sort the data
+into this order.  Then VBMRG will run through a single baseline at a
+time, selecting only a single visibility record from each time.  The
+selected record will be the one given the highest weight (or
+last-written, for equal weights).  The output file specified by
+OUTNAME will contain only unduplicated data from a single correlation
+of each baseline.  Before the global fringe-fitting task (FRING) can
+be performed, the data base must be re-sorted by use of UVSRT with
+sort order 'TB' (time-baseline).  Thus UVSRT must be run twice, once
+before and once after VBMRG.
+
+DISK SPACE:
+     The disk space used by the output file will be initially the same
+space as used by the input file.  Depending on the fraction of
+redundant correlations performed in the processor, the final file will
+be somewhat smaller.  For example, optimum processing of a 5-station
+experiment will require 4 passes on a 3-station processor, giving 10
+unique correlations and 2 redundant ones.  In this case, the output of
+VBMRG should occupy about 16% less disk space than the input file.
+
+RECIPE FOR USE:
+
+--  Use FITLD to load data from multiple station-subset
+correlation passes, with concatenation ON.  Output datasets
+can be either compressed or uncompressed.  NOTE: This data
+MUST be the raw correlator jobs, not the semi-processed files
+from the archive.
+
+--  Use UVSRT to sort into BT order.
+
+--  Use VBMRG to select unique records.
+
+--  Use UVSRT to re-sort into TB order (for most purposes).
+
+--  Run INDXR to re-index the final dataset.

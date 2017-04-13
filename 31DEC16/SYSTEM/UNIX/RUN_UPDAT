@@ -1,0 +1,193 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1996
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: RUN_UPDAT
+#-----------------------------------------------------------------------
+# This script runs the AIPS UPDAT program to update cataloged AIPS
+# data files from pre-15JAN95 format to 15JAN95 format. It locates all
+# the data directories available to AIPS on the host that it is run
+# from, compiles a list of AIPS user numbers from the old-format files
+# that it finds in those directories and passes them to the UPDAT
+# program via $HLPFIL/USERLIST.HLP. It caters for systems where
+# $HLPFIL is writable by allowing for the possibility that
+# $HLPFIL/USERLIST.HLP is a symbolic link to a file on a different,
+# writable partition.
+#
+# Before running UPDAT it shows the user the list of AIPS user
+# numbers that it is going to update and gives the user the chance to
+# abort before doing anything.
+#
+# Be sure to update the AIPS_ROOT assignment below.
+# Contributed by Martin Shepherd of Caltech.
+# It would be nice if this could be enhanced to warn, on each disk,
+# if a given user had "D" format data as well as "C" format.
+#
+#-----------------------------------------------------------------------
+
+if [ "$AIPS_ROOT" != "" ] ; then
+   if [ -d $AIPS_ROOT ] ; then
+      : fine
+   else
+      echo "AIPS_ROOT ($AIPS_ROOT) is not a directory????"
+      exit 1
+   fi
+else
+   echo "AIPS environment not defined!"
+   case $SHELL in
+      */csh|*/tcsh) echo "Please source the LOGIN.CSH file first";;
+      */bash|*/ksh|*/zsh|*/sh) echo "Please dot the LOGIN.SH file first";;
+   esac
+   exit 1
+fi
+
+#                                       Get AIPS disk assignments.
+
+tmpfil=/tmp/DADEVS.$$
+[ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+if [ -f $tmpfil ] ; then
+  . $tmpfil
+  rm -f $tmpfil
+else
+#                                       If not or if it broke, fall back
+  . $SYSUNIX/DADEVS.SH
+fi
+
+# Determine the real path names of each disk in case we are dealing with
+# symbolic links. Note that in the following, /bin/pwd is used rather
+# than pwd because the SunOS built-in pwd still shows the symbolic
+# link name rather than the directory that it is actually in.
+# Assemble the directory names into a list in variable "disks".
+
+disks=""                                 # The list of valid AIPS disks.
+ndisk=0                                  # The number of entries in $disks.
+disk=0
+while [ $disk -lt $NVOL ]
+do
+  disk=`expr $disk + 1`
+  ehex=`EHEX $disk`                      # Assume that DA0xx names have
+  disk_name="\$DA0$ehex"                 # already been translated.
+  disk_name=`eval echo $disk_name`
+  real_name=`(cd $disk_name;/bin/pwd)`   # Allow for symbolic links.
+  if [ $? -eq 0 ] ; then                 # Valid disk?
+    disks="$disks $real_name"
+    ndisk=`expr $ndisk + 1`
+  fi
+done
+
+# How many disks did we find?
+
+if [ "$ndisk" -lt 1 ] ; then
+  echo "No useable disks found for host: $HOST"
+  exit 1
+fi
+
+# Display the path names of the acquired aips disks.
+
+echo "Processing disks: "
+for disk in $disks
+do
+  echo "                  $disk"
+done
+echo ' '
+
+# Get a list of used aips numbers converted from HEX to decimal.
+# This assumes that old style file names have the syntax: name.xxx;1
+# where xxx is a Hexadecimal number. If this script is to be used for
+# later updates, the following lines will need changing.
+
+users=""
+for user in \
+ `find $disks -name '*\.???\;1' -print | \
+  sed -e 's/^.*\.//g' -e 's/;1//g' | sort | uniq`
+do
+  users="$users `echo 16 i $user p | dc`"
+done
+
+# Check that the located user numbers make sense.
+
+if [ ! -n "$users" ] ; then
+  echo "There don't appear to be any old-style AIPS files to be updated."
+  exit 1
+fi
+
+echo "Found user numbers: $users"
+echo 'Is this ok (y/n)? '
+read yn
+if [ "$yn" != "y" ]; then
+  echo 'Update aborted.'
+  exit 1
+fi
+
+# The UPDAT program expects the list of users to be in a file called
+# $HLPFIL/USERLIST.HLP. If $HLPFIL is on a readonly partition, then
+# a symbolic link will have to be used, pointing from
+# $HLPFIL/USERLIST.HLP to the actual USERLIST.HLP file on a writable
+# partition.
+
+if touch $HLPFIL/USERLIST.HLP 2>/dev/null ; then
+  : fine
+else
+  cat << \EOD
+
+    $HLPFIL/USERLIST.HLP needs to be a writable file. It currently
+    isn't. If this is because of file permissions, please change them
+    by typing:
+
+     chmod ug+w $HLPFIL/USERLIST.HLP
+
+    before running this script again. Alternatively, if the file is
+    not writable because $HLPFIL is on a disk partition that has been
+    exported readonly. Log in to the system on which the disk
+    partition is mounted writable and type:
+
+     chmod ug+w $HLPFIL/USERLIST.HLP
+     mv $HLPFIL/USERLIST.HLP $HLPFIL/USERLIST.HLP_KEEP
+     ln -s $AIPS_ROOT/DA00/USERLIST.HLP $HLPFIL/USERLIST.HLP
+     chmod ug+w $AIPS_ROOT/DA00/USERLIST.HLP
+
+    The actual location of the writable file is unimportant as long as
+    the symbolic link points to it. So if $AIPS_ROOT/DA00 is not
+    writable on all your hosts then simply substitute a directory
+    that is writable. The script will follow the link and should then
+    work from all AIPS hosts.
+
+EOD
+  exit 1
+fi
+
+for user in $users; do
+  echo $user | awk '{printf("%4.4d\n", $0);}'
+done > $HLPFIL/USERLIST.HLP
+
+RUN UPDAT << EOF
+2
+1 $ndisk
+
+2
+
+EOF
+#-----------------------------------------------------------------------

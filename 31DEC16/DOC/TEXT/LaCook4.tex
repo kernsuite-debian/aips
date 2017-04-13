@@ -1,0 +1,3445 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995, 1997-1998, 2000-2016
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\chapts{Calibrating Interferometer Data}{cal}
+
+\renewcommand{\titlea}{31-December-2016 (revised 11-November-2016)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+     This chapter focuses on ways to do the initial \Indx{calibration}
+of interferometric fringe-visibility data in \AIPS\@.  The sections
+which follow concentrate primarily on continuum calibration for
+connected-element interferometers, especially the VLA\@.  However, the
+information in these sections is useful to spectral-line, solar, and
+VLBI observers as well.  For specific advice on the new EVLA, consult
+\Rappen{EVLAdata}\@.  For additional advice on spectral-line
+calibration, see \Sec{linecal}; for advice on calibrating observations
+of the Sun, see \Sec{suncal}; and for the gory details of VLBI, read
+\Rchap{vlbi}.  After the initial calibration has been completed, data
+for sources with good signal-to-noise are often taken through a number
+of cycles of imaging with self-calibration.  See \Sec{selfcal} for
+information on these later stages of the reduction process.  For
+accurate calibration, you must have accurate {\it a priori\/}
+positions and structural information for all your calibration sources
+and accurate flux densities for at least one of them.  It is best if
+the calibration sources are unresolved ``point'' sources, but it is
+not required.
+
+     For the basic calibrations, visibility (``{\it uv\/}'') data are
+kept in ``\indx{multi-source data sets},'' each of which contains, in
+time order, visibility data for one or more ``unknown'' sources and
+one or more calibration sources.  Associated with these data are
+``extension'' files containing tables describing these data.
+\iodx{extension files}  When VLA archive data are first read into
+\AIPS\ a number of basic \indx{tables} are created and filled with
+information describing the data set.  These are \iodx{antenna file}
+\xben
+\Item {\tt AN} (antennas) for sub-array geometric data, date,
+     frequency, polarization information, {\it etc.\/},
+\Item {\tt FQ} (frequency) for frequency offsets of the different
+     IFs (IF pairs in VLA nomenclature),
+\Item {\tt NX} (index) to assist rapid access to the data,
+\Item {\tt SU} (source) for source specific information such as
+     name, position, velocity, and
+\Item {\tt TY} (temperature) for measured system temperatures and
+     nominal sensitivities
+\Item {\tt CL} (calibration) for calibration and model information,
+\xeen
+\par\noindent An initial {\tt CL} table contains gains due to known
+antenna functions of elevation and measured atmospheric opacities.
+VLBI, and especially VLBA, data sets will end up with even more table
+files.  Calibration and editing tasks then create, as needed, other
+tables including
+\xben
+\setcounter{enumi}{6}
+\Item {\tt BP} (bandpass) for bandpass calibration,
+\Item {\tt FG} (flag) for flagging (editing) information, and
+\Item {\tt SN} (solution) for gain solutions from the calibration
+     routines.
+\Item {\tt BL} (baseline) for baseline-, or correlator-,
+     dependent corrections,
+\xeen
+\noindent All of these tables can be written to, and read back from,
+FITS files along with the visibility data.  These, and any other,
+\AIPS\ tables can be manipulated and examined using the general tasks
+{\tt \tndx{PRTAB}}, {\tt \tndx{TACOP}}, {\tt \tndx{TABED}}, {\tt
+\tndx{TAMRG}}, {\tt \tndx{TASRT}}, \hbox{{\tt \tndx{TAFLG}} and
+{\tt \tndx{TAPPE}}}.
+
+     The visibility data within the multi-source data set are not
+normally altered by the calibration tasks.  Instead, these tasks
+manipulate the tabular information to describe the calibration
+corrections to be applied to the data and any flagging (deletion) of
+the data.
+
+    The \AIPS\ programs discussed in this chapter are part of a
+package that has been developed to calibrate interferometer data from
+a wide range of connected-element and VLB arrays, especially the VLA
+and VLBA\@.  These programs therefore support many functions (and
+inputs) that are not required when calibrating normal VLA data.  The
+examples given below show only the essential parameters for the
+operation being described, but, to get the results described, it is
+essential that you check {\it all\/} the input parameters before
+running any task.  Remember that \AIPS\ adverbs are global and will be
+``remembered'' as you proceed.  A list of calibration-related symbols
+is given in \Sec{aboutcal}, but a possibly more up-to-date list can be
+obtained by typing {\us ABOUT CALIBRAT} in your \AIPS\ session.  More
+general information on calibration can be routed to your printer by
+typing {\us DOCRT\qs FALSE ; EXPLAIN\qs CALIBRAT \CR}, while deeper
+information on a specific task is obtained with {\us EXPLAIN\qs
+{\it taskname\/} \hbox{\CR}}.
+
+     When you are satisfied with the \Indx{calibration} and editing
+(or are simply exhausted), the task {\tt SPLIT} is used to apply the
+calibration and editing tables and to write \uv\ files, each
+containing the data for only one source.  These ``single-source'' \uv\
+files are used by imaging and deconvolution tasks that work with only
+one source at a time.  Many of the tasks described in this chapter
+will also work on single-source files.  For VLA calibration, there are
+several useful procedures described in this chapter and contained in
+the {\tt RUN} file called \hbox{{\tt \tndx{VLAPROCS}}}.  Each of these
+procedures has an associated {\tt HELP} file and inputs.  Before any
+of these procedures can be used, this {\tt RUN} file must be invoked
+with:
+\dispt{RUN VLAPROCS \CR}{to compile the procedures.}
+\dispe{There is a ``pipeline'' procedure designed to do a preliminary
+calibration and imaging of ordinary VLA data sets.  This provides a
+good first look at the data.  Nonetheless, the results are still not
+likely to be of publishable quality.  To run the pipeline, enter}
+\dispt{RUN VLARUN \CR}{to compile the procedures.}
+\dispt{INP VLARUN \CR}{to review the input adverbs and, when ready,}
+\dispt{VLARUN \CR}{to execute the pipeline.}
+
+\Sects{Copying data into \AIPS\  multi-source disk files}{uvtape}
+
+     There are several ways to write VLA data to \AIPS\ multi-source
+\uv\ data sets on disk. They include:
+\xben
+\Item For VLA data from the archive, use {\tt FILLM} to read one or
+    more disk files; see \Sec{fillmdisk}.   The VLA format was changed
+    on January 1, 1988, but all older data were translated and
+    archived in the modern format.  On July 1, 2007, the ModComps were
+    replaced with modern computers and the format had an essential
+    change made to it.  Use {\tt FILLM} to read data from the
+    post-ModComp era.  Archive data are obtained from
+    {\tt https://archive.nrao.edu/archive/e2earchive.jsp}
+\Item For an \AIPS\ multi-source data set written to a FITS tape or
+    FITS disk during an earlier \AIPS\ session, use {\tt \tndx{UVLOD}}
+    or {\tt \tndx{FITLD}} to read the tape.
+\Item For single-source data sets that are already on disk and
+    are very similar in structure, use {\tt \tndx{UV2MS}} on one of
+    them to create a multi-source data set, and then on each of the
+    others to append them to that multi-source data set.  Each of the
+    input data sets should have the same number of polarizations, IFs,
+    spectral channels, and ``random parameters.''  {\tt UV2MS} also
+    makes no corrections for differences in observed source positions
+    or frequencies.  After all are appended, use {\tt UVSRT} to put
+    the data in time-baseline order and {\tt \tndx{INDXR}} to make an
+    index and initial (null) calibration file.
+\Item For single-source data sets that are already on disk and
+    are not sufficiently similar in structure for the method above,
+    use {\tt \tndx{MULTI}} on each single-source file to convert to
+    multi-source format.  Then use {\tt DBCON} to concatenate the
+    individual multi-source files into one big multi-source file.
+    Finally use {\tt UVSRT}, if needed, to put the data in
+    time-baseline order and {\tt INDXR} to make an index and initial
+    (null) calibration file.
+\Item Data from the Australia Telescope may be loaded from disk files
+    into \AIPS\ using the task {\tt \tndx{ATLOD}} which is now
+    included with \AIPS\@.
+\xeen
+
+     Data from other telescopes can be read into \AIPS\ only if they
+are written in \AIPS-like FITS files already or if you have a special
+format-translation program for that telescope.  The VLBA correlator
+produces a format which is translated by the standard \AIPS\ task {\tt
+FITLD}; see \Sec{FITLDfits}.  A translation task for the Westerbork
+Synthesis Telescope ({\tt WSLOD}) is available from the Dutch,
+but is not distributed by the NRAO with the normal \AIPS\ system.
+
+\Subsections{Reading from VLA archive files using {\tt FILLM}}{fillm}
+
+     The NRAO Archive makes available, among other things, data from
+the EVLA, which began observing in January 2010, and from the old VLA
+which ceased observing a few days into 2010.  To load data from the
+EVLA into \AIPS\ consult \Rappen{EVLAdata} for information about {\tt
+BDF2AIPS} and other options.  The following decribes how to read old
+VLA data into \AIPS\@.
+
+     The Archive now serves VLA data in the form of one or more
+``MOdComp'' format disk files.  To load these into \AIPS, enter
+\dispt{TASK\qs 'FILLM' ; INP \CR}{to review the inputs needed.}
+\dispt{DATAIN\qs 'MYDATA:AG230\_' \CR}{to read from the disk area
+        pointed at by the logical {\tt MYDATA} and the data from
+        program ID {\tt AG230}\@.}
+\dispt{NFILES\qs 0 \CR}{to start with file AG230\_1.  If your first
+        file is \eg\ {\tt AG230\_4}, set {\tt NFILES = 3}.}
+\dispt{NCOUNT\qs 4 \CR}{to read four data files {\tt AG230\_1} through
+        {\tt AG230\_4}\@.}
+\dispt{OUTNA\qs ' ' \CR}{to take the default output file name.}
+\dispt{OUTDI\qs 3 \CR}{to write the data to disk 3 (one with enough
+         space).}
+\dispt{DOUVCOMP\qs -1 \CR}{to write visibilities in uncompressed
+         format.  VLA files are small by modern standards, so saving
+         space is not worth the costs.}
+\dispt{DOWEIGHT\qs 1 \CR}{Data weights will depend on the ``nominal
+        sensitivity'' and should be calibrated along with the
+        visibility amplitudes ({\tt DOCALIB = 1})\@.}
+\dispt{CPARM\qs 0 \CR}{to do no averaging of the data in {\tt FILLM}\@.}
+\dispt{CPARM(6)\qs 1 \CR}{to select VLA sub-array 1.}
+\dispt{CPARM(7)\qs 2000 \CR}{to have observations within 2 MHz be
+         regarded as being at the same frequency.}
+\dispt{CPARM(8)\qs 1 \CR}{to use a 2-minute interval for the {\tt CL}
+         table; default is 5 min.}
+\dispt{CPARM(9)\qs 0.25 \CR}{to use a 15-second interval for the {\tt
+         TY} table; default is the input data interval.}
+\dispt{DPARM\qs 0 \CR}{to have no selection by specific frequency.}
+\dispt{REFDATE\qs '{\it yyyymmdd\/}' \CR}{to specify the year, month,
+         and day of the reference date.  This should be the first date
+         in the data set (or earlier).  All times in \AIPS\ will be
+         measured with respect to that date and must be positive.  The
+         default is the first date included by the data selection
+         adverbs, which may not be the desired one. Note that {\tt
+         REFDATE} is only a reference point; it does not affect which
+         data are loaded from the the files.}
+\dispf{TIMERANG\qs {\it db} , {\it hb} , {\it mb} , {\it sb} , {\it
+         de},  {\it he} , {\it me} , {\it se} \CR}{to specify the
+         beginning day, hour, minute, and second and ending day, hour,
+         minute, and second (wrt {\tt REFDATE}) of the data to be
+         included.  The default is to include all times.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+\dispe{There are numerous adverbs including {\tt BAND}, {\tt QUAL},
+{\tt CALCODE}, {\tt VLAOBS}. and {\tt VLAMODE} to limit what data were
+loaded from magnetic tapes which could hold data from multiple
+projects.  These adverbs still function, but are of little use today.
+Note that the values given above are illustrative and should not be
+copied verbatim in most cases.}
+
+      Be careful when choosing the averaging time with {\tt CPARM(1)}.
+If you have a large data set, setting this time too {\it low\/} will
+make an unnecessarily large output file; this may waste disk space
+and slow the execution of subsequent programs.  Setting it too {\it
+high\/} can, however, (1) smear bad data into good, limiting the
+ability to recognize and precisely remove bad data, (2) smear features
+of the image that are far from the phase center, and (3) limit the
+dynamic range that can be obtained using self-calibration.  If you
+need a different (usually shorter) averaging time for the calibrator
+sources than for your program sources, use {\tt CPARM(10)} to specify
+the averaging time for calibrators.  See Lectures~12  and 13 in
+{\it \jndx{Synthesis Imaging in Radio Astronomy}\/}\footnote{{\it
+Synthesis Imaging in Radio Astronomy\/}, Astronomical Society of the
+Pacific Conference Series, Volume~6 ``A Collection of Lectures from
+the Third NRAO Synthesis Imaging Summer School'' eds.\/ R.\ A.\
+Perley, F.\ R.\ Schwab and A.\ H.\ Bridle (1989)} for general guidance
+about the choice of averaging time given the size of the required
+field of view and the observing bandwidth.
+
+     {\tt CPARM(2)} controls a number of mostly esoteric options.  If
+your data include the Sun or planets, you must set {\tt CPARM(2) = 16}
+to avoid having each scan on the moving source assigned a different
+name.  The adverb {\tt DOWEIGHT = 1} has the same affect as {\tt
+CPARM(2) = 8} and both select the use of the nominal sensitivity to
+scale the data weights.  When this is done, the weights will be
+$1/\sigma^2$ as they should for imaging, with $\sigma$ in ``Jy'' in
+the same uncalibrated scale as the fringe visibilities.  Having
+selected this option, you should apply any amplitude calibration to
+the weights as well as the visibilities.  If you store the data in
+compressed form, only one weight may be retained with each sample.
+Any differences between polarizations and/or IFs in that sample will
+be lost.  Uncompressed data require less cpu, but more real, to read
+but 2 to 3 times as much disk space to store.
+
+      {\tt CPARM(2)=2048} allows you to load data as correlation
+coefficients, which can be scaled to visibilities later with {\tt
+TYAPL} (\Sec{VLATY}).  {\tt CPARM(3)} controls which on-line flags are
+applied by {\tt FILLM}, which now always writes an {\tt OF} table
+containing information about these flags.  That information can be
+viewed with {\tt \Tndx{PRTOF}} and applied selectively to the data at
+a later time with {\tt \Tndx{OFLAG}}\@.
+
+      {\tt FILLM} writes a weather ({\tt WX}) table to the output
+file.  At the same time, it uses ``canned'' VLA antenna gain curves
+and a balance of the current with a seasonal model weather data to
+estimate opacity and gain corrections to be written into the first
+calibration ({\tt CL}) table.  These functions are controlled by
+adverbs {\tt CALIN} and {\tt BPARM} and may be turned off, although
+the default is to make the corrections. In subsequent tasks, set {\tt
+DOCALIB = 1} to use these initial calibration data.  If, for some
+reason, the data weights do not depend on the nominal sensitivity, use
+{\tt DOCALIB=100} to apply calibration.
+
+     Where possible, {\tt FILLM} will try to place all data in one
+file.  However, in many cases this is not possible.  For instance
+so-called ``channel 0'' data from a spectral-line observation will be
+placed in a separate file from its associated line data.  Similarly,
+scans which have differing numbers of frequency channels will also be
+placed into separate files.  Another case is observations made in mode
+LP, \ie\ one IF-pair is set to L band, the other to P band. In this
+case the two bands will be split into separate files.  Yet another
+case arises when there are observations of different bandwidths. All
+of this should be relatively transparent to the user.
+
+     {\tt FILLM} and many \AIPS\ tasks are able to handle multiple,
+logically different, frequencies within a multi-source data set.  {\tt
+FILLM} does this by assigning an {\tt FQ} number to each observation
+\todx{FQ number} and associating a line of information about that
+frequency in the {\tt FQ} file associated with the data set.  Users
+should note that this concept can become quite complicated and that
+not all tasks can handle it in full generality.  In fact, most tasks
+can only process one {\tt FQ} number at a time.  Polarization
+calibration works only on one {\tt FQ} at a time since the antenna
+file format allows for only one set of instrumental polarization
+parameters.  Therefore, it is {\it strongly\/} advised that you fill
+continuum experiments which involve multiple frequencies into separate
+data sets.  {\tt FILLM} will separate bands automatically, but you
+will have to force any remaining separation.  To do this, (a) use the
+{\tt QUAL} adverb in {\tt FILLM}, assuming that you have used separate
+qualifiers in {\tt OBSERVE} for each frequency pair; (b) use the {\tt
+DPARM} adverb array in {\tt FILLM} to specify the desired frequencies
+precisely; or (c) use the {\tt UVCOP} task to separate a multiple {\tt
+FQ} data set into its constituent parts.  Note that the first two
+options require multiple executions of {\tt FILLM}, while the third
+option requires more disk space.
+
+      Spectral-line users and continuum observers using different
+frequencies in the same band should be aware of the {\tt FQ} entry
+tolerance.  Each frequency in a \uv\ file will be assigned an {\tt FQ}
+number as it is read from disk by \hbox{{\tt FILLM}}.  For
+spectral-line users, the observing frequency will normally change as a
+function of time due to Doppler tracking of the Earth's rotation, or
+switching between sources or between spectral lines; in general, this
+will cause different scans to have different {\tt FQ} numbers.  {\tt
+FILLM} assigns an {\tt FQ} number to a scan based on the {\tt FQ}
+tolerance adverb {\tt CPARM(7)} which defines the maximum change of
+frequency allowed before a new {\tt FQ} number is allocated.  If
+{\tt CPARM(7) < 0}, the the same FQ number is assigned to all data in
+spectral-line data sets.  If {\tt CPARM(7)} is positive, a scan's
+\todx{FQ number} will be assigned to an existing {\tt FQ} number if
+$$ \| \nu_{current} - \nu_{firstFQ} \| < {\tt CPARM(7)} $$
+where $\nu_{firstFQ}$ is the frequency of the first sample to which
+the particular {\tt FQ} number was assigned.  If no match is found,
+then a new {\tt FQ} number is created and assigned and another line
+added to the {\tt FQ} table file.  Alternatively, if {\tt CPARM(7)} is
+zero, then the {\tt FQ} tolerance is assumed to be half of the
+maximum frequency difference caused by observing in directions 180
+degrees apart (\ie\ $\Delta\nu = 10^{-4}\times \nu$).
+
+     An example: if an observer observes the 1612, 1665 and 1667 MHz
+OH masers in VY CMa and NML Cygnus, then presumably he would like his
+data to have 3 {\tt FQ} numbers, one associated with each OH
+transition.  However, running {\tt \tndx{FILLM}} with {\tt CPARM(7)}
+set to $0$ would produce 6 {\tt FQ} numbers because the frequency
+difference between the masers in VY CMa and NML Cygnus is greater than
+the calculated tolerance of 160 kHz.  Therefore, in order to ensure
+that only 3 {\tt FQ} numbers are assigned, he should set {\tt
+CPARM(7)} to 1000 kHz.  Setting {\tt CPARM(7) < 0} would result in all
+data having the same {\tt FQ} number, which is clearly undesirable.
+
+     For most continuum experiments the {\tt FQ} number will be
+constant throughout the database.  Normally any change in frequency
+should be given a new {\tt FQ} number.  To achieve this, {\tt FILLM}
+treats {\tt CPARM(7)} differently for continuum.  If {\tt CPARM(7)}
+$\leq$ 0.0, then {\tt FILLM} assumes a value of 100 kHz.  A positive
+value of {\tt CPARM(7)} is treated as a tolerance in kHz as in the
+spectral line case.
+
+      {\bf Note:} {\it If your \uv\ database contains several
+frequency identifiers, you should go through the calibration steps for
+each {\tt FQ} code separately.}
+
+     {\tt FILLM} can still read from magnetic tape.  Set {\tt DATIN}
+to blanks, mount your tape (adverb {\tt INTAPE}), index the tape with
+{\tt PRTTP}, and use the adverbs to limit the data loaded to that
+portion of your project in which you are interested.
+
+      If {\tt FILLM} is executing correctly, your message terminal
+will report the number of your observing program, the VLA archive
+format revision number, and then the names of the sources as they are
+found in the data files.  Once {\tt FILLM} has completed, you can find
+the database on disk using:
+\dispt{INDI\qs 0 ; UCAT \CR}{ }
+\dispe{This should produce a listing such as:}
+\bve
+Catalog on disk  3
+Cat Usid Mapname      Class  Seq  Pt     Last access      Stat
+  1  103 25/11/88    .X BAND.   1 UV 05-FEB-1994 12:34:16
+\end{verbatim}\eve
+
+     You might then examine the header information for the disk data set by:
+\dispt{INDI\qs 3 ; GETN\qs 1 ; IMH \CR}{}
+\dispe{This should produce a listing like:}
+\bve
+ Image=MULTI     (UV)         Filename=25/11/88    .X BAND.   1
+ Telescope=VLA                Receiver=VLA
+ Observer=AC238               User #=  103
+ Observ. date=25-NOV-1988     Map date=05-FEB-1994
+ # visibilities    191317     Sort order  TB
+ Rand axes: UU-L-SIN  VV-L-SIN  WW-L-SIN  BASELINE  TIME1
+            SOURCE  FREQSEL WEIGHT  SCALE
+ --------------------------------------------------------------
+ Type    Pixels   Coord value  at Pixel    Coord incr   Rotat
+ COMPLEX      1   1.0000000E+00    1.00 1.0000000E+00    0.00
+ STOKES       4  -1.0000000E+00    1.00-1.0000000E+00    0.00
+ IF           2   1.0000000E+00    1.00 1.0000000E+00    0.00
+ FREQ         1   8.4110000E+09    1.00 1.2500000E+07    0.00
+ RA           1    00 00 00.000    1.00      3600.000    0.00
+ DEC          1    00 00 00.000    1.00      3600.000    0.00
+ --------------------------------------------------------------
+ Maximum version number of extension files of type HI is   1
+ Maximum version number of extension files of type AN is   1
+ Maximum version number of extension files of type NX is   1
+ Maximum version number of extension files of type SU is   1
+ Maximum version number of extension files of type FQ is   1
+ Maximum version number of extension files of type WX is   1
+ Maximum version number of extension files of type CL is   1
+ Keyword = 'CORRMODE'  value = '        '
+ Keyword = 'VLAIFS  '  value = 'ABCD    '
+\end{verbatim}\eve
+\dispe{This header identifies the file as a multi-source file ({\tt
+Image=MULTI}) with 191317 floating-point visibilities in time-baseline
+({\tt TB}) order.  There are two entries on the {\tt IF} axis.  These
+correspond to the VLA's ``AC'' and ``BD'' IF-pairs respectively.  The
+description of the frequency ({\tt FREQ}) axis shows that the first IF
+(``AC'') is at 8411 MHz and has 12.5 MHz bandwidth.  The parameters of
+the second IF-pair (``BD'') are determined from the data in the {\tt
+FQ} table file and cannot be read directly from this header; these
+values are shown in the {\tt 'SCAN'} listing from \hbox{{\tt LISTR}}.
+The header shown above indicates that the data are in compressed
+format since the number of pixels on the {\tt COMPLEX} axis is 1 and
+the {\tt WEIGHT} and {\tt SCALE} random parameters are present.
+Uncompressed data does not use these random parameters and has 3
+pixels on the {\tt COMPLEX} axis.\todx{IMHEAD}}
+
+     The term ``IF'' can be confusing.  At the VLA, IFs ``A'' and
+``C'' correspond to right-hand and left-hand circularly polarized (RHC
+and LHC) signals, respectively, and are normally for the same
+frequency in an observing band.  Such pairs, if at the same frequency,
+are considered to be one ``IF'' in \hbox{\AIPS}.   An observation
+which was made in spectral line mode ``{\tt 2AC}'' is considered at
+the VLA to have two ``IFs'' whereas within \AIPS\ this would be filled
+as one ``IF'' with two polarizations if they were both observed with
+the same frequency, the same number of channels, and the same channel
+separation.  If these conditions do not hold, then they are filled
+into separate \uv\ files, each with a single IF and a single
+polarization.  The term ``sub-array'' is also confusing.  At the VLA
+--- and in task {\tt \tndx{FILLM}} --- sub-array means the subset of
+the 27 antennas actually used to observe your sources.  (The VLA
+allows up to 5 simultaneous sub-arrays in this sense.)  In the rest of
+\AIPS, sub-array refers to sets of antennas used together at the same
+time. If observations from separate times (\eg\ separate array
+configurations) are concatenated into the same file, then \AIPS\ will
+regard the separate sets of antennas as different ``sub-arrays''
+whether or not the same physical antennas occur within more than one
+of these sub-arrays.
+
+     If your experiment contains data from several bands {\tt FILLM}
+will place the data from each band in separate data sets.  Also, if
+you observed with several sets of frequencies or bandwidths in a given
+observing run these will be assigned different {\tt FQ} numbers by
+\hbox{{\tt FILLM}}.  You can determine which frequencies correspond to
+which {\tt FQ} numbers from the {\tt 'SCAN'} listing provided by
+\hbox{{\tt LISTR}}.  Line data are divided into the ``channel 0''
+(central $3/4$ of the of the observing band averaged) and the spectra.
+Data observed in the ``LP'' mode (or any other two-band mode) will be
+broken into separate data sets, one for each band.
+
+\Subsubsections{Editing and applying nominal sensitivities to VLA
+    data}{VLATY}
+
+{\tt FILLM} scales the correlation coefficients by the instantaneous
+measured ``nominal sensitivities,'' producing data approximately in
+deci-Jy.   The VLA nominal sensitivities are stored in the {\tt TY}
+table as ``system temperatures'' ($T_{sys}$)\@.  For calibration
+purposes, it is best to have the nominal sensitivities applied, but it
+may be better to use a clipped and/or time-smoothed version of those
+sensitivities.  If you want to do this, load the $T_{sys}$ data into
+the {\tt TY} table with the highest time resolution possible by
+setting {\tt CPARM(9)=0} in {\tt FILLM}\@.  {\tt FILLM} can also be
+told not to apply the nominal sensitivities and therefor produce
+correlation coefficients by setting {\tt CPARM(2)=2048}, but this is
+not strictly necessary.  In order to smooth and clip the {\tt TY}
+table use the task {\tt \tndx{TYSMO}}\@.  If you have done editing
+such as {\tt QUACK}, it may help to copy the data with {\tt UVCOP},
+applying your flag table not only to the visibilities but also to the
+{\tt TY} table ({\tt UVCOPPRM(6)=3}) before running {\tt TYSMO} to
+remove questionable values at the start of scans.  Alternatively,
+{\tt \tndx{SNEDT}} will apply the data flags to the table allowing you
+to write a new, cleaned-up version of the table.  Then a {\tt TY}
+table may be applied (and/or removed) from a data set with {\tt
+\tndx{TYAPL}}\@:
+\dispt{TASK\qs 'TYAPL' ; INP \CR}{to review the inputs needed.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the
+        correct data  set.}
+\dispt{FREQID\qs 1 \CR}{to select {\tt FQ} number 1.}
+\dispt{INVERS\qs 1 \CR}{{\tt TY} table to remove from data, will only
+        work if data are not already correlation coefficients.}
+\dispt{IN2VERS\qs 2 \CR}{smoothed {\tt TY} table to apply to data,
+        will only work if data is in correlation coefficient form ---
+        either initially or after removal of {\tt INVERS}\@.}
+\dispt{INP \CR}{to re-check {\it all\/} the inputs parameters.}
+\dispt{GO \CR}{to start the task.}
+
+EVLA users (see \Rappen{EVLAdata}) should have an {\tt SY} table which
+contains system gain and temperature data.  These data {\it should} be
+applied to the visibility data in order to correct for measured gain
+changes and to convert the data weights from a simple count of the
+integration time into more meaningful values.  Tasks {\tt TYSMO} and
+{\tt SNEDT} may be used to clean up the {\tt SY} data and then {\tt
+TYAPL} may be used to apply the gain and system temperature data.
+
+\Subsections{Reading data from FITS files with {\tt FITLD}}{FITLDfits}
+
+     {\tt \tndx{FITLD}} is used to read FITS-format disk files (and
+tapes) into \hbox{\AIPS}. It recognizes images, single- and
+multi-source \uv\ data sets, and the special FITS \uv-data tables
+produced by the VLBA and DiFX correlators (``FITS-IDI'' format).  In
+particular, VLA data sets that have been read into \AIPS\ previously
+with {\tt FILLM} and then saved to tape (or pseudo-tape disk) files
+with {\tt FITTP} and {\tt FITAB} can be recovered for further
+processing with task \hbox{{\tt FITLD}}.  (The older task {\tt
+\tndx{UVLOD}} will also work with \uv\ data sets in FITS format, but
+it cannot handle image or FITS-IDI format files.)
+
+     A multi-source data file with all of its tables can be read from
+a FITS tape by:
+\dispt{TASK\qs 'FITLD' ; INP \CR}{to review the inputs needed.}
+\dispt{INTAPE\qs {\it n\/} \CR}{to specify the tape drive for input
+          from tape.}
+\dispt{DATAIN\qs '{\it filename\/}' \CR}{if the input is from a FITS
+          disk file (see \Sec{fitsdisk}).}
+\dispt{DOUVCOMP\qs FALSE \CR}{to write visibilities in uncompressed
+          format.}
+\dispt{OUTNA\qs ' ' \CR}{take default (previous \AIPS) name.}
+\dispt{OUTCL\qs ' ' \CR}{take default (previous \AIPS) class.}
+\dispt{OUTSEQ\qs 0 \CR}{take default (previous \AIPS) sequence \#.}
+\dispt{OUTDI\qs 3 \CR}{to write the data to disk 3 (one with enough
+          space).}
+\dispt{INP \CR}{to review the inputs (several apply only to VLBA
+          format files).}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+
+     {\tt FITLD} is the equivalent of {\tt FILLM}, but for output from
+the VLBA, rather than the VLA, correlator.  The data-selection adverbs
+{\tt SOURCES}, {\tt QUAL}, {\tt CALCODE}, and {\tt TIMERANG} and the
+table-control adverbs {\tt CLINT} and {\tt FQTOL} are used, for
+VLBA-format data only, in {\tt FITLD} in ways similar to the
+data-selection and control adverbs of \hbox{{\tt FILLM}}.  See
+\Rchap{vlbi} for more specific information.
+
+\sects{Record keeping and data management}
+
+\subsections{Calibrating data with multiple {\tt FQ} entries}
+
+      In general an observing run with the VLA, especially a
+spectral-line run, will result in a \uv\ data file containing multiple
+{\tt FQ} entries.  \todx{FQ number}In early versions of the \AIPS\
+software, the different {\tt FQ} entries would automatically have been
+placed in different physical files.  Now, {\tt FILLM} allows you to
+place all of them in the same file.  This may be convenient, but it
+has a number of costs.  If a file contains multiple, independent
+frequencies, then it occupies more disk space and costs time in every
+program to skip the currently unwanted data (either a small cost when
+the index file is used or a rather larger cost when the file must be
+read sequentially).  Since multiple frequencies are still not handled
+correctly in all programs (\ie\ polarization calibration) and since it
+is not possible to calibrate all of the different {\tt FQ} data in one
+pass, you might consider separating the multiple frequencies into
+separate files (as described in \Sec{fillm}).  In either case, you
+must calibrate each frequency with a separate pass of the scheme
+outlined below. There are three adverbs to enable you to differentiate
+between the different {\tt FQ} entries: {\tt \tndx{FREQID}} enables
+the user to specify the {\tt FQ} number directly (with -1 or 0 meaning
+to take the first found); {\tt SELFREQ} and {\tt SELBAND} enable the
+user to specify the observing frequency and bandwidth to be calibrated
+(the tasks then determine to which {\tt FQ} number these adverbs
+correspond). If {\tt SELFREQ} and {\tt SELBAND} are specified they
+override the value of \hbox{{\tt FREQID}}. \todx{FQ number}
+
+     There are certain bookkeeping tasks that must be performed
+between calibrating each {\tt FQ} set.  First, you must ensure that
+you have reset the fluxes of your secondary calibrators by running
+{\tt \tndx{SETJY}} with {\us OPTYPE = 'REJY'} --- if not, this will
+cause the amplitudes of your data to be incorrect.  Second, it is wise
+to remove the {\tt SN} tables associated with any previous calibration
+using the verb \hbox{{\tt \tndx{EXTDEST}}}.  Although this is not
+strictly necessary, it will simplify your bookkeeping.
+
+    A practical note: it is often useful to have used different
+qualifiers for different frequencies.  This gives you another
+``handle'' on the data.  Unfortunately, not all programs use the
+{\tt QUAL}, or even the {\tt CALCODE}, adverb.
+
+\Subsections{Recommended record keeping}{calrecord}
+
+     It is useful to print a summary of the time stamps and source
+names of the scans in your data set.  This reminds you of the
+structure of your observing program when you decide on interpolation
+and editing strategies, and may help to clarify relationships between
+later, more detailed listings of parts of the data set.  It is also
+useful to have a printed scan summary and a map of the antenna layout
+if you need to return to processing the data months or years later.
+Finally, it is also making sure that all \AIPS\ input parameters have
+their null (default) values before invoking the parts of the
+calibration package, such as {\tt CALIB}, that have many inputs.  The
+null settings of most parameters are arranged to be sensible ones so
+that basic VLA calibration can be done with a minimum of specific
+inputs; but some inputs may lose their default values if you
+interleave other \AIPS\ tasks with the calibration pattern recommended
+below.  Therefore, you should {\it always\/} review the input
+parameters with {\us INP\qs {\it taskname\/} \CR} before running task
+{\it taskname\/}.
+
+     We suggest that you begin a calibration session with the
+following inputs:
+\dispt{\tndx{DEFAULT}\qs LISTR \CR}{to set all {\tt LISTR}'s inputs to
+       null (default) values.}
+\dispt{TASK\qs '\tndx{LISTR}' ; INP \CR}{to review the inputs needed.}
+\dispt{INDI\qs {\it n\/}; GETN\qs {\it m\/} \CR}{to select the data
+       set, $n=3$ and $m=1$ in {\tt FILLM} example above.}
+\dispt{TPUT\qs CALIB \CR}{to store null values for later use with
+       {\tt CALIB}\@.}
+\dispt{OPTYP\qs 'SCAN' \CR}{to select scan summary listing.}
+\dispt{DOCRT\qs -1 \CR}{to send the output to the printer.}
+\dispt{INP \CR}{to review the inputs for \hbox{{\tt LISTR}}.}
+\dispt{GO \CR}{to run the program when the inputs are set correctly.}
+\dispe{Note that the {\tt DEFAULT\qs LISTR} sets the adverbs to select
+all sources and all times and to send printed output to the terminal
+rather than the printer.  It is also very useful to have a printed
+summary of your antenna locations, especially a list of which ones you
+actually ended up using.  To do this, enter}
+\dispt{NPRINT\qs 0 \CR}{to do all antennas}
+\dispt{INVERS\qs {\it }n \CR}{to do sub-array {\it n\/}}
+\dispt{GO\qs \tndx{PRTAN} \CR}{to print the list and a map of antenna
+           locations.}
+
+     In looking over the output from {\tt LISTR}, you may notice that
+some of the sources you wish to use as calibrators have a blank
+``Calcode''.  To mark them as calibrators, use:
+\dispt{TASK\qs '\tndx{SETJY}' ; INP \CR}{to select the task and review
+           its inputs.}
+\dispt{SOURCES '{\it sor1\/}' , '{\it sor2\/}' , '{\it sor3\/}' ,
+           $\ldots$ \CR}{to select the unmarked calibrator sources.}
+\dispt{OPTYPE 'RESE' \CR}{to reset fluxes and velocities.}
+\dispt{CALCODE\qs 'C' \CR}{to mark the sources as ``C'' calibrators.}
+\dispt{GO \CR}{to run the task.}
+\dispe{This operation will let you select the calibrators by their
+Calcodes rather than having to spell out their names over and over
+again.  You may wish to consider separate calibrator codes for primary
+and secondary gain calibrators to make them easier to separate.
+You may reset a calibrator code to blank by specifying {\tt CALCODE =
+'----'}.}
+
+\Sects{Beginning the calibration}{calbegin}
+
+     After loading the data to disk, it has been traditional to begin
+with a substantial session of data checking and \Indx{editing}.  With
+data from the VLA, this is always time consuming and often not
+necessary. Nonetheless, it is probably a good idea to check for two
+specific kinds of problems before beginning the actual calibration.
+These are corrupted data in the first record of most scans and totally
+dead antennas.  Many other problems in the data are quickly and easily
+diagnosed by carefully inspecting the solution tables produced from
+the calibrators on un-edited data.  Missing antennas and erratic
+amplitudes due to sampling problems and RF interference can be spotted
+from the {\tt SN} tables and the closure-error messages produced by
+{\tt CALIB}\@.  If you {\it can't\/} spot errors from these, you
+may not need to edit the calibrator data.  If the {\tt SN} tables have
+well-behaved phases for most antennas and rapidly rotating phases for
+one or two, then you may need to apply baseline corrections rather
+than editing.  See \Sec{blcorr} for details of how to make
+antenna-position corrections.
+
+     The next section tells how to detect simple problems in the data
+and eliminate them to reduce the warnings from the calibration tasks.
+The following sections tell you how to enter fluxes for the primary
+calibrator sources and do a preliminary calibration for all
+calibrators.  In so doing, you should generate one or more solution
+({\tt SN}) tables containing the complex gains at the times of the
+calibration observations.  These tables may be examined for problems
+with the observations.  If you find problems, then you need to edit
+the data or apply baseline corrections and should consult
+\Sec{caledit}.  If you do not find problems, you may proceed directly
+to \Sec{calgain}.  (Of course, you may decide to edit the data from
+your program sources at a later stage of the data reduction and have
+to return to \Sec{caledit} then.)
+
+\Subsections{Initial editing}{initedit}
+
+     The warning messages from the calibrations described in the next
+sections may be reduced by \Indx{flagging} those antennas which were
+not actually working, but which were not flagged by the on-line
+system.  Another problem that has plagued the VLA (and other
+interferometers) persistently is that the first record in scans can be
+corrupted; usually its amplitudes are lower than they should be.
+These data can be flagged using {\tt TVFLG} or {\tt UVFLG}, but this
+can be time consuming.  The task {\tt EDITA} described in
+\Sec{edita} is now likely to be the best initial (and perhaps only)
+editing tool which you need.  For a more traditional approach, we
+recommend that you do the following before beginning your regular data
+editing.  Use the task {\tt \tndx{LISTR}} on your terminal (to save
+time and paper) to see if you have the problem:
+\dispt{TASK\qs 'LISTR' \CR}{to set the data listing task}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+         set, $n=3$ and $m=1$ above.}
+\dispt{OPTYPE\qs 'LIST' \CR}{to select column listing format}
+\dispt{ANTEN\qs {\it a1\/} , 0 \CR}{to select one reliable antenna to
+           display.}
+\dispt{BASEL\qs 0 \CR}{to select all baselines to this antenna.}
+\dispt{SOURCES\qs ' ' ; CALCODE\qs '*' \CR}{to select all calibrator
+           sources only.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{STOKES\qs 'RR' \CR}{to examine only one Stokes at a time.}
+\dispt{BIF\qs 1 ; EIF\qs BIF\CR}{to specify the ``AC'' IFs only; it
+           is quicker to look at only 1 IF at a time although more
+           than one can be listed in sequence.}
+\dispt{FREQID\qs 1 \CR}{to select {\tt FQ} number (each {\tt FQ}
+           number must be done separately).}
+\dispt{DOCRT\qs 132 \CR}{to see full width display on the terminal.
+           Use your window manager to stretch the window to $ \ge 132$
+           characters width.}
+\dispt{DOCALIB\qs -1 \CR}{to turn off calibration.}
+\dispt{DPARM\qs 0 \CR}{to select amplitudes with no averaging.}
+\dispt{INP \CR}{to re-check {\it all\/} the inputs parameters.}
+\dispt{GO \CR}{to start the task.}
+\dispe{The task will prompt you for a \CR\ after each ``page full'' of
+output.  When you have seen enough, enter \hbox{{\us Q}}.  This
+display will let you determine whether the start-of-scan problem
+infects your data and, if so, how badly.  If it is rare, forget it for
+now and use manual flagging methods later if needed.  If it is
+widespread, use the \AIPS\ task {\tt \tndx{QUACK}}:\todx{LISTR}
+\Iodx{editing}\Iodx{flagging}}
+\dispt{TASK\qs 'QUACK' \CR}{}
+\dispt{SOURCES\qs ' ' \CR}{to select all sources.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{ANTENNAS\qs 0 \CR}{to select all antennas.}
+\dispt{FLAGVER\qs 1 \CR}{to insert flagging information in FG table 1.}
+\dispt{OPCODE\qs 'BEG' \CR}{flag first {\tt APARM(2)} min of each scan.}
+\dispt{REASON\qs 'BAD START OF SCAN' \CR}{reason for the flagging.}
+\dispt{APARM\qs 0 , 1/6 , 0 \CR}{flag first 10 seconds of each scan.}
+\dispt{GO \CR}{}
+
+     The display generated above will also allow you to determine
+quickly which antennas are absent, which antennas are present but
+dead, and, with more careful examination, which antennas are flaky and
+may need special consideration.  ``Dead'' antennas are visible in this
+display as columns with small numbers --- columns that differ by
+factors of two or so from the others are generally fine.  To be
+thorough, it is probably best to check the other IF:
+\dispt{BIF\qs 2 ; EIF\qs 2\CR}{to specify the ``BD'' IFs.}
+\dispt{GO \CR}{to run the program again.}
+\dispe{as well as {\tt STOKES = 'LL'}.}
+
+     To remove the dead antennas, run \hbox{{\tt \tndx{UVFLG}}}.  For
+example, if antennas 6, 9, and 22 were bad for the full run in both
+IFs and Stokes, they could be deleted with
+\dispt{TASK\qs 'UVFLG' ; INP \CR}{to select the editor and check its
+          inputs.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{to specify the ``AC'' and ``BD'' IFs.}
+\dispt{BCHAN\qs 0 ; ECHAN\qs 0 \CR}{to flag all channels.}
+\dispt{FREQID\qs 1 \CR}{to flag only the present {\tt FQ} number.}
+\dispt{ANTEN\qs 6 , 9, 22 \CR}{to select the antennas.}
+\dispt{BASEL\qs 0 \CR}{to select all baselines to these antennas.}
+\dispt{STOKES\qs ' ' \CR}{to select all Stokes.}
+\dispt{REASON = 'ZOMBIE ANTENNA' \CR}{to set a reason.}
+\dispt{OUTFGVER\qs 1 \CR}{to select the first (only) flag table.}
+\dispt{INP \CR}{be careful with the inputs here!}
+\dispt{GO \CR}{to run the task when ready.}
+
+\subsections{Primary flux density calibrators}
+
+      Careful measurements made with the D array of the VLA have shown
+that the Baars {\it et al.\/}\footnote{1977, {\it Astr.~\&\ Ap.}, 61,
+99} formul\ae\ for ``standard'' calibration sources are in error
+slightly, based on the assumption that the Baars' expression for 3C295
+is correct.   Revised values of the coefficients have been derived by
+Rick Perley and Brian Butler.  Task {\tt SETJY} has these formulae
+built into it, giving you the option ({\us OPTYPE 'CALC'}) of letting
+it calculate the fluxes for primary calibrator sources 3C48, 3C123,
+3C138, 3C147, 3C196, 3C286, 3C295, and 1934-638.  The default setting
+of {\us APARM(2) = 0}) will calculate the flux densities of 3C48,
+3C138, and 3C147 according to the 2013 Perley-Butler time-dependent
+coefficients and fluxes for the others with 2013 time independent
+values.  Fluxes at frequencies below 500 MHz are calculated with the
+Scaife-Heald\footnote{Scaife, A. M. M. and Heald, G. H. 2012, {\it
+Mon.~Not.~R.~Astrob.~Soc.}, 423, l30.} coefficients for 3C48, 3C147,
+3C196, 3C286, 3C295, 3C380.  Higher values of {\tt APARM(2)} select
+older systems of coefficients if you need them to match previous data
+reductions.  {\tt SETJY} will recognize both the 3C and IAU
+designations (B1950 and J2000) for these sources.  You may insert your
+own favorite values for these sources instead ({\us OPTYPE = ' '}) and
+you will have to insert values for any other gain calibrators you
+intend to use.  Adverbs {\tt SPECINDX} and {\tt SPECURVE} allow you to
+enter spectral index information to help set the calibrator
+fluxes.\Iodx{calibration}
+
+      Unfortunately, since all the primary flux calibrators are
+resolved by the VLA in most configurations and at most frequencies,
+they cannot be used directly to determine the amplitude calibration of
+the antennas without a detailed model of the source structure, see
+\Rfig{3C48_X} as an example.  Beginning in April 2004, model images
+for the calibrators at some frequencies are included with \AIPS\@.
+Models of 3C286, 3C48, 3C138, and 3C147 are available for all 6
+traditional bands of the VLA {\it except} 90\,cm and even for S band
+of the EVLA.  Type {\us \tndx{CALDIR} \CR} to see a list of the
+currently available calibrator models.  Sources which are small enough
+to be substantially unresolved by the VLA have variable flux densities
+which must be determined in each observing session.  A common method
+used to determine the flux densities of the secondary calibrators from
+the primary calibrator(s) is to compare the amplitudes of the gain
+solutions from the procedure described below.
+
+    Use {\tt SETJY} to enter/calculate the flux density of each
+primary flux density calibrator.  The ultimate reference for the VLA
+is 3C295, but 3C286 (1328+307), which is slightly resolved in most
+configurations at most frequencies, is the most useful primary
+calibrator.  {\tt CALIB} has an option that will allow you to make use
+of Clean component models for calibrator sources.  You are strongly
+encouraged to use the existing models.  If you follow past practice
+at the VLA, you may have to restrict the \uv\ range over which you
+compute antenna gain solutions for 3C286, and may therefore insert a
+``phony'' flux density appropriate only for that \uv\ range at this
+point.  In both cases, the following step should be done.  {\tt CALIB}
+will scale the total flux of the model to match the total flux of the
+source recorded by {\tt SETJY} in the source table.  This corrects for
+the model being taken at a somewhat different frequency than your
+observations and for the model containing most, but not all, of the
+total flux.  An example of the inputs for {\tt SETJY}, where you let
+it calculate the flux, would be:
+\dispt{TASK\qs 'SETJY' ; INP \CR}{}
+\dispt{SOURCES\qs '3C286' , '\ ' \CR}{if you used 3C286 as the source
+            name.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{will calculate for both ``AC'' and
+            ``BD'' IFs.}
+\dispt{OPTYPE\qs 'CALC' \CR}{perform the calculation.}
+\dispt{APARM(2)\qs = 0 \CR}{to use the VLA ``2013'' coefficients.}
+\dispt{INP \CR}{to review inputs.}
+\dispt{GO \CR}{when inputs okay.}
+
+Or you can set the flux manually as shown below:
+\dispt{TASK\qs 'SETJY' ; INP \CR}{}
+\dispt{SOURCES\qs '3C286' , '\ ' \CR}{if you used 3C286 as the source
+          name.}
+\dispt{ZEROSP\qs 7.41 , 0 \CR}{I flux 7.41 Jy, Q, U, V fluxes 0.}
+\dispt{BIF\qs 1 ; EIF\qs 1 \CR}{selects first IF \hbox{IF}.}
+\dispt{INP \CR}{to review inputs.}
+\dispt{OPTYPE\qs '\ '}{use values given in \hbox{{\tt ZEROSP}}.}
+\dispt{GO \CR}{when inputs okay.}
+\dispt{BIF\qs 2 ; EIF\qs 2 \CR}{selects second IF \hbox{IF}.}
+\dispt{ZEROSP 7.46, 0 \CR}{I flux 7.46 Jy at the $2^{\und}$ IF,
+          Q, U, V fluxes 0.}
+\dispt{GO \CR}{}
+\dispe{Note that, although {\tt SOURCES} can accept a source list,
+{\tt ZEROSP} has room for only one set of I, Q, U, V flux densities.
+To set the flux densities for several different sources or IFs, you
+must therefore rerun {\tt \tndx{SETJY}} for each source and each IF,
+changing the {\tt SOURCES}, {\tt BIF}, {\tt EIF}, and {\tt ZEROSP}
+inputs each time.  Alternatively, set {\tt ZEROSP} to the flux at 1
+GHz and enter {\tt SPECINDX} and {\tt SPECURVE} adverbs to describe
+the dependence with frequency.\iodx{spectral index}}
+
+{\tt CALIB} will use the V polarization flux in the source table if
+one has been entered.  The RR polarization will be calibrated to I+V
+and the LL to I-V.  While this has little practical use with circular
+polarizations because V is almost always negligible, it can be used
+for linearly polarized data from the WSRT\@.  That telescope has
+equatorially mounted dishes, so the XX polarization is I-Q and the
+YY is I+Q independent of parallactic angle.  For WSRT data, you should
+relabel the polarizations to RR/LL and enter {\tt I, 0, 0, -Q} for
+{\tt ZEROSP}, since Q is not negligible in standard calibrators.
+
+\Subsections{First pass of the gain calibration}{1passgain}
+
+\Subsubsections{Using calibrator models}{vlacalmodels}
+
+It is now considered standard practice to use flux calibrator models
+and you are strongly encouraged to do so.  As mentioned above, all the
+primary flux calibrators are resolved at {\it most} frequencies and
+configurations.  \Rfig{3C48_X} shows the visibilities and image of
+the commonly used calibrator 3C48 at X-band, it is obvious this source
+is far from being point like.  Since April 2004, source models have
+been shipped with \AIPS\ as FITS files. Currently, models for 3C48,
+3C286 and 3C137 are available for all bands except 90\,cm and 3C147 at
+all bands except, X, C and 90\,cm.  Additional models are in the
+works, so you should always check to see what is available:
+\dispt{\tndx{CALDIR} \CR}{to list the available models by source name
+          and band code.}
+
+The primary calibration task in \AIPS\ is {\tt CALIB}\@.  Most of the
+complexity of {\tt CALIB} can be hidden using the procedure {\tt
+\tndx{VLACALIB}}\@.  Before attempting to use this procedure, you must
+first load it by typing:
+\dispt{RUN VLAPROCS \CR}{to compile the procedures.}
+\dispe{Type {\tt HELP VLAPROCS} for a full list of the procedures
+available in {\tt VLAPROCS}\@.}
+
+The procedure {\tt VLACALIB} {\it automatically} downloads and uses
+calibrator models, if one is available and the inputs are set correctly.
+After you have loaded {\tt VLACALIB} you may invoke the calibrator model
+usage by setting:
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+          set, $n=3$ and $m=1$ above.}
+\dispt{CALSOUR\qs = '{\it Cala\/}' \CR}{to name {\it one} primary
+          flux calibrator to invoke automatic calibrator model
+          usage.}
+\dispt{UVRANGE\qs 0 \CR}{set to zero to invoke automatic calibrator
+          model usage.}
+\dispt{ANTENNAS\qs 0 \CR}{set to zero to invoke automatic calibrator
+          model usage.}
+\dispt{REFANT\qs {\it n\/} \CR}{reference antenna number --- use a
+          reliable antenna located near the center of the array.}
+\dispt{MINAMPER\qs 10 \CR}{display warning if baseline disagrees in
+         amplitude by more than {\it 10\%\/}\ from the model.}
+\dispt{MINPHSER\qs 10 \CR}{display warning if baseline disagrees by
+         more than $10^{\circ}$ of phase from the model.}
+\dispt{FREQID\qs 1 \CR}{use {\tt FQ} number 1.}
+\dispt{DOPRINT\qs 1 ; OUTPRINT\qs '\qs' \CR}{to generate significant
+         printed output on the line printer.}
+\dispt{INP\qs VLACALIB \CR}{to review inputs.}
+\dispt{VLACALIB \CR}{to make the solution and print results.}
+\dispe{This procedure load the will load the calibrator model (using
+{\tt CALRD}) and use it when it runs {\tt CALIB}, then print any
+messages from {\tt CALIB} about closure errors on the line printer,
+and finally run {\tt \tndx{LISTR}} to print the amplitudes and phases
+of the derived solutions.  Plots of these values may be obtained using
+task \hbox{{\tt \tndx{SNPLT}}}.}
+
+Alternatively, you can load the model in manually using {\tt CALRD}
+\Todx{CALRD}:
+\dispt{TASK\qs 'CALRD' \CR}{to select the calibrator source reading
+          task.}
+\dispt{OBJECT\qs '3C286' \CR}{to load a model of 3C286.}
+\dispt{BAND\qs 'K' \CR}{to select the available model at K band.}
+\dispt{OUTDISK\qs $n$ \CR}{to write the model image and Clean
+          components to disk $n$.}
+\dispt{GO \CR}{to run the task and load the model.}
+
+Then you may select the model image with {\tt GET2N} for use in
+{\tt CALIB}\@.  Example inputs for {\tt CALIB} are:
+\dispt{TASK\qs 'CALIB'; INP \CR}{to select task and review inputs.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+          set, $n=3$ and $m=1$ above.}
+\dispt{CALSOUR\qs = '{\it Cala\/}' , '\qs' \CR}{flux calibrator for
+          which you have a model.}
+\dispt{UVRANGE\qs 0 \CR}{no \uv\ limits needed.}
+\dispt{ANTENNAS\qs 0 \CR}{antenna selection not needed.}
+\dispt{REFANT\qs {\it n\/} \CR}{reference antenna number --- use a
+          reliable antenna located near the center of the array.}
+\dispt{WEIGHTIT\qs 1 \CR}{to select $1/\sigma$ weights which may be
+          more stable.}
+\dispt{IN2DI\qs {\it o\/} ; GET2N\qs {\it p\/} \CR}{to select the
+          model.}
+\dispt{NCOMP\qs 0 \CR}{to use all components.}
+\dispt{SOLMODE\qs 'A\&P' \CR}{to do amplitude and phase solutions.}
+\dispt{APARM(6)\qs 2 \CR}{to print closure failures.}
+\dispt{MINAMPER\qs 10 \CR}{to display warning if baseline disagrees in
+         amplitude by more than {\it 10\%\/}\ from the model.}
+\dispt{MINPHSER\qs 10 \CR}{to display warning if baseline disagrees by
+         more than $10^{\circ}$ of phase from the model.}
+\dispt{CPARM(5)\qs 1 \CR}{to vector average amplitudes over spetral
+         channels and then scalar average them over time before
+         determining solution.}
+\dispt{FREQID\qs 1 \CR}{to use {\tt FQ} number 1.}
+\dispt{INP\qs CALIB \CR}{to review inputs.}
+\dispt{GO \CR}{to make the solution.}
+
+{\tt CALIB} will use the clean components table attached to the model
+to find antenna gain solutions.  It will sum the clean components
+within a certain radius of the center of the map (so that confusing
+sources that are part of the model do not influence the gain) and
+scale them to the flux in the {\tt SU} table. Therefore, you must
+still run {\tt SETJY} before running {\tt CALIB}.
+
+After running {\tt CALIB} check the solutions for all antennas with
+{\tt SNPLT} or {\tt LISTR (OPTYPE='GAIN')}.  If you have multiple
+primary or secondary calibrators you will have to run {\tt CALIB}
+separately for each, using models where they are available and
+restricting the {\tt UVRANGE} and {\tt ANTENNAS} where they are not.
+You can either write into the same {\tt SN} table by setting {\tt
+SNVER} to a table number or to different {\tt SN} tables by setting
+{\tt SNVER = 0}. Then you you can proceed as normal flagging and
+editing your data and proceed to final calibration as described in
+\Sec{calgain}.
+
+\begin{figure}
+\centering
+%\resizebox{\hsize}{!}{\gname{3C48Xuv}\hspace{0.5cm}\gname{3C48Xim}}
+\resizebox{\hsize}{!}{\gbb{524,526}{3C48Xuv}\hspace{0.5cm}\gbb{525,539}{3C48Xim}}
+\caption[3C48 at X-band]{Displays of the visibilities (left) and
+image (right) for the fundamental calibration source 3C48\@.  The
+plots were made using {\tt UVPLT}, {\tt KNTR}, and {\tt LWPLA};
+see \Sec{plotuv} and \Sec{plotcntr}.  Data from all VLA configurations
+including the VLBA antenna in Pie Town were used.  A point source
+would have visibilities that have a constant amplitude at all
+baselines and an image matching the beam plotted in the lower-left
+corner.}
+\label{fig:3C48_X}
+\end{figure}
+
+\Subsubsections{Flux calibration without calibrator models}{novlacal}
+
+We strongly encourage you to use the available models.  If words alone
+do not convince you, we encourage you to look at \Rfig{3C48_X} which
+shows you the visibilities and image of 3C48 at X-band.  It is rather
+far from a point source.  At lower frequencies there are other sources
+in the field which have an effect on phases as well.  This section
+used to list recommended {\tt UVRANGE}s to use for the standard
+calibration sources.  This is such bad practise that we have deleted
+those tables --- use the models.
+
+   The values of {\tt \tndx{UVRANGE}} for each secondary calibrator
+may be determined from the VLA Calibrator manual or by using {\tt
+\tndx{UVPLT}} to plot the amplitudes as a function of baseline length.
+If your secondary calibrators are point sources over most baselines,
+then it may save you time to do the full calibration now.  Not only
+will it save you, possibly, from re-running {\tt CALIB} at a later
+time with a wider {\tt UVRANGE}, but it will provide information on
+the data quality from the longer baselines.
+
+     Once you have read in procedure {\tt \tndx{VLACALIB}} (see
+\Sec{vlacalmodels}), you may use it to invoke {\tt \tndx{CALIB}}\@.
+You will have to do this once for each calibrator, unless you can use
+the same {\tt UVRANGE} for more than one of them.  Thus,
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+          set, $n=3$ and $m=1$ above.}
+\dispt{CALSOUR\qs = '{\it Cala\/}' , '{\it Calx\/}' \CR}{to name two
+          calibrators using the same {\tt UVRANGE} and other adverb
+          values.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{\uv\ limits, if
+          any, in kilo$\lambda$.}
+\dispt{ANTENNAS\qs {\it list\ of\ antennas\/} \CR}{antennas to use for
+          the solutions, see discussion above.}
+\dispt{REFANT\qs {\it n\/} \CR}{reference antenna number --- use a
+          reliable antenna located near the center of the array.}
+\dispt{MINAMPER\qs 10 \CR}{display warning if baseline disagrees in
+         amplitude by more than {\it 10\%\/}\ from the model.}
+\dispt{MINPHSER\qs 10 \CR}{display warning if baseline disagrees by
+         more than $10^{\circ}$ of phase from the model.}
+\dispt{DOPRINT\qs 1 ; OUTPRINT\qs '\qs' \CR}{to generate significant
+         printed output on the line printer.}
+\dispt{FREQID\qs 1 \CR}{use {\tt FQ} number 1.}
+\dispt{INP\qs VLACALIB \CR}{to review inputs.}
+\dispt{VLACALIB \CR}{to make the solution and print results.}
+\dispe{This procedure will first run {\tt CALIB}, then print any
+messages from {\tt CALIB} about closure errors on the line printer,
+and finally run {\tt \tndx{LISTR}} to print the amplitudes and phases
+of the derived solutions.  Plots of these values may be obtained using
+task {\tt \tndx{SNPLT}}\@.}
+
+      If the secondary calibrators require different values of {\tt
+UVRANGE}, then {\tt CALIB} must be run until it has run for all
+calibration sources.  Attached to your input data set is a solution
+{\tt SN} table.  Each run of {\tt CALIB} writes in this table (if {\tt
+SNVER = 1}), for the times of the included \Indx{calibration} scans,
+the solutions for all IFs using the flux densities you set for your
+calibrators with {\tt SETJY} or {\tt \indx{GETJY}}\@.  ({\tt CALIB}
+assumes a flux density of 1 Jy if no flux density is given in the {\tt
+SU} table.)  If a solution fails, however, the whole {\tt SN} table
+can be compromised, forcing you to start over.  It is possible to
+write multiple {\tt SN} tables with {\us SNVER = 0}.  Later programs
+such as {\tt GETJY} and {\tt CLCAL} will merge all {\tt SN} tables
+which they find (if told to do so). Tables with failed solutions must
+be deleted.
+
+     The {\tt LISTR} outputs provided by {\tt VLACALIB} should be
+examined carefully to check on the calibration; amplitudes should be
+consistent (both among antennas and among time stamps) and phases
+should vary smoothly.  If you decide that the solutions are not
+acceptable (\eg\ there are no valid solutions) {\it and\/} you are
+creating a new {\tt SN} table on each run of {\tt CALIB}, then delete
+that {\tt SN} table using {\tt EXTDEST} before proceeding.  The later
+stages of processing assume that all extant {\tt SN} tables are valid.
+Note that re-running {\tt CALIB} on the same {\tt SN} table simply
+over-writes the old solutions with new ones.    {\tt CALIB} gives
+messages which indicate the number of valid and invalid solutions
+which should help you evaluate the results.  If {\tt VLACALIB} is run
+using the values of {\tt MINAMPER} and {\tt MINPHSER} shown above, it
+will print a list of baselines and times which show substantial
+``closure'' errors.  (If you use {\tt CALIB} directly rather than {\tt
+VLACALIB}, you may use these adverbs plus {\tt CPARM(2}-{\tt 4)} to
+get additional reports and statistics on closure errors and {\tt
+CPARM(7)} to limit reporting of individual closure errors.)  It is
+important to remember that normal thermal noise and, at longer
+wavelengths, background confusion cause closure errors too.  Thus,
+some closure error on weaker calibrators is to be expected and may be
+ignored.  {\tt CALIB} will ignore errors larger than {\tt MINAMPER}
+and {\tt MINPHSER} if the data weights (after application of the
+source model) indicate that they have significance less than {\tt
+CPARM(7)} times the expected error.   Interpreting closure errors is a
+real art, but a couple of generalizations are possible.  If the same
+closure error shows up in both polarizations and both IFs, then you
+have probably got a resolved object.  If one antenna dominates the
+closure list, especially if it is at only one IF and/or one
+polarization, then you have got a bad antenna.  If the errors are
+uniformly small, distributed amongst all antennas, and not correlated
+between IFs or polarizations, then you have simply noise and/or
+background confusion.  In this case, do {\it not\/} edit the data ---
+the randomness of the ``errors'' nearly always averages out nicely and
+the solution is just fine.  Large or systematic errors indicate either
+that the calibrator source is resolved or that there are problems with
+the data requiring editing.  If a calibrator is being resolved, delete
+the bad {\tt SN} table and re-run {\tt VLACALIB} with an appropriate
+{\tt UVRANGE}\@.  One can now actually flag data based on closure
+errors using the {\tt DOFLAG} option.  This should be used carefully,
+if at all and then only if the model of the calibration source
+contains all of its flux.  Modern versions of {\tt CALIB} display some
+statistics of closure problems automatically and allow the use of
+``robust'' solution methods.
+
+\Sects{Assessing the data quality and initial editing}{caledit}
+
+     At each stage in the data calibration process, it is a good idea
+to take a look at the data to determine their quality and then to
+``flag'' (edit, delete) those that are suspect or clearly bad.  Having
+begun the actual calibration, it is important to get an impression
+of the overall quality of the data and to edit out any obviously
+corrupted data, (\eg\ bad integrations that were not detected and
+expunged by the on-line monitoring system, high amplitudes due to
+interference, unstable amplitudes due to undetected equipment
+problems, {\it etc\/}).  During the initial calibration, you need to
+do this only on the observations of calibration sources.  However, at
+a later stage, you may also need to apply techniques similar to those
+described below to your program sources.  If you do edit any
+calibration data at this point, you must re-run {\tt CALIB} following
+the instructions given above for the affected sources.
+
+     The philosophy of \Indx{editing} and the choice of methods are
+matters of personal taste and the advice given below should,
+therefore, be taken with a few grains of salt.  When interferometers
+consisted of only a couple of movable antennas, there was very little
+data and it was sparsely sampled.  At that time, careful editing to
+delete all suspect samples, but to preserve all samples which can be
+calibrated, was probably justified.  But modern instruments produce a
+flood of data, with the substantial redundancy that allows for
+self-calibration on strong sources.  Devoting the same care today to
+editing is therefore very expensive in your time, while the loss of
+data needlessly flagged is rarely significant.  A couple of guidelines
+you might consider are:\Iodx{flagging}
+\xbit
+\Item Don't flag on the basis of phase.  At least with the VLA,
+    most phase fluctuations are due to the atmosphere rather than the
+    instrument.  Calibration can deal with these up to a point, and
+    self-calibration (if you have enough signal) can refine the phases
+    to levels that you would never reach by flagging.  The exceptions
+    are (1) IF phase jumps which still happen on rare occasions, and
+    (2) RF interference which sometimes is seen as an excursion in
+    phase rather than amplitude.
+\Item Don't flag on minor amplitude errors, especially if they are
+    not common.  Except for very high dynamic range imaging, these
+    will not be a problem, and in those cases, self-calibration always
+    repairs or sufficiently represses the problem.
+\Item Don't flag if {\tt CALIB} reports few closure errors and the
+    {\tt SN} tables viewed with {\tt \tndx{EDITA}}, {\tt
+    \tndx{SNPLT}}, and {\tt \tndx{LISTR}} and the calibrator data
+    viewed with the matrix format of {\tt LISTR} show only a few
+    problems.
+\xeit
+
+     There are three general methods of editing in \hbox{\AIPS}.  The
+``old-fashioned'' route uses {\tt LISTR} to print listings of the data
+on the printer or the user's terminal.  The user scans these listings
+with his eyes and, upon finding a bad point, enters a specific flag
+command for the data set using {\tt \tndx{UVFLG}}\@.  While this
+may sound clumsy, it is in fact quite simple and by far the faster
+method when there are only a few problems.  In a highly corrupted data
+set, it can use a lot of paper and may force you to run {\tt LISTR}
+multiple times to pin down the exact problems.  The ``hands-off''
+route uses tasks which attempt to determine which data are bad using
+only modest guidance from the user.  The most general of these are
+{\tt RFLAG} and {\tt FLAGR} mentioned below.  The third and ``modern''
+route uses interactive (``TV''-based) tasks to display the data in a
+variety of ways and to allow you to delete sections of bad data simply
+by pointing at them with the TV cursor.  These tasks are {\tt
+\tndx{TVFLG}} (\Sec{tvflg}) for all baselines and times (but only shows
+one IF, one Stokes, and one spectral channel at a time), {\tt
+\tndx{SPFLG}} (\Sec{spflg}) for all spectral channels, IFs, and times
+(but only shows one baseline and one Stokes at a time),  {\tt
+\tndx{FTFLG}} for all spectral channels, IFs, and times (but shows all
+baselines combined, one Stokes at a time), {\tt \tndx{EDITA}}
+(\Sec{edita}) for editing based on {\tt TY} (T$_{ant}$), {\tt SN} or
+{\tt CL} table values,  {\tt \tndx{EDITR}} (\Sec{editr}) for all
+times (but only shows a single antenna (1--11 baselines) and one channel
+average at a time) and {\tt \tndx{WIPER}} for all types of data (but
+with the time, polarization, and sometimes antenna of the points not
+available while editing).  {\tt TVFLG} is the one used for continuum
+and channel-0 data from the VLA, while {\tt FTFLG} is only used to
+check for channel-dependent interference.  {\tt SPFLG} is very useful
+for spectral-line editing in smaller arrays, such as the Australia
+Telescope and the VLBA, but is tedious for arrays like the VLA.
+Nonetheless, it may be necessary for the modern EVLA\@.  (The
+redundancy in the spectral domain on calibrator sources helps the eyes
+to locate bad data.)  {\tt EDITR} is more useful for small arrays such
+as those common in VLBI experiments.  {\tt EDITA} has been found to be
+remarkably effective using VLA system temperature tables.  All four
+tasks have the advantage of being very specific in displaying the bad
+data.  Multiple executions should not be required. However, they may
+require you to look at each IF, Stokes, channel (or baseline)
+separately (unless you make certain broad assumptions); {\tt EDITA}
+and {\tt EDITR} do allow you to look at all polarizations and/or IFs
+at once if you want.  They all require you to develop special skills
+since they offer so many options and operations with the TV cursor
+(mouse these days).  A couple of general statements can be
+made\Iodx{editing}\Iodx{flagging}
+\xbit
+\Item For highly corrupted data (say with considerable RF
+    interference, significant cross-talk between antennas, or erratic
+    antennas) {\tt \tndx{TVFLG}} is definitely preferred.  It gives an
+    overall view of the data which is far superior to that given by
+    \hbox{{\tt LISTR}}.  RFI and similar problems are more troublesome
+    at lower frequencies, so {\tt TVFLG} is probably preferred for L,
+    P, and ``4'' bands.
+\Item Most VLA data at higher frequencies are of good quality and
+    the flexibility of {\tt TVFLG} is not needed.  In such cases, {\tt
+    \tndx{LISTR}} with {\tt OPCODE = 'MATX'} can find scans with
+    erroneous points efficiently.
+\Item The displays given by {\tt TVFLG} and, to a lesser extent,
+    {\tt LISTR} in its {\tt MATX} mode are less useful when there are
+    only a few baselines.  Thus, for arrays smaller than the VLA,
+    users may wish to use {\tt \tndx{SPFLG}} on spectral-line data
+    sets and {\tt \tndx{EDITR}} on continuum data sets.
+\Item A reasonable strategy to use is to run {\tt LISTR} first.  If
+    there are only a few questionable points, use {\tt LISTR} and {\tt
+    UVFLG}, otherwise switch to an interactive task, such as {\tt
+    EDITA} followed by \hbox{{\tt TVFLG}}.
+\Item Task {\tt \tndx{FLAGR}} is a new, somewhat experimental task to
+    measure the rms in the data on either a baseline or an antenna
+    basis and then delete seriously discrepant points and times when
+    many antennas/correlators are questionable.  It also clips
+    amplitudes and weights which are outside specified normal ranges.
+    Task {\tt \tndx{FINDR}} reports the rmses and excessive values to
+    assist in running {\tt FLAGR}\@.
+\Item Task {\tt \tndx{RFLAG}} is a new task which flags data on the
+    belief that RFI is highly variable in time and/or frequency.  It
+    can do plots showing the time and/or frequency statistics as a
+    function of spectral channel and recommends flagging levels.
+    These, or user-chosen values, may be applied to the data to
+    produce large flag tables; see \Sec{EVLAflag}.
+\Item Task {\tt \tndx{CLIP}} makes entries in a flag table, applying
+    calibration and then testing amplitudes for reasonableness on a
+    source-by-source basis.  It can be very useful for large data
+    sets, but does not show you the bad data to evaluate yourself.
+    {\tt \tndx{ACLIP}} does the same operation on auto-correlation
+    data.
+\Item Task {\tt \tndx{DEFLG}} makes entries in a flag table whenever
+    the phases are too variable as measured by too low a ratio of
+    vector-averaged to scalar-averaged amplitudes.  This may be useful
+    when applied to the calibrator source in phase-referencing
+    observations and for other data at the highest and lowest
+    frequencies which are affected by atmospheric and ionospheric phase
+    variability.
+\Item Task {\tt \tndx{SNFLG}} makes entries in a flag table whenever
+    the phase solutions in an {\tt SN} or {\tt CL} table change
+    excessively between samples on a baseline basis.  It can also flag
+    data if the amplitude solutions differ from their mean
+    excessively.  In {\tt 31DEC12} it can instead flag data when the
+    amplitude and/or phase solutions or solution weights are outside
+    user-specified ranges.
+\Item Task {\tt \tndx{WIPER}} makes entries in a flag table for all
+    data samples wiped from a {\tt UVPLT}-like display of any \uv\
+    data set parameter versus any other parameter.  The source,
+    Stokes, IF, time, etc.~of the points are not known during the
+    interactive editing phase, but some baseline information is
+    displayed.  It can plot and edit any choice of {\tt STOKES} in one
+    execution and can flag/unflag by baseline.
+\Item Task {\tt \tndx{WETHR}} makes entries in a flag table whenever
+    various weather parameters exceed specified limits.  {\tt WETHR}
+    also plots the weather ({\tt WX}) table contents.
+\Item Task {\tt \tndx{VPFLG}} flags all correlators in a sample
+    whenever one is flagged.  Observations of sources with circular
+    polarization (Stokes V) require this operation to correct the
+    flagging done on-line (which flags only known bad correlators).
+\Item Task {\tt \tndx{FGPLT}} plots the times of selected flag-table
+    entries to provide you information on what these powerful tasks
+    have done.
+\xeit
+
+Many of the above tasks produce large flag tables.  The task {\tt
+\tndx{REFLG}} attempts to compress such tables, sometimes quite
+remarkably.  Task {\tt \tndx{FGDIF}} may be used to confirm that the
+flag tables before and after flag the same things.  {\tt FGCNT} in
+{\tt 31DEC16} may also help confirm this.
+
+\Subsections{Editing with {\tt LISTR} and {\tt UVFLG}}{uvflg}
+
+      Data may be flagged using task {\tt UVFLG} based on
+listings from \hbox{{\tt \tndx{LISTR}}}.  To print out the
+scalar-averaged raw amplitude data for the calibrators, and their {\it
+rms\/} values, once per scan in a matrix format, the following inputs
+are suggested:
+\dispt{TASK\qs 'LISTR' ; INP \CR}{to review the inputs needed.}
+\dispt{INDI\qs {\it n\/}; GETN\qs {\it m\/} \CR}{to select the data
+           set, $n=3$ and $m=1$ above.}
+\dispt{SOURCES ' ' ; CALCODE\qs '*' \CR} {to select calibrators.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{ANTENNAS\qs 0 \CR}{to list data for all antennas.}
+\dispt{OPTYPE\qs 'MATX' \CR}{to select matrix listing format.}
+\dispt{DOCRT\qs FALSE \CR}{to route the output to printer, not
+           terminal.}
+\dispt{DPARM\qs  3 , 1 , 0 \CR}{amplitude and {\it rms\/}, scalar scan
+           averaging.}
+\dispt{BIF\qs 1; EIF\qs 0 \CR}{to select all IFs, {\tt LISTR} will list
+           IFs separately.}
+\dispt{FREQID\qs 1 \CR}{to select {\tt FQ} number 1 (note that {\tt FQ}
+           numbers must also be done separately).}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+
+      For unresolved calibrators, the VLA on-line gain settings
+normally produce roughly the same values in all rows and columns
+within each matrix.  At L, C, X, and U bands, these values should be
+approximately $0.1$ of the expected source flux densities.  At P band,
+the factor is about $0.01$.  The factors for other bands are
+unspecified.  Any rows or columns with consistently high or low values
+in either the amplitude or the {\it rms\/}  matrices should be noted,
+as they probably indicate flaky antennas.  In particular, you should
+look for
+\xbit
+\Item In the amp-scalar averages, look for {\it dead\/} antennas,
+     which are easily visible as rows or columns with small numbers.
+     Rows or columns that differ by factors of two or so from the
+     others are generally fine.  Such deviations mean only that the
+     on-line gains were not set entirely correctly.
+\Item In the {\it rms\/} listings, look for discrepant high values.
+     Almost all problems are antenna based and will be seen as a row
+     or column.  Factors of 2 too high are normally okay, while
+     factors of 5 high are almost certainly indicative of serious
+     trouble.
+\xeit
+\Iodx{editing}\Iodx{flagging}
+
+     The next step is to locate the bad data more precisely.  Suppose
+that you have found a bad row for antenna 3 in right circular
+polarization in IF 2 between times ({\it d1\/}, {\it h1\/}, {\it
+m1\/}, {\it s1\/}) and ({\it d2\/}, {\it h2\/}, {\it m2\/}, {\it
+s2\/}).  You might then rerun {\tt \tndx{LISTR}} with the following
+new inputs:
+\dispt{SOURCES\qs ' ' \CR} {to select all sources.}
+\dispt{TIMER\qs {\it d1 h1 m1 s1 d2 h2 m2 s2} \CR}{to select by time
+           range.}
+\dispt{ANTENNAS\qs 1 , 2 , 3 \CR}{to list data for antenna 3 with two
+           ``control'' antennas.}
+\dispt{BASEL\qs 1 , 2 , 3 \CR}{to list all baselines with these three
+           antennas.}
+\dispt{OPTYPE\qs 'LIST' \CR}{to select column listing format.}
+\dispt{DOCRT\qs 1 \CR}{to route the output to terminal at its width.}
+\dispt{DPARM\qs = 0 \CR}{amplitude only, no averaging.}
+\dispt{STOKES\qs 'RR' \CR}{to select right circular.}
+\dispt{BIF\qs 2 \CR}{to specify the ``BD'' IFs.}
+\dispt{FLAGVER\qs 1 \CR}{to choose flag table 1.}
+\dispt{GO \CR}{to run the program.}
+\dispe{This produces a column listing on your terminal of the
+amplitude for baselines 1--2, 1--3 and 2--3 at every time stamp
+between the specified start and stop times.  The `1--2'' column
+provides a control for comparison with the two columns containing the
+suspicious antenna.}
+
+     Note that ``amp-scalar'' averaging ignores phase entirely and is
+therefore not useful on weak sources, nor can it find jumps or other
+problems with the phases.  To examine the data in a phase-sensitive
+way, repeat the above process, but set {\us DPARM(2) = 0} rather than
+1.  Bad phases will show up as reduced amplitudes and increased {\it
+rms\/}'s.
+
+     Once bad data have been identified, they can be expunged using
+\hbox{{\tt \tndx{UVFLG}}}.  For example, if antenna 3 RR was bad for
+the full interval shown above, it could be deleted with
+\dispt{TASK\qs 'UVFLG' ; INP \CR}{to select the editor and check its
+          inputs.}
+\dispt{TIMER\qs {\it d1 h1 m1 s1 d2 h2 m2 s2} \CR}{to select by time
+           range.}
+\dispt{BIF\qs 2 ; EIF = BIF \CR}{to specify the ``BD'' IFs.}
+\dispt{BCHAN\qs 0 ; ECHAN\qs 0 \CR}{to flag all channels.}
+\dispt{FREQID\qs 1 \CR}{to flag only the present {\tt FQ} number.}
+\dispt{ANTEN\qs 3 , 0 \CR}{to select antenna 3.}
+\dispt{BASEL\qs 0 \CR}{to select all baselines to antenna 3.}
+\dispt{STOKES\qs 'RR' \CR}{to select only the RR Stokes (LL was found
+           to be okay in this example).}
+\dispt{REASON = 'BAD RMS WHOLE SCAN' \CR}{to set a reason.}
+\dispt{OUTFGVER\qs 1 \CR}{to select the first (only) flag table.}
+\dispt{INP \CR}{be careful with the inputs here!}
+\dispt{GO \CR}{to run the task when ready.}
+
+     Continue the process until you have looked at all parts of the
+data set that seemed anomalous in the first matrix listing, then rerun
+that listing to be sure that the flagging has cleaned up the data set
+sufficiently.  If there are lots of bad data, you may find that you
+have missed a few on the first pass.  If you change your mind about a
+flagging entry, you can use {\tt \tndx{UVFLG}} with {\us OPCODE =
+'UFLG'} to remove entries from the flag table.  All adverbs of {\tt
+UVFLG} are used when removing entries, so you may use {\tt REASON}
+along with the channel, IF, source, et al.~adverbs to select the
+entries to be removed.  {\tt OPCODE}s {\tt 'REAS'} and {\tt 'WILD'}
+may be used to undo an entry solely based on the {\tt REASON}\@.  If
+the table becomes hopelessly messed up, use {\tt \tndx{EXTDEST}} to
+delete the flag table and start over or use a higher numbered flag
+table. The contents of the flag table may be examined at any time with
+the general task {\tt \tndx{PRTAB}} and entries in it may also be
+removed with {\tt \tndx{TABED}} and/or \hbox{{\tt TAFLG}}.  Two flag
+tables can be merged using {\tt TAPPE}\@.
+\Iodx{editing}\Iodx{flagging}
+
+\Subsections{Editing with {\tt EDITA}}{edita}
+
+     The task {\tt \Tndx{EDITA}} uses the graphics planes on the
+\AIPS\ TV display to plot data from tables and to offer options for
+\Indx{editing} (deleting, \Indx{flagging}) the associated \uv\ data.
+Only the {\tt TY} (system temperature), {\tt SN} (solution), and {\tt
+CL} (calibration) tables may be used.  EVLA users will not have a {\tt
+TY} table, but they may have an {\tt SY} (SysPower) table which may be
+used instead.  We recommend using {\tt EDITA} with the {\tt TY} or
+{\tt SY} tables to do the initial editing of VLA and EVLA data sets,
+probably before running the programs described in \Sec{calbegin}.  For
+accuracy in evaluating and flagging your data, it is a good idea to
+have the {\tt TY} table filled with the same interval as the data
+themselves; see \Sec{fillm}.  Try:
+\dispt{TASK\qs 'EDITA ; INP \CR}{to review the inputs needed.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+         set, $n=3$ and $m=1$ above.}
+\dispt{INEXT\qs 'TY' \CR}{to use the system temperature table.}
+\dispt{INVERS\qs 0 \CR}{to use the highest numbered table, usually 1.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{FREQID\qs 3 \CR}{Select {\tt FQ} entry 3.}
+\dispt{BIF\qs 1 ; EIF\qs 0 \CR}{to specify all IFs; you can then
+         toggle between them interactively and even display all at
+         once.}
+\dispt{ANTENNAS\qs 0 \CR}{to display data for all antennas.}
+\dispt{ANTUSE\qs 1 , 2 , 3 , 4 , 5 , 6 , 7 \CR}{to display initially
+         the first 7 antenn\ae, editing antenna 1.  Others may be
+         selected interactively.}
+\dispt{FLAGVER\qs 1 \CR}{to use flag ({\tt FG}) table 1.}
+\dispt{OUTFGVER\qs 0 \CR}{to create a new flag table with the flags
+      from {\tt FG} table 1 plus the new flags.}
+\dispt{SOLINT\qs 0 \CR}{to avoid averaging any samples.}
+\dispt{DOHIST\qs FALSE \CR}{to omit recording the flagging in the
+         history file.}
+\dispt{DOTWO\qs TRUE \CR}{to view a $2^{\und}$ observable for
+         comparison}
+\dispt{CROWDED\qs TRUE ; DO3COL\qs TRUE \CR}{to allow plots with all
+         polarizations and/or IFs simultaneously, using color to
+         diffentiate the polarizations and IFs.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+\dispe{If you make multiple runs of {\tt EDITA}, it is important to
+make sure that the flagging table entries are all in one version
+of the {\tt FG} table. The easiest way to ensure this is to should set
+{\tt FLAGVER} and {\tt OUTFGVER} to 0 and keep it that way for all runs
+of {\tt EDITA}\@.  This may create an excessive number of flag tables,
+but unwanted ones may be deleted with {\tt EXTDEST}\@.  If you make a
+mistake two flag tables may be merged with the task {\tt TAPPE}\@.  A
+sample display from {\tt EDITA} is shown on the next page.}
+
+The following discussion assumes that you have read \Sec{xas} and are
+familiar with using the \AIPS\ TV display.  An item in a menu such as
+that shown in the figure is selected by moving the TV cursor to the
+item (holding down or pressing the left mouse button).  At this point,
+the menu item will change color.  To obtain information about the
+item, press \AIPS\ TV ``button D'' (usually the {\tt D} key and also
+the {\tt F6} key on your keyboard).  To tell the program to execute
+the menu item, press any of \AIPS\ TV buttons A, B, or \hbox{C}.
+Status lines around the display indicate what is plotted and which
+data will be flagged by the next flagging command.  In the figure
+below, only the displayed antenna (2), and time range will be flagged.
+You must display at least a few lines of the message window and your
+main {\tt AIPS} window since the former will be used for instructions
+and reports and the latter will be needed for data entry (\eg\ antenna
+selection).
+
+\begin{figure}
+\centering
+%\resizebox{\hsize}{!}{\gname{edita}}
+\resizebox{\hsize}{!}{\gbb{544,435}{edita}}
+\caption[{\tt EDITA} display]{A display of a sample TV screen from
+\hbox{{\tt EDITA}}, made using the \AIPS\ task {\tt TVCPS} to produce
+a negative black-and-white display.  System temperatures are being
+used to edit VLBA data.  The {\tt \Tndx{EDITA}} menu (in the boxes),
+the status lines (at the bottom), the editing area (bottom) of a
+portion of the data from the selected antenna (1), the subsidiary
+plots of data from selected secondary antenn\ae\ (3, 5, 7, 9), the
+edit tool (bar or box), and the edit location values are displayed in
+different graphics planes which normally appear in different colors.
+In this example, with {\tt CROWDED=TRUE}, four IFs but only one
+polarization are displayed and may be edited simultaneously.  Both
+polarizations can be displayed together along with either one or all
+four IFs.  Color may be used to differentiate polariztions and IFs.
+\Iodx{editing}\Iodx{flagging}\Todx{EDITA}}
+\label{fig:edita}
+\end{figure}
+
+The first thing to do with {\tt EDITA} is to look at all of the
+polarizations, IFs, and antenn\ae, in order to flag the obviously bad
+samples (if any).  Use {\tt SWITCH POLARIZATION} to switch between
+polarizations and {\tt ENTER IF} to select the IF to edit.
+Alternatively, {\tt NEXT CORRELATOR} will cycle through all
+polarizations and IFs.  If {\tt CROWDED} was set to true, {\tt SWITCH
+POLARIZATION} will cycle through displaying both polarizations as well
+as each separately, and {\tt ENTER IF} will accept 0 as indicating
+all.  {\tt NEXT CORRELATOR} shows only one correlator at a time, but
+can switch away from a multi-correlator display.  These options appear
+only if there is more than one polarization and/or more than one IF in
+the loaded data.  Use {\tt ENTER ANTENNA} to select the antenna to be
+flagged and {\tt ENTER OTHER ANT} to select secondary antenn\ae\ to
+be displayed around the editing area.  If the secondary antenn\ae\
+have no obvious problems, then they do not have to be selected for
+editing.  {\tt \Tndx{EDITA}} will plot all of the times in the
+available area, potentially making a very crowded display.  You may
+select interactively a smaller time range or ``frame'' in order to see
+the samples more clearly.  It is necessary to select each frame in
+order to edit the data in that frame so it helps to make the TV screen
+as big as possible with the {\tt F2} button or your window manager.
+Note that the vertical scales used by {\tt EDITA} are linear, but that
+the horizontal scale is irregular and potentially discontinuous.
+Integer hours are indicated by tick marks and the time range of the
+frame is indicated.  Use {\tt FLAG TIME} or {\tt FLAG TIME RANGE} to
+delete data following instructions which will appear on the message
+window.  While you are editing, the source name, sample time and
+sample value currently selected will be displayed in the upper left
+corner of the TV screen.  This information can also be used to
+determine if {\tt QUACK} is needed.
+
+Having flagged all obviously bad points, select {\tt SWITCH ALL IF},
+{\tt SWITCH ALL TIME}, {\tt SWITCH ALL ANT}, and {\tt SWITCH ALL POL}
+so that the next flag command(s) apply to all of the data.  (Decide
+whether the flags should apply only to the source(s) displayed or to
+all sources and set {\tt SWITCH ALL SOURC} appropriately.)  Set the
+{\tt SCAN LENGTH} long enough to include the shorter of the full scan
+and about 12 samples.  Then display the difference between the current
+sample and the running mean by selecting \hbox{{\tt SHOW TSYS - <T>}}.
+Use {\tt FLAG ABOVE} and {\tt FLAG BELOW} to flag all samples more
+than a few sigma away from the local mean.  Finally, apply your
+flagging to your \uv\ data set by selecting \hbox{{\tt EXIT}}.
+\Iodx{flagging}\Iodx{editing}
+
+At this point, return to \Sec{initedit} to run {\tt \tndx{QUACK}}
+followed by the first pass of the gain calibration.  Then run {\tt
+TVFLG} below with {\tt DOCAL TRUE} so that the data will be displayed
+on the same flux scale for all baselines.
+
+\Subsections{Editing with {\tt TVFLG}}{tvflg}
+
+       If your data are seriously corrupted, contain numerous
+baselines, and you like video games, {\tt \Tndx{TVFLG}} is the
+visibility editor of choice.  The following discussion assumes that
+you have read \Sec{xas} and are familiar with using the \AIPS\ TV
+display.  The following inputs are suggested:
+\dispt{TASK\qs 'TVFLG' ; INP \CR}{to review the inputs needed.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+         set, $n=3$ and $m=1$ above.}
+\dispt{SOURCES\qs ' ' \CR} {to select all sources.}
+\dispt{TIMER\qs 0 \CR}{to select all times.}
+\dispt{STOKES\qs 'RRLL' \CR}{to select both right and left circular
+         polarizations; you can then toggle between RR and LL
+         interactively.}
+\dispt{FREQID\qs 3 \CR}{Select {\tt FQ} entry 3.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{to specify both VLA IFs; you can then
+         toggle between the two interactively.}
+\dispt{ANTENNAS\qs 0 \CR}{to display data for all antennas.}
+\dispt{BASELINE\qs 0 \CR}{to display data for all baselines.}
+\dispt{DOCALIB\qs 1 \CR}{to apply initial calibration to the data.}
+\dispt{FLAGVER\qs 1 \CR}{to use flag ({\tt FG}) table 1.}
+\dispt{OUTFGVER\qs 0 \CR}{to create a new flag table with the flags
+      from {\tt FG} table 1 plus the new flags.}
+\dispt{DPARM\qs = 0 \CR}{to use default initial displays and normal
+         baseline ordering.}
+\dispt{DPARM(6)\qs = 30 \CR}{to declare that the input data are
+         30-second averages, or to have the data averaged to 30
+         seconds.  Note that one can interactively increase the time
+         averaging, in integer units of {\tt DPARM(6)}, after the
+         master grid is created.}
+\dispt{DPARM(5)\qs = 10 \CR}{to expand the flagging time ranges
+         by 10 seconds in each direction.  The times in the master
+         grid are average times and may not encompass the times of the
+         samples entering the average without this expansion.}
+\dispt{DOCAT\qs 1 \CR}{to save the master grid file.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+\dispe{If you make multiple runs of {\tt TVFLG}, it is important to
+make sure that the flagging table entries are all in one version
+of the {\tt FG} table.  The easiest way to ensure this is to set
+{\tt FLAGVER} and {\tt OUTFGVER} to 0 and keep it that way for all
+runs of {\tt TVFLG}\@.  If you make a mistake, two flag tables may be
+merged with the task {\tt TAPPE}\@.}
+
+     {\tt TVFLG} begins by constructing a ``master grid'' file of all
+included data.  This can be a long process if you include lots of data
+at once, although in {\tt 31DEC13} a new, faster, large-memory method
+of gridding is usually used.  It is probably better to use the channel
+selection (including averaging channels with {\tt NCHAV}), IF
+selection, source selection, and time range selection adverbs to build
+rather smaller master grid files and then to run {\tt TVFLG} multiple
+times.  It will work with all data included, allowing you to select
+interactively which data to edit at any one moment and allowing you to
+resume the editing as often as you like.  But certain operations (such
+as undoing flags) have to read and process the entire grid, and will
+be slow if that grid is large.  The master grid file is always
+cataloged (on {\tt IN2DISK} with class {\tt TVFLGR}), but is saved at
+the end of your session only if you set {\us DOCAT = 1} (actually $ >
+0$) before starting the task.  To resume {\tt TVFLG} with a
+pre-existing master grid file, set the adverb {\tt IN2SEQ} (and {\tt
+IN2DISK}) to point at it.  When resuming in this way, {\tt
+\Tndx{TVFLG}} ignores all of its data selection adverbs since they
+might result in a different master grid than the one it is going to
+use.  If you wish to change any of the data selection parameters, \eg\
+channels, IFs, sources, times, or time averaging, then you must use a
+new master grid.\Iodx{editing}\Iodx{flagging}
+
+     Kept with the master grid file is a special file of {\tt TVFLG}
+flagging commands.  This file is updated as soon as you enter a new
+flagging command, making the master grid and your long editing time
+virtually proof from power failures and other abrupt program
+terminations.  These flagging commands are not entered into your
+actual {\it uv\/} data set's flagging ({\tt FG}) table until you exit
+from {\tt TVFLG} and tell it to do so.  During editing, {\tt TVFLG}
+does not delete data from its master grid; it just marks the flagged
+data so that they will not be displayed.  This allows you to undo
+editing as needed during your {\tt TVFLG} session(s).  When the flags
+are transferred to the main {\it uv\/} data set, however, the flagged
+data in the master grid are fully deleted since undoing the flags at
+that point has no further meaning.  When you are done with a master
+grid file, be sure to delete it (with {\tt ZAP}) since it is likely to
+occupy a significant amount of disk.
+
+     {\tt TVFLG} keeps track of the source name associated with each
+row of data.  When averaging to build the master grid and to build the
+displayed grids, {\tt TVFLG} will not average data from different
+sources and will inform you that it has omitted data if it has had to
+do so for this reason.  For multi-source files, the source name is
+displayed during the {\tt CURVALUE}-like sections.  However, the
+flagging table is prepared to flag {\it all\/} sources for the
+specified antennas, times, {\it etc.}~or just the displayed source.
+If you are flagging two calibrator scans, you may wish to do all
+sources in between as well.  Use the {\tt SWITCH SOURCE FLAG}
+interactive option to make your selection before you create flagging
+commands.  Similarly, you will need to decide whether flagging
+commands that you are about to prepare apply only to the displayed
+channel and/or IF, or to all possible channels and/or IFs.  In
+particular, spectral-line observers often use {\tt TVFLG} on the
+pseudo-continuum ``channel-0'' data set, but want the resulting flags
+to apply to all spectral channels when copied to the spectral-line
+data set.  They should be careful to select all channels before
+generating any flagging commands.  Each flagging command generated is
+applied to a list of Stokes parameters, which {\it does not have to
+include\/} the Stokes currently being displayed.  When you begin {\tt
+TVFLG} and whenever you switch displayed Stokes, you should use the
+{\tt ENTER STOKES FLAG} option to select which Stokes are to be
+flagged by subsequent flagging commands.
+
+     If you get some of this wrong, you can use the {\tt UNDO FLAGS}
+option in {\tt TVFLG} if the flags have not yet been applied to the
+\uv\ data set.  Or you can use tasks {\tt UVFLG}, {\tt TABED} or {\tt
+TAFLG} to correct errors written into the {\tt FG} table of your
+multi-source \uv\ data set.  Flag tables are now used with both
+single- and multi-source data sets.
+
+     {\tt TVFLG} displays the data, for a single IF, channel
+(average), and Stokes, as a grey-scale display with time increasing up
+the screen and baseline number increasing to the right.  Thus
+baselines for the VLA run from left to right as 1--1, 1--2, 1--3,
+$\ldots$, 2--2, 2--3, $\ldots$, 27--27, 27--28, and 28--28.  An input
+parameter ({\tt DPARM(3) = 1} allows you to create a master grid and
+display baselines both as, say 1--2 and 2--1.  An interactive
+(switchable) option allows you to order the baselines from shortest to
+longest (ignoring projection effects) along the horizontal axis.
+
+     The interactive session is driven by a menu which is displayed on
+a graphics overlay of the TV display.  An example of this full display
+is shown on the next page.  Move the cursor to the desired operation
+(noting that the currently selected one is highlighted in a different
+color on many TVs) and press button A, B, or C to select the desired
+operation; pressing button D produces on-line help for the selected
+operation.  The first (left-most column) of choices is:
+\dispx{OFFZOOM  }{turn off any zoom magnification}
+\dispx{OFFTRANS }{turn off any black \&\ white enhancement}
+\dispx{OFFCOLOR }{turn off any pseudo-coloring}
+\dispx{TVFIDDLE }{interactive zoom, black \&\ and white enhancement,
+         and pseudo-color contours as in {\tt AIPS}}
+\dispx{TVTRANSF }{black \&\ white enhancement as in {\tt AIPS}}
+\dispx{TVPSEUDO }{many pseudo-colorings as in {\tt AIPS}}
+\dispx{DO WEDGE ? }{switches choice of displaying a step wedge}
+\dispx{LOAD xxxx  }{switch TV load transfer function to xxxx}
+\dispx{LIST FLAGS }{list selected range of flag commands}
+\dispx{UNDO FLAGS }{remove flags by number from the {\tt FC} table
+         master grid}
+\dispx{REDO FLAGS }{re-apply all remaining flags to master grid}
+\dispx{SET REASON }{set reason to be attached to flagging commands}
+\dispx{DO LABEL ? }{turn axis labeling on and off}
+\dispe{Note: when a flag is undone, all cells in the master grid which
+were first flagged by that command are restored to use.  Flag commands
+done after the one that was undone may also, however, have applied to
+some of those cells.  To check this and correct any improperly
+un-flagged pixels, use the {\tt REDO FLAGS} option.  This option even
+re-does {\tt CLIP} operations!  After an {\tt UNDO} or {\tt REDO FLAGS}
+operation, the TV is automatically re-loaded if needed.  Note that the
+{\tt UNDO} operation is one that reads and writes the full master
+grid. \Iodx{editing}\Iodx{flagging}\Todx{TVFLG}}
+
+The load to the TV for all non-phase displays may be done with all
+standard transfer functions: LINear, LOG, SQRT, LOG2 (more extreme
+log).  The menu shows the next one in the list (xxxx above) through
+which you may cycle.  The TV is reloaded immediately when a new
+transfer function is selected.
+
+\begin{figure}
+\centering
+%\resizebox{!}{6.35in}{\gname{tvflgnew}}
+\resizebox{!}{6.35in}{\gbb{530,730}{tvflg14}}
+\caption[{\tt TVFLG} display]{A display of a sample TV screen from
+\hbox{{\tt TVFLG}}, made using the \AIPS\ task {\tt TVCPS} to produce
+a negative black-and-white display.  The {\tt TVFLG} menu (in the
+boxes) is displayed in a graphics plane which is normally colored
+light green.  The status line(s) at the bottom and optional axis
+labels are displayed in a graphics plane that is normally cyan in
+color.  The data are grey scales in a TV memory and may be enhanced in
+black-and-white or pseudo-colored. The particular display chosen is
+the amplitude of the vector difference between the sample and a
+running vector average of samples surrounding it.  This particular
+parameter is sensitive to both phase and amplitude problems and may
+save you the extra time of looking at phase and amplitude separately.
+It requires that there be data to average, but does not blur the
+flagging by the averaging interval (as the RMS method does).  The
+visibility data are from the JVLA\@.  All baselines are shown once
+only in baseline number order.  Antenna 8 and 27 are missing for all
+times, while antennas 11 and 22 are missing for some times in the
+piece displayed here.  The displayed data are the RR Stokes samples
+and have been windowed to exclude some times.  Flag commands generated
+at the moment illustrated will flag all source names, one spectral
+channel (actually channels 9-24 averaged here), one IF, and Stokes RR
+only (from a 2-Stokes data set).  The step wedge and labeling options
+have been selected.
+\Iodx{editing} \Iodx{flagging}\Todx{TVFLG}}
+\label{fig:tvflg}
+\end{figure}
+
+     Column 2 offers type-in controls of the TV display and controls
+of which data are to be flagged.  In general, the master grid will be
+too large to display on the TV screen in its entirety.  The program
+begins by loading every $n^{\uth}$ baseline and time smoothing by {\it
+m\/} time intervals in order to fit the full image on the screen.
+However, you may select a sub-window in order to see the data in more
+detail. You may also control the range of intensities displayed (like
+the adverb {\tt PIXRANGE} in {\tt TVLOD} inside \hbox{{\tt AIPS}}).
+The averaging time to smooth the data for the TV display may be
+chosen, as may the averaging time for the ``scan average'' used in
+some of the displays.  Which correlators are to be flagged by the next
+flagging command may be typed in.  All of the standard Stokes values,
+plus any 4-bit mask may be entered.  The spectral channel and IF may
+be typed in.  Flagging may be done only for the current channel and IF
+and source, or it may be done for all channels and/or IFs and/or
+sources.  Note that these controls affect the next {\tt LOAD}s to the
+TV or the flagging commands prepared after the parameter is changed.
+When the menu of options is displayed at the top of the TV, the
+current selections are shown along the bottom.  If some will change on
+the next load, they are shown with a trailing asterisk.  Column 2
+contains
+\dispx{ENTER BLC          }{Type in a bottom left corner pixel number
+          on the terminal}
+\dispx{ENTER TRC          }{Type in a top right corner pixel number on
+          the terminal}
+\dispx{ENTER AMP PIXRANGE }{Type in the intensity range to be used
+         for loading amplitude images to the TV}
+\dispx{ENTER PHS PIXRANGE }{Type in the phase range to be used for
+        loading phase images to the TV}
+\dispx{ENTER RMS PIXRANGE }{Type in the intensity range to be used
+        for loading images of the rms to the TV}
+\dispx{ENTER R/M PIXRANGE }{Type in the value range to be used for
+        loading rms/mean images to the TV}
+\dispx{ENTER SMOOTH TIME  }{Type in the time smoothing (averaging)
+        length in units of the master grid cell size}
+\dispx{ENTER SCAN TIME    }{Type in the time averaging length for
+        the ``scan average'' in units of the master grid cell size}
+\dispx{ENTER CHANNEL     }{Type in the desired spectral channel
+        number using the terminal}
+\dispx{ENTER IF          }{Type in, on the terminal, the desired IF
+        number}
+\dispx{ENTER STOKES FLAG  }{To type in the 4-character string which
+        will control which correlators (polarizations) are flagged.
+        Note: this will apply only to subsequent flagging commands. It
+        should be changed whenever a different Stokes is displayed.}
+\dispx{SWITCH SOURCE FLAG }{To switch between having all sources
+        flagged by the current flag commands and having only those
+        sources included in this execution of {\tt TVFLG} flagged. The
+        former is desirable when a time range encompasses all of 2
+        calibrator scans.}
+\dispx{SWITCH ALL-CH FLAG }{To reverse the flag all channel status;
+        applies to subsequent flag commands}
+\dispx{SWITCH ALL-IF FLAG }{To cycle the flag all IFs status;
+        applies to subsequent flag commands}
+\dispe{The all-channel flag remains true if the input data set has
+only one channel and the all-IF flag remains true if the input data
+set has no more than one \hbox{IF}.  If there are more than 2 IFs, the
+{\tt SWITCH ALL-IF FLAG} cycles between flagging one IF, flagging a
+range of IFs, and flagging all IFs.  When going to the range of IFs,
+it will ask you to enter the desired range.
+\Iodx{editing}\Iodx{flagging}\Todx{TVFLG}}
+
+     An extra word should be said about the ``scan average'' to which
+reference was made above.  This is used solely for displaying the
+difference of the data at time {\it T\/} and the average of the data
+at times near {\it T\/}.  This average is computed with a ``rolling
+buffer.''  Thus, for a scan average time of 30 seconds and data at
+10-second intervals, the average for a set of 7 points is as follows:
+\bve
+      time        average of times
+       00           00   10   20
+       10           00   10   20
+       20           10   20   30
+       30           20   30   40
+       40           30   40   50
+       50           40   50   60
+       60           40   50   60
+\end{verbatim}\eve
+
+     The third column of options is used to control which data are
+displayed and to cause the TV display to be updated.  The master grid
+must be converted from complex to amplitude, phase, the rms of the
+amplitude, or the rms divided by the mean of the amplitude for
+display.  It may also be converted to the amplitude of the vector
+difference between the current observation and the ``scan average'' as
+defined above or the absolute value of the difference in amplitude
+with the scalar-average amplitude or the absolute value of the
+difference in phase with the vector scan average.  Furthermore, the
+baselines may be reordered in the TV display by their length rather
+than their numerical position. This column has the options:
+\dispx{DISPLAY AMPLITUDE  }{To display amplitudes on the TV}
+\dispx{DISPLAY PHASE      }{To display phases on the TV}
+\dispx{DISPLAY RMS        }{To display amplitude rms on the TV}
+\dispx{DISPLAY RMS/MEAN   }{To display amplitude rms/mean on the TV}
+\dispx{DISPLAY VECT RMS   }{To display vector amplitude rms on the TV}
+\dispx{DISPLAY VRMS/VAVG  }{To display vector amplitude rms/mean on
+            the TV}
+\dispx{DISPLAY AMP V DIFF }{To display the amplitude of the difference
+            between the data and a running (vector) ``scan average''}
+\dispx{DISPLAY AMPL DIFF  }{To display the abs(difference) of the
+            amplitude of the data and a running scalar average of the
+            amplitudes in the ``scan''}
+\dispx{DISPLAY PHASE DIFF }{To display the abs(difference) of the
+            phase of the data and the phase of a running (vector)
+            ``scan average''}
+\dispx{DISPLAY STOKES {\it xx\/}}{To switch to Stokes type {\it xx\/}
+            (where {\it xx\/} can be RR, LL, RL, LR, etc.~as chosen by
+            the {\tt STOKES} adverb).}
+\dispx{SORT BY {\it xxxxxxxx\/}}{To switch to a display with the {\it
+            x\/} axis (baseline) sorted by ordered by {\tt LENGTH} or
+            by {\tt BASELINE} number}
+\dispx{OFF WINDOW + LOAD  }{Reset the window to the full image and
+            reload the TV}
+\dispx{SET WINDOW + LOAD  }{Interactive window setting (like {\tt
+            TVWINDOW}) followed by reloading the TV}
+\dispx{LOAD LAST PIECE    }{Reload the TV with the previous piece of
+            the total time range.}
+\dispx{LOAD NEXT PIECE    }{Reload the TV with the next piece of the
+            total time range.}
+\dispx{LOAD               }{Reload TV with the current parameters}
+\dispe{{\tt SET WINDOW + LOAD} is ``smarter'' than {\tt TVWINDOW} and
+will not let you set a window larger than the basic image.  Therefore,
+if you wish to include all pixels on some axis, move the TV cursor
+outside the image in that direction.  The selected window will be
+shown.  When there are more times than will fit on the TV screen at
+the current smoothing (averaging) time, the task divides the data up
+into overlapping time-range ``pieces.''  When it has done so, the
+{\tt LOAD LAST PIECE} and {\tt LOAD NEXT PIECE} menu items will
+appear.  This lets you view one piece after the next, rotating through
+all pieces, to edit each time interval at full resolution.  Note that
+a {\tt FLAG BASELINE} will flag that baseline through all pieces.
+\Iodx{editing}\Iodx{flagging}\Todx{TVFLG}}
+
+     The fourth column is used to select the type of flagging to be
+done.  During flagging, a TV graphics plane is used to display the
+current pixel much like {\tt CURVALUE} in {\tt AIPS}\@.  Buttons
+A and B  do the flagging (except A switches corners for the area and
+time-range modes).  Button C also does the flagging, but the program
+then returns to the main menu rather than prompting for more flagging
+selections.  Button D exits back to the menu without doing any
+additional flagging.  Another graphics plane is used to show the
+current area/time/baseline being flagged.  All flagging commands can
+create zero, one, two, or more entries in the flagging list; hit
+button D at any time.  There are also two clipping modes, an
+interactive one and one in which the user enters the clip limits from
+the terminal.  In both, the current image computed for the TV (with
+user-set windows and data type, but not any other windows or alternate
+pixels etc.~required to fit the image on the TV) is examined for
+pixels which fall outside the allowed intensity range.  Flagging
+commands are prepared and the master file blanked for all such pixels.
+In the interactive mode, buttons A and B switch between setting the
+lower and upper clip limits, button C causes the clipping to occur
+followed by a return to the main menu, and button D exits to the menu
+with no flagging.  The options are
+\dispx{FLAG PIXEL      }{To flag single pixels}
+\dispx{FLAG/CONFIRM    }{To flag single pixels, but request a yes
+          or no on the terminal before proceeding}
+\dispx{FLAG AREA       }{To flag a rectangular area in baseline-time}
+\dispx{FLAG TIME RANGE }{To flag all baselines for a range of times}
+\dispx{FLAG ANTENNA-DT }{To flag all baselines to a specific antenna
+          for a range of times}
+\dispx{FLAG A TIME     }{To flag all baselines for a specific time}
+\dispx{FLAG BASELINE   }{To flag all times for a specific baseline}
+\dispx{FLAG BASELINE-DT}{To flag a time range for a specific baseline}
+\dispx{CLIP BY SET \#S  }{To enter from the terminal a clipping range
+          for the current mode and then clip high and low samples}
+\dispx{CLIP INTERACTIV }{To enter with the cursor and LUTs a clipping
+          range for the current mode and then clip data outside the
+          range.}
+\dispx{CLIP BY FORM    }{To clip selected channels/IFs using the
+         ``method'' and clipping range of some previous clip
+         operation}
+\dispx{LOAD NEXT IF/ST }{Load TV with the next IF or polarization.}
+\dispx{LOAD NEXT CHAN  }{To load the next spectral channel to the TV
+         with current parameters}
+\dispx{LOAD PREV CHAN  }{To load the previous spectral channel to the
+         TV with current parameters}
+\dispe{The {\tt CLIP BY FORM} operation allows you to apply a clipping
+method already used on one channel/IF to other channels and/or IFs.
+It asks for a command number (use {\tt LIST FLAGS} to find it) and
+applies its display type (amp, phase, rms, rms/mean, differences),
+averaging and scan intervals and clip levels to a range of channels,
+IFs and Stokes (as entered from the terminal).  To terminate the
+operation, doing nothing, enter a letter instead of one of the
+requested channel or IF numbers.  To omit a Stokes, reply, if
+requested for a flag pattern, with a blank line.  You may watch the
+operation being carried out on the TV as it proceeds.}
+
+     The right-most column has only the option:
+\dispx{EXIT }{Resume {\tt AIPS} and, optionally, enter the flags
+          in the data}
+\dispe{Before the flags are entered in the data, {\tt TVFLG} asks you
+whether or not you actually wish to do this.  You must respond yes or
+no.  Note that, if the master grid is to remain cataloged, there is no
+need to enter the flagging commands every time you decide to exit the
+program for a while.  In fact, if you do not enter the commands, you
+can still undo them later, giving you a reason not to enter them in
+the main \uv\ data set too hastily.\Iodx{editing}\Iodx{flagging}
+\Todx{TVFLG}}
+
+     The two most useful data modes for editing are probably amplitude
+and amplitude of the vector difference.  The former is useful for
+spotting bad data over longer time intervals, such as whole scans.
+The latter is excellent for detecting short excursions from the norm.
+For editing uncalibrated data, rms of two time intervals is useful,
+but the rms modes require data to be averaged (inside {\tt TVFLG}) and
+therefore reduce the time resolution accuracy of the flagging.
+If you edit by phase, consider using the pseudo-coloration scheme that
+is circular in color (option {\tt TVPSEUDO} followed by button B)
+since your phases are also circular.
+
+     Using {\tt TVFLG} on a workstation requires you to plan the real
+estate of your screen.  We suggest that you place your message server
+window and your input window side-by-side at the bottom of the screen.
+Then put the TV window above them, occupying the upper 70--90\%\ of
+the screen area.  (Use your window manager's tools to move and stretch
+the TV window to fill this area.)  Instructions and informative,
+warning and error messages will appear in the message server window.
+Prompts for data entry (and your data entry) appear in the input
+window.  Remember to move the workstation cursor into the input window
+to enter data (such as IF, channel, antenna numbers, and the like) and
+then to move the cursor back into the TV area to select options, mark
+regions to be flagged, adjust enhancements, and so on.
+
+\Subsections{Baseline corrections}{blcorr}
+
+     Sometimes, \eg\ during a VLA array re-configuration, your
+observations may have been made when one or more of the antennas had
+their positions poorly determined.  The positional error is usually
+less than a centimeter at the VLA, but even this may affect your data
+significantly.  The most important effect is a slow and erroneous
+phase wind which is a function of source position and time.  Since
+this error is a function of source position, it cannot be removed
+exactly using observations of a nearby calibrator, although the error
+will be small if the target source is close to the calibrator.  In
+many observations, the target sources and calibrators are sufficiently
+close to allow this phase error to be ignored.  Self-calibration will
+remove this error completely {\it if\/} you have enough
+signal-to-noise to determine the correction during each integration.
+
+    The maximum phase error introduced into the calibrated visibility
+data by incorrect \indx{antenna coordinates} $\Delta\phi_{B}$, in
+radians, by a \indx{baseline error} of $\Delta B$ meters is given by
+    $$\Delta\phi_{B} \approx 2\pi\Delta\theta\Delta B / \lambda$$
+where $\Delta\theta$ is the angular separation between the calibrator
+and the target source in radians and $\lambda$ is the wavelength in
+meters.
+
+    Note, however, that the error due to the phase-wind is not the
+only error introduced by incorrect antenna positions.  A further, but
+much smaller effect, will be incorrect gridding of the data due to the
+erroneous calculation of the baseline spatial frequency components
+{\it u\/}, {\it v\/} and {\it w\/}.  This effect is important only for
+full primary beam observations in which the antenna position error is
+of the order of a meter.  It is highly unlikely that such a condition
+will occur.  Note too, that this error {\it cannot\/} be corrected by
+the use of self-calibration.  However, after correcting the antenna
+position with {\tt CLCOR}, you may run {\tt UVFIX} to compute
+corrected values of $u, v,$ and $w$.  The maximum phase error in
+degrees, $\Delta\phi_{G}$, caused by incorrect gridding of the {\it
+u,v,w\/} data is
+       $$\Delta\phi_{G} \approx 360 \Delta\epsilon \Delta\Theta$$
+where $\Delta\epsilon$ is the antenna position error in antenna
+diameters and $\Delta\Theta$ is the angular offset in primary beams.
+
+    If \indx{baseline error}s are significant they need to be removed
+from your data before calibration.  It is important to do this to
+{\tt CL} table 1, right after running {\tt FILLM}.  For the VLA, use the
+task {\tt \Tndx{VLANT}}.  This task determines and applies the antenna
+position corrections found by the VLA operations staff after your
+observation was complete.  To run {\tt VLANT}:
+\dispt{TASK\qs 'VLANT' \CR}{}
+\dispt{INDISK\qs {\it m\/} ; GETN\qs {\it n\/} \CR}{to get the correct
+          data set.  Note that you don't have to keep doing this
+          unless you switch between different input data files.}
+\dispt{FREQID {\it 1\/} \CR}{to choose {\tt FQ} 1.}
+\dispt{SUBARRAY {\it x\/} \CR}{to choose the antenna table to correct.}
+\dispt{GAINVER\qs 1 \CR}{to choose the correct version of the {\tt CL}
+          table to read. A new one will produced.}
+\dispt{GO \CR}{to run \hbox{{\tt VLANT}}.}
+
+For arrays other than the VLA, use {\tt \tndx{CLCOR}} to enter the
+antenna position corrections (in meters) in a new {\tt CL} table and
+the old {\tt AN} table.  This must be done for each affected antenna
+in turn.  {\tt CLCOR} puts the corrections into the {\tt AN} table as
+well as the {\tt CL} table, so it is wise to save the {\tt AN} table
+before running {\tt CLCOR} by running {\tt TASAV}.
+\dispt{TASK\qs 'CLCOR' \CR}{}
+\dispt{INDISK\qs {\it m\/} ; GETN\qs {\it n\/} \CR}{to get the correct
+          data set.  Note that you don't have to keep doing this
+          unless you switch between different input data files.}
+\dispt{SOURCES\qs '\ ' ;STOKES\qs '\ ' \CR}{to do all sources, all
+          Stokes,}
+\dispt{BIF\qs 0 ; EIF\qs 0 \CR}{and all IFs.}
+\dispt{SUBARRAY {\it x\/} \CR}{to choose the correct sub-array.}
+\dispt{OPCODE\qs 'ANTP' \CR}{to select the antenna position correction
+          mode.}
+\dispt{GAINVER\qs 1 \CR}{to choose the correct version of the {\tt CL}
+          table to read.}
+\dispt{GAINUSE\qs 0 \CR}{to have {\tt CLCOR} create a new table.}
+\dispt{ANTENNA\qs {\it k\/} \CR}{to select antenna.}
+\dispt{CLCORPRM\qs $\Delta b_{x} , \Delta b_{y} , \Delta b_{z} , 0, 0,
+          0, 1$ \CR}{to add the appropriate antenna corrections in
+          meters; the l in {\tt CLCORPRM(7)} indicates VLA phase
+          conventions rather than VLB conventions.}
+\dispt{GO \CR}{to run \hbox{{\tt CLCOR}}.}
+\dispe{The program will need to be run as many times as there are
+antennas for which positional corrections must be made.  Set {\tt
+GAINUSE} and {\tt GAINVER} both to 2 after the first correction.
+Otherwise, with the above adverbs, {\tt CLCOR} will make multiple {\tt
+CL} table versions each with only one correction in them.  Note that
+subsequent calibration must be applied to {\tt CL} table 2 to create
+higher versions of the calibration table.  This new {\tt CL} table
+(version 2) will replace version 1 in all of the subsequent sections
+on calibration.  Thus, in subsequent executions of {\tt CALIB}, you
+must apply these corrections by specifying {\us DOCALIB\qs TRUE ;
+GAINUSE\qs 0} (FOR higheST VERSION).  Note too that {\tt CLCOR} and
+{\tt VLANT} change the antenna file for the changed antenna
+location(s).  Therefore, it is wise to save the {\tt AN} table before
+running {\tt CLCOR} or {\tt VLANT} by running {\tt TASAV}.}
+
+Note that NRAO's data analysts use the \AIPS\ task {\tt \tndx{LOCIT}}
+and procedure {\tt \tndx{BASFIT}} to determine the antenna position
+corrections.  These are available to the general user, but a data set
+designed to determine antenna corrections is normally required.  Such
+data sets consist of about 100 observations of a wide range of phase
+calibrators taken as rapidly as possible.
+
+\Sects{Antenna-based complex gain solutions}{calgain}
+
+     At this point, we assume that you have removed the worst of the
+bad calibrator data (if any) and have run {\tt \tndx{CALIB}} over as
+large a {\tt UVRANGE} as possible for each calibrator.  The resulting
+gain tables can be brought to a consistent amplitude scale,
+bootstrapping the unknown fluxes of the secondary calibrators.  Final
+pass(es) of {\tt CALIB} are done if needed and then the solution
+tables are merged into a full \Indx{calibration} ({\tt CL}) table.
+
+\subsections{Bootstrapping secondary flux-density calibrators}
+
+      Task {\tt \tndx{GETJY}} can be used to determine the flux
+density of the secondary flux calibrators from the primary flux
+calibrator based on the flux densities set in the {\tt SU} table and
+the antenna gain solutions in the {\tt SN} tables.  The {\tt SU} and
+{\tt SN} tables will be updated by {\tt GETJY} to reflect the
+calculated values of the secondary calibrators' flux densities.  This
+procedure should also work if (incorrect) values of the secondary
+calibrators' flux densities were present in the {\tt SU} table when
+{\tt CALIB} was run. Bad or redundant {\tt SN} tables should be
+deleted using {\tt EXTDEST} before running {\tt GETJY}, or avoided by
+selecting tables one at a time with adverb \hbox{{\tt SNVER}}.
+
+      To use {\tt GETJY}:
+\dispt{TASK\qs 'GETJY' ; INP \CR}{}
+\dispt{SOURCES\qs '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}'
+           $\ldots$ \CR}{to select secondary flux calibrators.}
+\dispt{CALSOU\qs '3C286' , '\ ' \CR}{to specify primary flux
+           calibrator(s).}
+\dispt{CALCODE\qs '\ ' \CR}{to use all calibrator codes.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{to do both IFs.}
+\dispt{FREQID\qs 1 \CR}{to use {\tt FQ} number 1.}
+\dispt{ANTENNAS\qs 0 \CR}{to include solutions for all antennas.}
+\dispt{TIMERANG\qs 0 \CR}{to include all times.}
+\dispt{SNVER\qs 0 \CR}{to use all {\tt SN} tables.}
+\dispt{INP \CR}{to review inputs.}
+\dispt{GO \CR}{to run the task when the inputs are okay.}
+
+      {\tt GETJY} will give a list of the derived flux densities and
+estimates of their uncertainties.  These are now found by ``robust''
+methods and additional information about numbers of aberrant solutions
+are given.  If any of the uncertainties are large, then reexamine the
+{\tt SN} tables as described above and re-run {\tt CALIB} and/or {\tt
+GETJY} as necessary.  Multiple executions of {\tt GETJY} will not
+cause problems as previous solutions for the unknown flux densities
+are simply overwritten.  You may wish to run the task {\tt
+\tndx{SOUSP}} to determine the spectral indices of your calibrators
+from their fluxes in the {\tt SU} table.  You can even replace the
+values in the {\tt SU} table with the curve fit by {\tt SOUSP} and, in
+{\tt 31DEC15} correct the gains in one or more {\tt SN} tables with
+the newly determined fluxes.  These \indx{spectral index} parameters
+may be useful in running {\tt BPASS} and {\tt PCAL}\@.  However, {\tt
+BPASS} knows the flux coefficients for all standard calibration
+sources and can fit the spectral index of other calibration sources
+from the {\tt SU} table.
+
+\subsections{Full calibration}
+
+     Once you have determined the flux densities of all your gain
+calibrators, you are ready to complete the first pass of the
+\Indx{calibration}.  At this point, many observers take a conservative
+viewpoint and delete their existing {\tt SN} table(s) with
+\dispt{INEXT\qs 'SN' \CR}{to specify the {\tt SN} table.}
+\dispt{INVERS\qs -1 \CR}{to delete all versions.}
+\dispt{EXTDEST \CR}{to do the deletion.}
+\dispe{This step forces you to re-run {\tt CALIB} for all your gain
+calibration sources and is not required if the previous bootstrapping
+calibrations included all antennas and most correlators, for these
+calibrators.}
+
+     Procedure {\tt \tndx{VLACALIB}} may be used for your gain
+calibration sources as you did previously.
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to select the data
+          set, $n=3$ and $m=1$ above.}
+\dispt{CALSOUR\qs = '{\it aaaa\/}' , '{\it xxxx\/}' \CR}{to name two
+          calibration sources using the same {\tt UVRANGE}\@.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{\uv\ limits, if
+          any, in kilo$\lambda$.}
+\dispt{ANTENNAS\qs {\it list\ of\ antennas\/} \CR}{antennas to use for
+          the solutions, see discussion above.}
+\dispt{REFANT\qs {\it n\/} \CR}{reference antenna number.}
+\dispt{MINAMPER\qs 10 \CR}{display warning if baseline disagrees in
+         amplitude by more than {\it 10\%\/}\ from the model.}
+\dispt{MINPHSER\qs 10 \CR}{display warning if baseline disagrees by
+         more than $10^{\circ}$ of phase from the model.}
+\dispt{DOPRINT\qs -1 \CR}{to dispense with all the print out this
+         time.}
+\dispt{FREQID\qs 1 \CR}{use {\tt FQ} number 1.}
+\dispt{INP\qs VLACALIB \CR}{to review inputs.}
+\dispt{VLACALIB \CR}{to make the solution and print results.}
+\dispe{If there are different \uv\ ranges for different sources, then
+re-run the procedure with changed parameters, such as:}
+\dispt{CALSOUR\qs = '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}'
+       \CR}{to name secondary flux calibrator(s).}
+\dispt{ANTENNAS\qs 0 \CR}{solutions for all antennas.}
+\dispt{UVRANGE\qs 0 \CR}{no \uv\ limits, or range if any, in
+        kilo$\lambda$.}
+\dispt{INP\qs VLACALIB \CR}{to review inputs.}
+\dispt{VLACALIB \CR}{to process the secondary calibrators.}
+\dispe{At this time, you should use as many antennas and as large a
+{\tt UVRANGE} as you can for each calibrator, consistent with its
+spatial structure.}
+
+\subsections{Final (?) initial global calibration}
+
+     At this point you should have gain and phase solutions for the
+times of all \Indx{calibration} scans, including the correct flux
+densities for the secondary calibrators.  The next step is to
+interpolate the solutions derived from the calibrators into the {\tt
+CL} table for all the sources.  {\tt CLCAL} may be run multiple times
+if subsets of the sources are to be calibrated by corresponding
+subsets of the calibrators, unless you limit it to one or more tables
+with {\tt SNVER} and {\tt INVERS}, {\tt CLCAL} assumes that all {\tt
+SN} tables contain only valid solutions and concatenates all of the
+{\tt SN} tables with the highest numbered one.  Therefore, any bad
+{\tt SN} tables should be removed before using {\tt \tndx{CLCAL}}\@.
+For \indx{polarization} calibration, it is essential that you
+calibrate the primary flux calibrator (3C48 or 3C286) also so that you
+can solve for the left minus right phase offsets and apply {\tt
+PCAL}\@.
+
+     {\tt CLCAL} has caused considerable confusion and user error
+because it implements to somewhat contrary views of its process.  The
+older view, represented by previous versions of this \Cookbook, had
+the user gradually building a final {\tt CL} table from multiple runs
+of {\tt CLCAL}, each with a selected set of calibration sources,
+target sources, antennas, time ranges, and so forth.  In this scheme,
+the user had to take great care that the final {\tt CL} table actually
+contained information for all antennas, sources, and times for which
+it would be needed.  It was easy to get this wrong!  The second and
+now prevailing view is that every execution of {\tt CLCAL} should
+write a new {\tt CL} table containing all sources, antennas, and
+times, but with a selected subset modified by the current execution.
+This leads to there being a potentially large number of {\tt CL}
+tables, but no data will be flagged due to the absence of data in the
+{\tt CL} table.  The user will still have to be careful to insure that
+all {\tt CL} records have received the needed calibration information.
+
+      To use {\tt CLCAL}:
+\dispt{TASK\qs CLCAL ; INP \CR}{to review the inputs.}
+\dispt{SOURCES\qs '{\it sou1\/}' , '{\it sou2\/}' , '{\it sou3\/}' ,
+           $\ldots$ \CR}{sources to calibrate, '\ ' means all.}
+\dispt{CALSOUR\qs '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}' ,
+           $\ldots$ \CR}{calibrators to use for \hbox{{\tt SOURCES}}.}
+\dispt{FREQID\qs {\it n\/} \CR}{use {\tt FQ} number {\it n\/}.}
+\dispt{OPCODE\qs 'CALP' \CR}{to combine {\tt SN} tables into a {\tt
+           CL} table, passing any records not altered this time.}
+\dispt{GAINVER\qs 0 \CR}{to select the latest {\tt CL} table as
+           input.}
+\dispt{GAINUSE\qs 0 \CR}{to select a new output {\tt CL} table.}
+\dispt{REFANT\qs {\it m\/} \CR}{to select the reference antenna; needed
+           only if {\tt REFANT} reset since {\tt CALIB} was run.}
+\dispt{INTERP\qs '2PT' \CR}{to use linear interpolation of the
+           possibly smoothed calibrations..}
+\dispt{SAMPTYPE\qs ' ' \CR}{to do no time-smoothing before the
+           interpolation.}
+\dispt{SAMPTYPE\qs 'BOX' \CR}{to use boxcar smoothing, followed by
+           interpolation.}
+\dispt{BPARM\qs {\it n\/} , {\it n\/} \CR}{to smooth, if {\tt BOX}
+           selected, with an {\it n\/}-hr long boxcar in amplitude and
+           phase.}
+\dispt{DOBLANK\qs 1 \CR}{to replace failed solutions with smoothed
+           ones but to use all previously good solutions without
+           smoothing.}
+\dispt{INP \CR}{to check inputs.}
+\dispt{GO \CR}{to run {\tt CLCAL}\@.}
+\dispe{Calibrator sources may also be selected with the {\tt QUAL} and
+{\tt CALCODE} adverbs; {\tt QUAL} also applies to the sources to be
+calibrated.  Note that {\tt REFANT} appears in the inputs because
+\AIPS\ references all phases to those of the reference antenna.  If
+none is given, it defaults to the one used in the most solutions.}
+
+     The smoothing and interpolation functions in {\tt CLCAL} have
+been separated into two adverbs and the smoothing parameters are
+now conveyed with {\tt BPARM} and {\tt ICUT}\@.  In smoothing, the
+{\tt DOBLANK} adverb is particularly important; it controls whether
+good solutions are replaced with smoothed ones and whether previously
+failed solutions are replaced with smoothed ones.  One can select
+either or both.
+
+     Note that {\tt \tndx{CLCAL}} uses both the {\tt GAINUSE} and {\tt
+GAINVER} adverbs.  This is to specify the input and output {\tt CL}
+table versions, which should be different.  If you are building a
+single {\tt CL} table piece by piece, then these must be set carefully
+and normally held fixed.  In the more modern view, they are set to
+zero and the task takes the latest {\tt CL} table as input and makes a
+new one.  {\tt CL} table version 1 is intended to be a ``virgin''
+table, free of all injury from any calibration you do using the \AIPS\
+package.  It may not always be devoid of information, as ``on-line''
+corrections may be made and recorded here by some telescope systems,
+\eg\ the VLBA\@.  The VLA, through tasks {\tt FILLM} or {\tt INDXR},
+can now put opacity and antenna gain information in this file.  {\tt
+CLCAL} and most other \AIPS\ tasks are forbidden to over-write version
+1 of the {\tt CL} table.  This protects it from modification, and
+keeps it around so that you may {\it reset\/} your \Indx{calibration}
+to the raw state by using {\tt EXTDEST} to destroy all {\tt CL} table
+extensions with versions higher than 1.  Be careful doing this, since
+you rarely want to delete {\tt CL} version 1.  Should you destroy {\tt
+CL} table version 1 accidentally, you may generate a {\it new\/} {\tt
+CL} table version 1 with the task {\tt INDXR}\@.  This new {\tt CL}
+table may contain the calibration generated from the weather and
+antenna gain files.
+
+     If you have any reason to suspect that the calibration has gone
+wrong --- or if you are calibrating data for the first time --- you
+should examine the contents of the output {\tt CL} table.  {\tt
+\tndx{LISTR}} with {\us OPTYPE = 'GAIN'} will print out the amplitudes
+and phases in the specified {\tt CL} or {\tt SN} table.  Note that
+these tables can be very large.  Use the {\tt SOURCES} and {\tt
+TIMERANG} adverbs to limit the output, or look at it on your terminal
+({\us \tndx{DOCRT} = 1}) so that you can stop the display whenever
+you have had enough.  Task {\tt \tndx{SNPLT}} will provide you with a
+graphical display which may be easier on the eye.  EVLA users may wish
+to examine the {\tt SY} table with {\tt LISTR} or {\tt SNPLT}; bad
+Psum and Pdif values may point to areas of bad data.
+
+     The task {\tt \tndx{EVASN}} may help you determine the degree of
+phase and amplitude coherence in your calibration table.  A lack of
+coherence suggests that the calibration is rather uncertain.
+
+     The most important step in the calibration is your verification
+that everything has gone according to plan.  To check this, you should
+produce matrix listings for all your calibrator sources.  For
+simplicity in interpretation, limit each listing to the {\tt UVRANGE}
+to which you limited the calibrator during calibration.  Thus:
+\dispt{TASK\qs 'LISTR' \CR}{}
+\dispt{DOCRT\qs -1 \CR}{to direct output to the printer.}
+\dispt{SOURCES\qs '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}' ,
+           $\ldots$ \CR}{to list all selected calibrators by name.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{\uv\ limits, if
+           any, in kilo$\lambda$.}
+\dispt{OPTYP\qs 'MATX' \CR}{to get the matrix form of listing.}
+\dispt{DOCALIB\qs TRUE \CR}{to list with calibration applied.}
+\dispt{GAINUSE\qs 0 \CR}{TO point to the {\it latest\/} gain table.}
+\dispt{FREQID \qs {\it n\/} \CR}{list data for {\tt FQ} {\it n\/}.}
+\dispt{DPARM\qs = 5 , 1 , 0 \CR}{to have amplitude and phase using
+           scalar scan averaging.}
+\dispt{BIF\qs 1; EIF 0 \CR}{to select all IFs, {\tt LISTR} will loop
+      over IFs.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{The matrix average amplitudes for the calibrators in this
+listing should be very close to the values that you entered with {\tt
+SETJY} (or which were derived by {\tt GETJY}) and the phases in all
+rows and columns for these sources should be very close to zero.}
+
+     If some rows and columns of the amplitude matrices are
+systematically different from the mean, the amplitude calibration for
+the associated antennas is imperfect.  The reasons for this should be
+investigated.  More flagging of visibilities, scans, or antennas, may
+be indicated.  If the phase matrices have all elements near zero, then
+the phase \Indx{calibration} is in good shape.  If some calibrators
+have discrepant phases and others do not, the discrepant calibrators
+are probably resolved.  Note that you will not be able to detect
+errors in the assumed positions of your calibrators at this stage if
+you have used the usual 2-point interpolation of the calibration.
+Position errors in the calibrators have now become phase and position
+errors in the target sources.
+
+{\tt \Tndx{ANBPL}} converts baseline-based data before or after
+calibration into antenna-based quantities.  In particular, the
+calibrated weights are very sensitive to problems with amplitude
+calibration.
+\dispt{DEFAULT\qs ANBPL \CR}{to select task and initialize all
+            its parameters.}
+\dispt{IND {\it m\/} ; GETN\qs {\it n\/} \CR}{to specify the
+            multi-source data set.}
+\dispt{STOKES\qs 'HALF' ; TIMERANG\qs 0 \CR}{to DISPLAY both
+            parallel-hand polarizations.}
+\dispt{FREQID\qs 1 \CR}{to select {\tt FQ} value to image.}
+\dispt{BIF\qs 1 ; EIF 0 \CR}{to select all IFs.}
+\dispt{BCHAN\qs {\it n\/} ; ECHAN\qs {\it m\/} \CR}{to combine a range
+            of channels.}
+\dispt{DOCALIB\qs 1 \CR}{to apply calibration.}
+\dispt{GAINUSE\qs 0 \CR}{to use highest numbered {\tt CL} table.}
+\dispt{FLAGVER\qs 1 \CR}{to edit data.}
+\dispt{DOBAND\qs 3 ; BPVER\qs 1 \CR}{to correct bandpass with time
+            smoothing using table 1.}
+\dispt{BPARM\qs 2, 17 \CR}{to plot weight versus time.}
+\dispt{NPLOTS\qs 3 ; DOTV\qs 1 \CR}{To plot 4 antennas per page on the
+            TV.}
+\dispt{DOCRT\qs 0 \CR}{to suppress printed versions of the
+            antenna-based values.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run {\tt \tndx{ANBPL}\@.}}
+
+     If the previous steps indicate serious problems and/or you are
+seriously confused about what you have done and you want to start the
+calibration again, you can use the procedure {\tt VLARESET} from the
+{\tt RUN} file {\tt VLAPROCS} to reset the {\tt SN} and {\tt CL} tables.
+\dispt{INP\qs VLARESET \CR}{to verify the data set to be reset.}
+\dispt{\tndx{VLARESET}\qs \CR}{to reset {\tt SN} and {\tt CL} tables.}
+
+\Sects{Polarization calibration}{polcal}
+
+     The \Indx{calibration} of visibility data sensitive to linear
+\Indx{polarization} involves two distinct operations: (1) determining
+and correcting the data for the effects of imperfect telescope feeds
+and (2) removing any systematic phase offsets between the two systems
+of orthogonal polarization.  These two components of polarization
+calibration will be considered separately.
+
+     The effective feed response is parametrized most generally by
+its polarization ellipticity and the orientation of the major axis of
+that ellipse.  For the VLA, it appears to be adequate to make the
+simpler assumption that each polarization is corrupted by a small
+complex gain times the orthogonal polarization.
+
+     In general, the polarization of the calibrator(s) to be used to
+determine the feed parameters will not be known {\it a priori\/} and
+must be determined along with the feed parameters.  Observations of a
+given source (or sources) over a wide range ($\ge 90^{\circ}$) of
+parallactic angles is necessary to separate calibrator polarization
+from the feed parameters.  Task {\tt \indx{LISTR}} may be used to
+determine the \indx{parallactic angle}s at which data have been taken:
+\dispt{TASK\qs 'LISTR' \CR}{}
+\dispt{SOURCES\qs '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}' ,
+           $\ldots$ \CR}{list all calibrators to be used.}
+\dispt{INEXT\qs 'CL' \CR}{to determine parallactic angle at times in
+           {\tt CL} table.}
+\dispt{INVER\qs 1 \CR}{{\tt CL} version 1.}
+\dispt{FREQID\qs {\it n\/} \CR}{to use {\tt FQ} number {\it n\/}.}
+\dispt{OPTYPE\qs 'GAIN' \CR}{to use gain table rather than visibility
+           data.}
+\dispt{DPARM\qs = 9 , 0 \CR}{to display parallactic angle.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+
+     Multiple calibrators may be used in determining the feed
+polarization, but the data from them must be accurately calibrated.
+In particular, the phase calibration of any calibrator used to
+determine antenna polarizations should be determined from that
+calibrator itself (\ie\ the source should be self-calibrated).  Note
+that this will normally have occurred for all gain calibrators if the
+procedure described in the previous sections was followed.
+
+     The normal phase calibration technique treats parallel-hand
+visibilities in the two orthogonal polarizations independently.  Thus,
+there will be a systematic phase difference between the two
+polarizations systems.  This difference may be due to differences in
+instrumental phase offset for the two systems or due to the
+propagation medium (\ie\ Faraday rotation) or both.  Faraday rotation
+effects are particularly bothersome as they may be time variable and
+increase rapidly with wavelength.  For data at L band or longer
+wavelengths, \AIPS\ should be given an estimate of the ionospheric
+Faraday rotation measure using task \hbox{{\tt FARAD}}.  This task
+computes the ionospheric rotation measure using either total electron
+content from a nearby ionospheric monitoring station (Boulder Colorado
+for the VLA) or an empirical model that uses the monthly mean Zurich
+sunspot number (R1) as a measure of solar activity.  If monitoring
+data are available, they should be used in preference to the model.
+{\tt FARAD} enters the ionospheric Faraday rotation measure into the
+{\tt CL} table.  This is used by {\tt PCAL}  when determining antenna
+polarization parameters and is used by other \Indx{calibration} tasks
+to de-rotate the data when \Indx{polarization} corrections are
+applied.  {\tt FARAD} may be run any number of times with different
+parameters before {\tt \tndx{PCAL}} is run; each run of {\tt
+\tndx{FARAD}} over-writes the values written previously.
+
+    Data from Boulder for the total electron content for year {\it
+mm\/} is contained in the file {\tt TECB}{\it .mm\/} in the directory
+with logical name \hbox{{\tt AIPSIONS}}.  Currently, data are
+available for 1980 onwards through part of 1992.  Some gaps in the TEC
+data occur, particularly for years 1980 and 1988 and for times when
+solar activity has been high and no reliable estimate of the total
+electron content could be made.  Unfortunately, we are no longer able
+to get the TEC data from Boulder.  If your VLA data are more recent
+than early 1992, you can consider using the ionospheric model in {\tt
+FARAD}, but you should be aware that the model is crude and should
+check that it improves matters before using it in your final
+calibration.
+
+     The phase offsets between the right-hand and left-hand
+polarizations at a given time may be determined from a source with a
+known angle of linear polarization USING data which have had the
+effects of imperfect feeds removed.  The phase of the right-left
+correlations or the conjugate of the left-right correlations indicates
+the phase difference between the two polarizations.
+
+     The (initial) need for ionospheric corrections can be bypassed if
+either (1) you use unpolarized sources in {\tt PCAL}, and/or (2) the
+ionosphere was well behaved during your observations.  Typical
+rotation measures are only a few and therefore affect only L and
+longer-wavelength bands.  The ionosphere is almost always well enough
+behaved to be ignored at shorter wavelengths and is usually able to be
+ignored even at L band.  Changes of around $10^{\circ}$ in the
+relative phases of R and L polarizations are not enough to disrupt a
+{\tt PCAL} solution seriously.  And, fortunately, calibrators at long
+wavelengths, such as P band, tend to be unpolarized.  In general, if
+the ionosphere is well behaved, it can be ignored.  If it is bad, no
+simple model is able to correct it and you may simply have to forget
+about polarization for that observing run.  Note that an apparent
+position angle variation of 3C286 with time probably indicates that
+ionospheric rotation is significant.  But, if 3C286 shows large
+rotations, it does not follow that {\it its\/} rotation can be applied
+to other directions in the sky.  All it implies reliably is that a
+{\it model\/} is needed.
+
+     Polarization calibration of EVLA data is discussed extensively in
+\Rappen{EVLAdata}.  These data are fundamentally multi-channel and a
+spectral-dependent polarization solution is required.  {\tt PCAL} and
+{\tt RLDIF} now can determine and apply the calibration in a
+channel-dependent fashion.  For data not requiring the spectral
+options, polarization calibration may be performed on amplitude- and
+phase-calibrated VLA data using the following five-step procedure:
+
+{\bf Step 1:} Run {\tt \tndx{PCAL}} on one or more phase calibrator
+sources observed with a wide range of parallactic angles:
+\dispt{TASK\qs 'PCAL' \CR}{}
+\dispt{CALSOUR\qs '{\it cal1\/}' , '{\it cal2\/}' , '{\it cal3\/}' ,
+          $\ldots$ \CR}{list all calibrators to be used.}
+\dispt{TIMERANG\qs 0 \CR}{to use all times.}
+\dispt{ANTENNAS\qs 0 \CR}{to solve for all antennas.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{to set \uv\ limits,
+          if any, in kilo$\lambda$.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{to do both IFs.}
+\dispt{DOCALIB\qs 1 \CR}{to apply the calibration to the sources
+          (very important!).}
+\dispt{GAINUSE\qs 0 \CR}{to use the latest {\tt CL} table.}
+\dispt{CLR2N \CR}{to clear {\tt IN2NAME} {\it etc.}~since there is no
+           Clean-image model.}
+\dispt{FREQID\qs {\it n\/} \CR}{to use {\tt FQ} value {\it n\/}; only
+           one polarization solution can be stored.}
+\dispt{DOMODEL\qs 0 \CR}{to solve for the polarization parameters of
+           the calibration sources.  {\tt PCAL} can use a model only
+           if that model has $Q = U = 0$ since it cannot solve for the
+           right-left phase difference.}
+\dispt{SOLINT\qs 2 \CR}{to use a 2-minute solution interval; scan
+           averages are usually sufficient.}
+\dispt{SOLTYPE\qs 'APPR' \CR}{to use linear approximation model.}
+\dispt{PRTLEV 1 \CR}{to display the results and some diagnostic
+           information.}
+\dispt{REFANT\qs n \CR}{only if {\tt REFANT} reset since {\tt CALIB}
+           run.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+\dispe{{\tt PCAL} will list the fitted values of the antenna
+polarization parameters and the source polarizations with estimates of
+the uncertainties.  If these results do not appear reasonable (\eg\
+large errors or large corrections or inconsistent solutions for the
+calibrator polarizations at neighboring frequencies), more editing and
+a rerun of {\tt PCAL} may be necessary.  {\tt PCAL} puts the derived
+source polarizations in the {\tt SU} table and the antenna feed values
+in the {\tt AN} table.  These values may be examined later with {\tt
+\tndx{PRTAN}} and \hbox{{\tt \tndx{PRTAB}}}.
+\Iodx{polarization}\Iodx{calibration}}
+
+     The right minus left phase difference may not in fact be
+independent of time making the choise of reference antenna more
+important.  In {\tt 31DEC12}, the task {\tt \Tndx{SNREF}} examines the
+effect of the choice of reference antenna on the apparent stability of
+right minus left phases in {\tt SN} or {\tt CL} tables and can create
+tables with different choices.
+
+     {\bf Step 2:}.  Use {\tt \tndx{RLDIF}} to determine the apparent
+right minus left phase angle of the polarization calibrator source,
+\eg\ \indx{3C286} or \indx{3C138}:
+\dispt{TASK\qs 'RLDIF' \CR}{}
+\dispt{SOURCE\qs '3C286' , '\ ' \CR}{to view only the polarization
+            angle calibrator.}
+\dispt{TIMERANG\qs 0 \CR}{to check all times.}
+\dispt{ANTENNAS\qs {\it list\ of\ antennas\/} \CR}{antennas to use;
+            the list used for \hbox{{\tt CALIB}}.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{to limit \uv, if
+            appropriate.}
+\dispt{BIF\qs 1 ; EIF\qs 0 \CR}{to view all IFs.}
+\dispt{FREQID\qs {\it n\/} \CR}{to view the current {\tt FQ} value
+            ({\it n\/}).}
+\dispt{DOCALIB\qs TRUE \CR}{to list with calibration applied.}
+\dispt{DOPOL\qs TRUE \CR}{to correct for feed polarization and Faraday
+            rotation.}
+\dispt{GAINUSE\qs 0 \CR}{to use the latest {\tt CL} table.}
+\dispt{DOPRINT\qs -1 \CR}{to print the results on the line printer,
+       {\tt DOPRINT} $> 0$ prints on your terminal screen, and {\tt
+       DOPRINT = 0} does no printing.}
+\dispt{SPECTRAL\qs -1 \CR}{to do continuum polarization solutions.}
+\dispt{DOAPPLY\qs -1 \CR}{to examine the solutions without applying
+       them to the tables.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when inputs set correctly.}
+\dispe{The matrix of scan-averaged right minus left phase angles
+(actually RL and conjugate of LR polarizations) will be printed.
+Check that none of the phases differ from the mean by more than a few
+degrees.  If any do, then use {\tt UVFLG} to edit these data and go
+back to step 1.  After the matrix of phases, the average over the
+matrix of the right minus left phases is displayed.  This is the
+number to be used in step 4.  {\tt RLDIF} returns these, one for each
+IF, in the {\tt CLCORPRM} adverb array.  It even averages over
+multiple calibrator scans, getting a reliable estimate of the average
+by iteratively discarding outliers.  To see the results,
+type\Iodx{polarization}\Iodx{calibration}\todx{OUTPUTS}}
+\dispt{OUTPUTS\qs \CR}{to examine the output adverb values.}
+\dispe{{\tt \tndx{LISTR}} may also be used with {\tt OPTYPE\qs 'MATX' ;
+STOKES\qs 'POLC'} to make the printer display, one IF at a time.  But
+you will have to do any averaging and placing of the results in {\tt
+CLCORPRM} yourself.}
+
+     This method will fail if the calibrator source (3C286 or 3C138,
+usually) is heavily resolved and the atmospheric phase stability is
+poor.  (These two are frequently coupled!)  Under these conditions,
+the self-calibration of the calibrator will have failed and will have
+to be done especially for the polarization calibration.  In the steps
+below, you may safely relax the \uv\ limits by about 20\%, but should
+solve only for phases using {\tt SOLMODE = 'P'}.  The process consists
+of:
+\xben
+\vspace{-7pt}
+\ITEMx{2.1} Apply {\tt \tndx{CALIB}} to the inner (short-baseline)
+     antennas on the calibrator source using the rules in the table
+     found in \Sec{1passgain} but relaxed a bit.  Set {\us DOCALIB = 1
+     ; GAINUSE = 0 ; SOLMODE = 'P'}.
+\ITEMx{2.2} Use {\tt \tndx{CLCAL}} to apply these solutions to the
+     calibrator source.
+\ITEMx{2.3} Run {\tt \tndx{LISTR}} for cross-hand phases using {\it
+     only\/} the antennas used with \hbox{{\tt CALIB}}.
+\ITEMx{2.4} Use {\tt \tndx{EXTDEST}} to delete {\tt CL} table 3, a most
+     important step.
+\xeen
+\vspace{-14pt}
+\noindent After correcting the calibration, repeat steps 2.1 and 2.2 and
+the special calibration until satisfactory results are obtained.
+
+     {\bf Step 3:} Use {\tt \tndx{TASAV}} to copy all your table files
+to a dummy \uv\ data set, saving in particular the {\tt CL} table with
+the results of the amplitude and phase \Indx{calibration}.  This step
+is not essential, but it reduces the magnitude of the disaster if the
+the next step is done incorrectly.  (Note - this may be a good idea at
+several stages of the calibration process!)
+\dispt{TASK\qs 'TASAV' \CR}{}
+\dispt{CLRO\qs \CR}{Use default output file file name.}
+\dispt{INP \CR}{to review the (few) inputs.}
+\dispt{GO\qs \CR}{to run the program.}
+\dispe{The task {\tt TACOP} may be used to recover any tables that get
+trashed during later steps.  {\tt CLCOR} will make a new {\tt CL}
+table now, so a {\tt TACOP} step is not needed.}
+
+     {\bf Step 4:} The right minus left phase offset corrections
+should be made using task {\tt \tndx{RLDIF}} although the old
+mechanism using {\tt \tndx{CLCOR}} will also work.  Use:
+\dispt{TGET RLDIF}{to get the parameters used in the last and most
+       successful run of {\tt RLDIF}\@.}
+\dispt{DOPRINT\qs 0 \CR}{to turn off all printing.}
+\dispt{DOAPPLY\qs 1 \CR}{to apply the corrections to the {\tt SU},
+       {\tt CL}, and {\tt AN} tables.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{To change the tables applying the correction to the
+       source polarizations, the antenna D terms, and the calibration
+       phases.}
+
+     The old method of correction is no longer recommended.  It goes
+as follows.  The phase offset correction is the expected value ({\it
+twice\/} the source \Indx{polarization} angle) minus the observed
+phases from step 2.  The expected value is 66 degrees for
+\indx{3C286}, -18 for \indx{3C138} (at L band, perhaps -24 at higher
+frequencies), and -140 for \indx{3C48} (at 6-cm or shorter
+wavelengths).  Thus, having used {\tt RLDIF} and  3C286 in step 2
+above
+\displ{FOR I = 1 : $n$ ; CLCORP(I) = 66 - CLCORP(I) ; END \CR}{to
+       convert the returned phases into corrections for {\tt CLCOR},
+       where $n$ is the number of IFs.}
+\dispe{Then}
+\dispt{TASK\qs 'CLCOR' \CR}{}
+\dispt{SOURCE\qs ' ' ; ANTENNAS\qs 0 \CR}{to correct all sources and
+          all antennas.}
+\dispt{TIMERANG\qs 0 \CR}{to correct all times.}
+\dispt{BIF\qs 1 ; EIF 2 \CR}{to correct both IFs.}
+\dispt{FREQID\qs {\it n\/} \CR}{to correct only the current {\tt FQ}
+          value.}
+\dispt{GAINVER\qs 0 \CR}{to modify the latest {\tt CL} table produced
+          by {\tt CLCAL}.}
+\dispt{GAINUSE\qs 0 \CR}{to make a new {\tt CL} table containing the
+           phase corrections as well as all previous calibrations.}
+\dispt{OPCODE\qs 'POLR' \CR}{to do right minus left phase offset
+           correction.}
+\dispt{STOKES\qs 'L' \CR}{correction applied to left circular
+           polarization.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{Task {\tt \tndx{RLCOR}} may be used to apply this correction
+directly to a $uv$ data set which is especially useful for
+single-source files to which {\tt CLCOR} does not apply.}
+
+      This will cause {\tt \tndx{CLCOR}} to apply appropriate
+corrections to the {\tt CL}, {\tt SU}, and {\tt AN} tables.  If the
+{\tt CL} table becomes hopelessly corrupted, delete it and return to
+Step 3. If the {\tt AN} table is corrupted, then {\tt PCAL} must be
+re-run. If more than one {\tt CL} table needs to be corrected, use the
+{\us OPCODE='POLR'} option only once; other {\tt CL} tables must be
+corrected using {\us OPCODE='PHAS'} and correcting 1 IF at a time.
+{\tt CLCOR} (with {\tt OPCODE = 'POLR'}) may be applied multiple times
+to the {\it same\/} {\tt CL} table, in order to get the R-L phases
+``right.''  But you must {\it not\/} apply {\tt CLCOR} in succession to
+different {\tt CL} tables of the same database.  If there is any
+doubt, rerun \hbox{{\tt PCAL}}.  The best way to judge if all is well
+in the final polarization solution is to look at the spread in the
+cross-hand phases for 3C286 or 3C138 (step 5 below).  If the spread
+(``eyeball rms'') is less than 3 degrees, then all is well.  If more
+than ten, then there is definitely something wrong.
+\Iodx{polarization}\Iodx{calibration}
+
+     {\bf Step 5:} Use {\tt \tndx{RLDIF}} to verify the polarization
+corrections:
+\dispt{TASK\qs 'RLDIF' \CR}{}
+\dispt{SOURCE\qs '{\it cal1\/}' , '{\it cal2\/}' , $\ldots$ \CR}{to
+           list the calibrators to be checked.}
+\dispt{TIMERANG\qs 0 \CR}{to display all times.}
+\dispt{ANTENNAS\qs {\it list\ of\ antennas\/} \CR}{to list the
+           antennas to use.}
+\dispt{UVRANGE\qs {\it uvmin\/} {\it uvmax\/} \CR}{to set \uv\ limits,
+           if appropriate.}
+\dispt{BIF\qs 1 ; EIF\qs 0 \CR}{to list all IFs.}
+\dispt{FREQID\qs {\it n\/} \CR}{to use the current {\tt FQ} value
+           ({\it n\/}).}
+\dispt{DOCALIB\qs 1 \CR}{to list with calibration applied.}
+\dispt{DOAPPLY\qs -1 \CR}{to leave the table values unchanged.}
+\dispt{DOPOL\qs TRUE \CR}{to correct for feed polarization and Faraday
+           rotation.}
+\dispt{GAINUSE\qs 0 \CR}{to use {\tt CL} table written by \hbox{{\tt
+           CLCOR}}.}
+\dispt{DOCRT\qs 1}{to display on your terminal.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{Note well: all of this calibration process must be done with
+only one {\tt FQ} at a time.  {\tt PCAL} with {\us FQID = 2} will
+over-write solutions done for any other \hbox{{\tt FQID}}.}
+
+      The phases produced should be consistent.  Significant
+deviations of the phase may indicate that further editing is needed or
+that residual atmospheric phase errors are still present.  If this
+display appears okay, then the polarization corrections may be applied
+in {\tt \tndx{SPLIT}} (see below) by specifying {\us DOPOL = 1} when
+applying the calibration to produce single-source files.
+
+     An important consideration needs to be mentioned at this point.
+The polarization corrections applied to the RL and LR data multiply
+the RR and LL values.  If those values are not well known, then the
+``calibrated'' cross-hand data will be anything but calibrated.
+Normally, you should self-calibrate the parallel hand data of the
+target source and apply the phase and amplitude calibrations so
+derived to the cross-hand data while applying the polarization D terms
+(with {\tt DOPOL 1})\@.  Note that, when polarization is measurable,
+there is almost always enough signal to self-calibrate the
+parallel-hand data.
+
+\Sects{Spectral-line calibration}{linecal}
+
+     The \Indx{calibration} of \indx{spectral-line} data is very
+similar to that of continuum data with the exception that the antenna
+gains have to be determined and corrected as a function of frequency
+as well as time. The model used by \AIPS\ is to determine the antenna
+gains as a function of time using a pseudo-continuum (``channel-0'')
+form of the data.  Then the complex spectral response function
+(``bandpass'') is determined from observations of one or more strong
+continuum sources at or near the same frequency as the line
+observation.  In general, the channel-0 data are calibrated using the
+recipes in the previous sections of this chapter.  The sub-sections
+below are designed to bring out the few areas in which spectral-line
+calibration differs from continuum.
+
+\Subsections{Reading the data}{lineread}
+
+     If your data are on a VLA archive tape then they should be read
+into \AIPS\ using {\tt \tndx{FILLM}}, as described in \Sec{fillm}.
+{\tt FILLM} will fill a typical line observation into two files, a
+large one containing the line data only, and a smaller file containing
+the ``channel-0'' data.  (Note that {\tt FILLM} computes channel-0
+from the line data rather than using the channel-0 provided by the
+on-line system.)  The standard \Indx{calibration} and editing steps
+are performed on channel 0 and the results copied over to the line
+data set.  {\it You must be careful with the tolerance you allow {\tt
+FILLM} to use in determining the {\tt FQ} numbers.  If you desire all
+of your data to have the same {\tt FQ} number, so that you can
+calibrate it all in one pass, then set {\tt CPARM(7)} in {\tt FILLM}
+to an appropriately large value.}  If you wish to retain spectral-line
+autocorrelation data, you must set {\tt DOACOR} to true.
+
+     By default for the VLA, the channel-0 data are generated by the
+vector average of the central {\it 3/4\/} of the observing band.  If
+this algorithm is not appropriate for your data, you may generate your
+own channel-0 data set by averaging only selected channels.  You may
+now select different spectral channels in different IFs.  To do this,
+use the task {\tt AVSPC}:
+\dispt{TASK\qs 'AVSPC' \CR}{}
+\dispt{INDI\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify line data
+           set.}
+\dispt{OUTDI\qs {\it i\/} ; OUTCL\qs 'CH 0' \CR}{to specify output
+           ``channel-0'' data set disk and class.}
+\dispt{ICHANSEL\qs 10, 30, 1, 0, 31, 55, 2, 1 \CR}{for example, to
+           average every channel between 10 and 30 in all IFs and
+           also every other channel between 31 and 55, but only in IF
+           1.}
+\dispt{GO \CR}{to create a new channel-0 data set.}
+\dispe{You might find this necessary when observing neutral hydrogen
+at galactic velocities.  Most calibrator sources have some absorption
+features at these frequencies.}
+
+\subsections{Spectral-line aspects of {\tt SETJY}}
+
+     The {\tt LISTR} output with {\tt OPTYPE = 'SCAN'} will show
+information from the source table including spectral-line parameters.
+VLA data from {\tt FILLM} are normally supplied with adequate
+information regarding the source velocity, line rest frequency, and
+velocity reference (radio versus optical, LSR versus barycentric).
+However, data from the EVLA and other telescopes may be missing these
+parameters.  {\tt \Tndx{SETJY}} must then be used to fill in the
+needed values.  In {\tt 31DEC12}, a new {\tt OPTYPE='VCAL'} option
+computes the velocity of the reference channel from first principles.
+It is recommended over inaccurate guesses of adverb values in other
+{\tt SETJY OPTYPE}s.  It may be run over all sources after the rest
+frequencies and velocity reference information has been filled in.
+
+\subsections{Editing the data}
+
+     You should follow the steps outlined in \Sec{caledit} to edit the
+calibrator data using the channel-0 data set.  Even though channel-0
+data is continuum, be careful to have {\tt TVFLG} and {\tt UVFLG}
+generate the flagging commands for all channels, not just channel 1.
+Then, copy the resulting {\tt FG} table to the line file. Use {\tt
+\tndx{TACOP}}\iodx{flagging}\iodx{editing}:
+\dispt{TASK\qs 'TACOP' \CR}{}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to specify channel-0
+           data set.}
+\dispt{OUTDI\qs {\it i\/} ; GETO\qs {\it j\/} \CR}{to specify the line
+           data set.}
+\dispt{INEXT\qs 'FG' \CR}{to copy the {\tt FG} table.}
+\dispt{INVER\qs 1 \CR}{to copy table 1.}
+\dispt{NCOUNT\qs 1 \CR}{to copy only one table.}
+\dispt{OUTVER\qs 1 \CR}{to copy it to output table 1}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{Specifying the ``{\tt ALL-CH}'' setting in {\tt TVFLG} and
+specifying {\us BCHAN 1 ; ECHAN 0 \CR} in {\tt UVFLG} cause all
+channels to be flagged when the {\tt FG} table is copied to the line
+data set.}
+
+     Spectral-line observers should also use {\tt \tndx{SPFLG}}
+(\Sec{spflg}) to examine and, perhaps, to edit their data.  This task
+is very similar to {\tt TVFLG} described in \Sec{tvflg}, but {\tt
+SPFLG} displays spectral channels for all IFs on the horizontal axis,
+one baseline at a time.  If you have a large number of baselines, as
+with the VLA, then you should examine a few of the baselines to check
+for interference, absorption (or emission) in your calibrator sources,
+and other frequency-dependent effects.  Use the {\tt ANTENNAS} and
+{\tt BASELINE} adverbs to limit the displays to a few short spacings
+and one or two longer ones as well.  If there are serious
+frequency-dependent effects in your calibrators, use {\tt SPFLG} and
+{\tt UVFLG} to delete them.  (You might wish to delete the {\tt FG}
+table with {\tt EXTDEST} to begin all over again.)  Then use {\tt
+\tndx{AVSPC}} to build a new channel-0 data set and repeat the
+continuum editing.  Note that you should not copy the {\tt FG} table
+from the spectral-line data set to the new continuum one.  The reason
+for this is the confusion over the term ``channel.''  If you have
+flagged channel 1, but not all channels, in the spectral-line data set
+--- a very common occurrence --- then a copied {\tt FG} table would
+flag all of the continuum data since it has only one ``channel.''
+When you have flagged the channel-0 data set, you can merge the new
+flags back into the spectral-line {\tt FG} table with task \hbox{{\tt
+\tndx{TABED}}}\iodx{flagging}\iodx{editing}\iodx{spectral-line}.
+\dispt{TASK\qs 'TABED' \CR}{}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to specify channel-0
+              data set.}
+\dispt{OUTDI\qs {\it i\/} ; GETO\qs {\it j\/} \CR}{to specify the line
+              data set.}
+\dispt{INEXT\qs 'FG' \CR}{to copy the {\tt FG} table.}
+\dispt{INVER\qs 1 \CR}{to copy table 1.}
+\dispt{OUTVER\qs 1 \CR}{to copy it to output table 1.}
+\dispt{BCOUNT\qs 1 ; ECOUNT\qs 0 \CR}{to copy from the beginning to
+            the end.}
+\dispt{OPTYPE\qs 'COPY' \CR}{to do a simple copy appending the input
+            table to the output table.}
+\dispt{TIMER\qs 0 \CR}{to copy all times.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+
+     If the channel-0 data set is meaningful for your program sources,
+you might consider doing a first-pass editing of them along with your
+calibrators before copying the {\tt FG} table back to the line data
+set.  If your program sources contain significant continuum emission,
+then this is a reasonable operation to perform.  If they do not, then
+the standard channel-0 data set is not useful for editing program
+sources.  You can use {\tt SPFLG} to edit all channels, or if the
+signal is strong in a few channels, you could run {\tt TVFLG} on those
+channels from the \indx{spectral-line} data set or average those
+with the {\tt BCHAN}, {\tt ECHAN}, and {\tt NCHAV} adverbs.
+
+\Subsections{Bandpass calibration}{BPcal}
+
+     The task {\tt \tndx{BPASS}} is designed to take visibility data
+from specified calibrator(s) to determine the antenna-based complex
+\Indx{bandpass} functions.  It does this in a manner analogous to
+self-calibration in that the data are divided by a source model or the
+so-called ``channel 0'' before the antenna gains are determined as a
+function of frequency.  These are written to a BandPass ({\tt BP})
+table.  The bandpass \Indx{calibration} is the first operation that
+should be performed on the line data.  So long as one uses the mode in
+which the data are divided by the so-called ``channel 0,'' it is not
+necessary to calibrate the data before estimating the bandpasses.
+\dispt{TASK\qs 'BPASS' \CR}{}
+\dispt{INDI\qs {\it i\/} ; GETN\qs {\it j\/} \CR}{to specify the line
+            data set.}
+\dispt{CALSOUR\qs '{\it cal1\/}' , '{\it cal2\/}' , $\ldots$ \CR}{to
+            specify bandpass calibrators.}
+\dispt{FREQID\qs 1 \CR}{to select which {\tt FQ} value to use.}
+\dispt{ANTENNAS\qs 0 \CR}{to solve for all antennas.}
+\dispt{REFANT\qs {\it n\/} \CR}{to set the reference antenna number.}
+\dispt{DOCALIB\qs FALSE \CR}{to avoid applying calibration.}
+\dispt{BPASSPRM\qs 0 \CR}{to turn off all ``parameters.''}
+\dispt{BPASSPRM(5)\qs 0 \CR}{to divide by channel 0 on a
+             record-by-record basis before determining antenna-based
+             bandpasses.  Other normalization options are available
+             and may be preferred.}
+\dispt{IN3DI\qs {\it a\/} ; GET3N\qs {\it b\/} \CR}{to specify the
+             channel~0 data file, or}
+\dispt{CLR3NAME \CR}{to have channel 0 found from the input data
+             themselves.}
+\dispt{ICHANSEL\qs 20 50 1}{to use the average, in each IF, of all
+             channels from 20 through 50, for example, to determine
+             channel 0, when the third input file name is empty.}
+\dispt{FLAGVER\qs 1 \CR}{to apply flag table 1.}
+\dispt{SOLINT\qs 0 \CR}{to use scan averages.}
+\dispt{BPVER\qs 1 \CR}{to select the output {\tt BP} table number.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{Be careful with the adverb {\tt SMOOTH}\@.  If you smooth, or
+do not smooth, the data while finding a bandpass solution, then you
+must apply the same {\tt SMOOTH} adverb values whenever you apply that
+bandpass solution to the data.  The only exception is that you may
+smooth the data after applying the bandpass solution with {\tt
+SMOOTH(1)} values 5 through 8 when you did no smoothing in {\tt
+BPASS}\@.}
+
+     The stored bandpass correction table should be corrected for the
+spectral index of the calibration source.  Use adverbs {\tt SPECINDX}
+and {\tt SPECURVE} to describe the \indx{spectral index} to {\tt
+BPASS} and new task {\tt SOUSP} to find the spectral index values from
+the fluxes in the source table.  {\tt BPASS} knows the flux
+coefficients for all standard calibration sources and, in {\tt
+31DEC13}, can fit the spectral index of other calibration sources from
+the {\tt SU} table.  It can handle spectral inices for multiple
+calibration sources at one time, although the adverbs apply of
+necessity only to the first such source.
+
+     The divide by channel 0 option is very convenient in that it
+allows one to ignore both source structure (when the bandwidth is
+narrow enough) and continuum calibration.  However, the average of
+some channels on a record-by-record basis can be rather noisy and the
+``division'' operation is actually a subtraction of the average phase
+and a division by the average amplitude.  The latter suffers from a
+``Ricean'' bias --- the average amplitude will always be larger than
+the correct amplitude, averaging one rms larger.  Therefore, if the
+continuum calibration is stable (or already known and able to be
+applied) and the source structure is negligible, then it would be
+better to defer the normalization (on a baseline by baseline basis)
+until the data are averaged over {\tt SOLINT} or, better still, to
+defer the normalization (on an antenna basis) until the unnormalized
+solutions are determined.  {\tt BPASSPRM(5)} and {\tt BPASSPRM(10)}
+control the normalization options.  Do note also that, with no
+normalization, {\tt BPASS} is capable of replacing any use of {\tt
+CALIB} including calibration of the data weights.
+
+     The spectral quality of the final images has been found to be
+determined in part by the quality of the bandpass solutions.  In
+particular, for reasons which are not yet known, the bandpasses are
+not exactly antenna dependent especially in the edge channels.  This
+``closure error'' may be measured in individual and statistical ways
+by {\tt BPASS} and reported to you.  To check on this problem for your
+data set, set
+\dispt{MINAMPER\qs {\it a\/} \CR}{to count and, if {\tt BPASSPRM(2)}$
+           > 1$, to report amplitude closure failures $> a$ per cent.
+           Note that closure errors are accumulated as logarithms so
+           that 0.5 and 2.0 are both errors of 100\%.}
+\dispt{MINPHSER\qs {\it p\/} \CR}{to count and, if {\tt BPASSPRM(2)}$
+           > 1$, to report phase closure failures $> p$ degrees.}
+\dispt{BPASSPRM(2)\qs 1 \CR}{to report statistics of amplitude and
+           phase closure failures without reporting individual
+           failures.}
+\dispt{BPASSPRM(6)\qs {\it a\/} \CR}{to report all channels in which
+           the average amplitude closure error $> a$ per cent.}
+\dispt{BPASSPRM(7)\qs {\it p\/} \CR}{to report all channels in which
+           the average phase closure error $> p$ degrees.}
+\dispt{SOLTYPE\qs 'R' \CR}{to select robust solutions which discard
+           data with serious closure problems.  Try other types if
+           there are solution failures.}
+\dispe{It is probably a good idea to set {\tt MINAMPER} and {\tt
+MINPHSER} fairly high (\ie\ 20 and 12) to make a big deal only about
+major excursions, but to set {\tt BPASSPRM(6)} and {\tt (7)} fairly
+low (\ie\ 0.5 and 0.5) to view the spectrum of closure errors (which
+will look a lot like the spectrum of noise on your final Clean
+images).  There is even a task called {\tt \Tndx{BPERR}} which will
+summarize and plot the error reports generated by {\tt PBASS} and
+written to text files by \hbox{{\tt PRTMSG}}.}
+
+     The bandpass solutions are calculated at each bandpass calibrator
+scan.  As a consequence, they are likely to be unevenly spaced in time
+and may even have times (due to on-line or later editing) at which
+there are solutions for some IFs and polarizations but not all.  When
+the latter happens, program source data will be lost unless the
+missing solutions are filled in.  The task {\tt \Tndx{BPSMO}} may be
+used for this purpose or to create a new {\tt BP} table at regular
+time intervals using one of a number of time-smoothing functions.  Set
+{\tt APARM(4) = -1} for the ``repair'' mode or set {\tt APARM(4)} to
+the desired {\tt BP} interval.
+
+     After the bandpasses have been generated, you can examine them
+using tasks {\tt BPLOT} and \hbox{{\tt \tndx{POSSM}}}.  You can obtain
+an average from all antennas with\Iodx{calibration}\Iodx{bandpass}
+\todx{BPASS} \iodx{spectral-line}
+\dispt{TASK\qs 'POSSM' \CR}{}
+\dispt{INDI\qs {\it i\/} ; GETN\qs {\it j\/} \CR}{to specify the line
+             data set.}
+\dispt{SOURCES\qs '{\it cal1\/}' , '{\it cal2\/}' , $\ldots$ \CR}{to
+             specify the bandpass calibrators.}
+\dispt{ANTENNAS\qs 0 \CR}{to include all antennas.}
+\dispt{TIMER\qs 0 \CR}{to average over all times.}
+\dispt{BCHAN\qs 1 ; ECHAN 0 \CR}{to display all channels.}
+\dispt{BPVER\qs 1 \CR}{to select the {\tt BP} table.}
+\dispt{FREQID\qs 1 \CR}{to set the {\tt FQ} value to use.}
+\dispt{APARM\qs= -1, 0 \CR}{to do a scalar average and have the plot
+             self-scaled and labeled in channels.}
+\dispt{APARM(8)\qs 2 \CR}{to plot {\tt BP} table data.}
+\dispt{NPLOTS\qs 0 \CR}{to make one plot only, averaging all included
+             data.}
+\dispt{INP \CR}{to review the inputs --- check closely.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispt{GO\qs \tndx{LWPLA} \CR}{to send the plot to the (PostScript)
+             printer/plotter.}
+\dispe{To view each antenna individually, using the TV to save paper}
+\dispt{DOTV\qs TRUE \CR}{to use the \hbox{TV}.}
+\dispt{NPLOTS\qs 1 \CR}{to plot one antenna per page/screen.}
+\dispt{GO \CR}{to display the bandpasses, averaged over time, on the
+            TV with one antenna per screen.}
+\dispe{{\tt POSSM} shows each screen for 30 seconds before going
+ahead.  You can cause it wait indefinitely by hitting button A, speed
+it up by hitting TV buttons B or C, or tell it to quit by hitting
+button D\@.  If {\us DOTV = -1}, then {\tt \tndx{POSSM}} makes
+multiple plot extension files, which can be sent to the printer
+(individually or collectively) by {\tt LWPLA}\@.  You might want to
+use a larger value of {\tt NPLOTS} to reduce the number of pieces of
+paper.}
+
+     {\tt \Tndx{BPLOT}} is used to create one or more plots (on the TV
+or in plot files) of the selected bandpass table.  The plots will be a
+set of profiles separated on the vertical axis by an increment in time
+or antenna number (depending on the sort selected).  More than one
+plot for more than one antenna or more than one time may be generated.
+Multiple IFs and polarizations will be plotted along the horizontal
+axis if they are present in the {\tt BP} table and selected by the
+adverbs.  Thus, {\tt \Tndx{BPLOT}} is useful for plotting the change in
+bandpass shape as a function either of time or of antenna.
+
+     In {\tt 31DEC16}, task {\tt \Tndx{BPEDT}} offers a TV-inteactive
+graphical way to check your {\tt BP} table.  It displays the amplitude
+and phase of one antenna to be edited and up to 10 more antennas for
+comparison.  The task is like {\tt EDITA} except that the horizontal
+axis is spectral channel rather than time.  You may walk through the
+entire bandpass table selecting the editable antenna and time in
+sequence.  If some of the solutions show residual effects from RFI,
+then you may generate flags in a flag table to delete certain spectral
+channels for certain antennas and times.  If you do this, of course,
+you should re-run {\tt BPASS} applying the new flags.
+
+     The {\tt BP} tables are applied to the data by setting the adverb
+{\tt DOBAND} $> 0$ and selecting the relevant {\tt BP} table with the
+adverb \hbox{{\tt BPVER}}.  There are three modes of \Indx{bandpass}
+application.  The first ({\us DOBAND 1}) will average all bandpasses
+for each antenna within the time range requested, generating a global
+solution for each antenna.  The second mode ({\us DOBAND 2}) will use
+the antenna bandpasses nearest in time to the data point being
+calibrated.  The third mode ({\us DOBAND 3}) interpolates in time
+between the antenna bandpasses and generates the correction from the
+interpolated data.  This mode has been found to be required for VLA
+data.  If {\tt BPSMO} was used to make a fairly finely sampled {\tt
+BP} table, then {\tt \Tndx{DOBAND} 2} may be used.  Modes {\us DOBAND
+4} and {\us DOBAND 5} are the same as modes 2 and 3, respectively,
+except that data weights are ignored.\Iodx{calibration}
+
+     It is often not possible to observe a strong bandpass calibrator
+many times during a run.  In this case, one can run {\tt \tndx{BPASS}}
+on the single scan on the strong calibrator and then remove the main
+bandpass shape with {\tt DOBAND 1} in task {\tt SPLAT}\@.  Corrections
+to this basic bandpass shape as a function of time may then be
+determined with adequate signal-to-noise using task {\tt
+\tndx{CPASS}}\@.  This task can be used to fit the residual bandpass
+with a small number of parameters ($<<$ the number of spectral
+channels) at each calibrator scan.  The results may then be applied
+with {\tt DOBAND 2}\@.  Check the output of {\tt CPASS} carefully ---
+it is capable of making bandpass shapes with large ripples that are
+not present in the data.  {\tt CPASS} also knows about the flux
+coefficients of all standard sources and can fit the spectral index of
+other sources from the flux values in the {\tt SU} table.
+
+\subsections{Amplitude and phase calibration}
+
+The channel-0 data set should be calibrated as described above for
+continuum data (\Sec{caledit} and \Sec{calgain}).  When you are
+satisfied with your results, you should copy the relevant {\tt CL}
+table over to the line data set with {\tt \tndx{TACOP}}:
+\iodx{spectral-line}
+\dispt{TASK\qs 'TACOP' \CR}{}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it m\/} \CR}{to specify the
+              channel-0 data set.}
+\dispt{OUTDI\qs {\it i\/} ; GETO\qs {\it j\/} \CR}{to specify the line
+              data set.}
+\dispt{INEXT\qs 'CL' \CR}{to copy a {\tt CL} table.}
+\dispt{INVER\qs 0 \CR}{to copy highest numbered table from {\tt CLCAL} step.}
+\dispt{NCOUNT\qs 1 \CR}{to copy only one table.}
+\dispt{OUTVER\qs 0 \CR}{to create new output table.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{If you copy {\tt SN}, {\tt TY}, or {\tt SY} tables, you may
+apply a flagging table to the table values.}
+
+     At this point it is often useful to examine your fully calibrated
+data using {\tt \tndx{POSSM}}:
+\dispt{TASK\qs 'POSSM' \CR}{}
+\dispt{INDI\qs {\it i\/} ; GETN\qs {\it j\/} \CR}{specify line data.}
+\dispt{SOURCES\qs '{\it source1\/}' , '\ ' \CR}{to specify the source
+            of interest.}
+\dispt{ANTENNAS\qs 0 \CR}{to plot all antennas.}
+\dispt{BCHAN\qs 10 ; ECHAN\qs 55 \CR}{to plot spectrum for this
+            channel range only.}
+\dispt{DOCALIB\qs 1 \CR}{to apply the antenna gain to both
+            visibilities and weights (if appropriate).
+            \Indx{calibration}.}
+\dispt{GAINUSE\qs 0 \CR}{to use most recent {\tt CL} table.}
+\dispt{DOBAND\qs 3 \CR}{to apply the bandpass calibration time smoothed.}
+\dispt{BPVER\qs 1 \CR}{to use {\tt BP} table 1.}
+\dispt{FREQID\qs 1 \CR}{to use only one {\tt FQ} value.}
+\dispt{APARM\qs 0 \CR}{to do vector averaging of amplitudes and
+             self-scale the plots.}
+\dispt{SMOOTH\qs 5 , 0 \CR}{to apply Hanning smoothing in the spectral
+             domain after bandpass calibration is applied.  Use 13,0
+             to smooth after the data are averaged, which is faster
+             and less prone to oddities due to channel-dependent
+             flagging.  Use 1,0 only if the data were Hanning smoothed
+             when {\tt BPASS} was run.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispt{GO \tndx{LWPLA} \CR}{to send the plot to the (PostScript)
+             printer/plotter.}
+
+     If you have multiple {\tt FQ} entries in your data set, you
+should repeat the calibration for each additional {\tt FQ} entry.
+Bookkeeping is simplified if you eliminate all extant {\tt SN} tables
+before calibrating the data associated with each frequency identifier.
+However, it is not essential to do this.
+
+\Sects{Solar data calibration}{suncal}
+
+     The calibration of solar \uv\ data differs from normal continuum
+and spectral-line calibration in one critical respect: the system
+temperature correction to the visibility data is applied by the
+observer in \hbox{\AIPS}.  See Lecture 21 in {\it \jndx{Synthesis
+Imaging in Radio Astronomy}\/} for a discussion of the system
+temperature correction as it applies to VLA solar visibility data.
+The system temperature correction is embodied in a quantity referred
+to as the ``nominal sensitivity,'' an antenna-based numerical factor
+normally applied in real time to the scaled correlation coefficients
+before they are written on the VLA archive tape.  With the exception
+of X and L band, only a handful of VLA antennas are equipped with
+so-called ``solar CALs.''  The nominal sensitivity is only computed
+for those antennas so-equipped, namely antennas 5, 11, 12, and 18 (at
+K, U,and C bands) and antennas 7, 12, 21, and 27 (at P band).  The
+system-temperature correction for those antennas without solar CALs
+must, therefore, be bootstrapped from those antennas which do.  This
+is accomplished through two tasks.  {\tt FILLM} fills the uncalibrated
+visibility data to disk and places the nominal sensitivities in a {\tt
+TY} extension table.  Then, {\tt \tndx{SOLCL}} applies the nominal
+sensitivities to calibration parameters in the {\tt CL} table.
+\Iodx{Solar data}\Iodx{calibration}
+
+\Subsections{Reading solar data from a VLA archive tape}{sunread}
+
+     To load a solar \uv-data file to disk from a VLA archive tape
+follow the general instructions given above (\Sec{fillm} and
+\Sec{lineread}) with the following additions:
+\dispt{VLAMODE\qs 'S ' \CR}{to indicate solar mode observing.}
+\dispt{CPARM(2)\qs 16 \CR}{to indicate that moving sources are allowed
+without renaming.}
+
+     If your experiment involved observing active solar phenomena,
+(\eg\ flares), you may wish to update the system-temperature
+correction every integration time.  For example, if you observed a
+flare with an integration time $\tau = 1.67$ seconds, choose
+\dispt{CPARM(8)\qs 1.67 / 60 \CR}{for 1.67 sec {\tt CL} and {\tt TY}
+         table intervals.}
+
+     Loading an entire solar \uv-data set to disk with the minimum
+integration time results in very large disk files which make all
+subsequent programs take a long time to run.  A useful strategy is to
+load the data with relatively low time resolution (20--30 seconds for
+observations of active solar phenomena) and to proceed with the usual
+continuum data calibration, deferring the system temperature
+correction.  When a satisfactory calibration is obtained, the relevant
+{\tt SN} table may be saved using \hbox{{\tt \tndx{TASAV}}}.  (Note
+that you must save the {\tt SN} table, before running {\tt
+\tndx{CLCAL}} rather than the final {\tt CL} table.)  Then run {\tt
+CLCAL} and inspect the data for interesting periods of activity ---
+try {\tt \tndx{UVPLT}} with {\us BPARM = 11, 1} for plots of amplitude
+versus time or {\tt \tndx{TVFLG}}, displaying amplitudes as a function
+of baseline length and time.  Use {\tt \tndx{FILLM}} to load the
+relevant time ranges of solar \uv\ data to disk with no averaging.
+The saved {\tt SN} table is then copied to each high-time resolution
+data set.  Assess, and possibly edit, the nominal sensitivities
+(\Sec{sunsens}) and then apply the system-temperature corrections
+(\Sec{suntsys}).  Finally, apply the saved/copied {\tt SN} table to
+the {\tt CL} table of each using \hbox{{\tt CLCAL}}.
+
+\Subsections{Using {\tt SNPLT} and {\tt LISTR} to assess the nominal
+sensitivities}{sunsens}
+
+     When solar \uv\ data are written to disk, {\tt FILLM} writes the
+nominal sensitivities of those antennas equipped with solar CALs into
+the {\tt TY} table.  Before bootstrapping the system temperature
+correction for antennas without solar CALs from those which do, it is
+always wise to examine the nominal sensitivity for each of the solar
+CAL antennas for each of the IFs.  The tools available for this
+purpose include: {\tt \tndx{SNPLT}}, which plots the nominal
+sensitivities in graphical form, {\tt \tndx{LISTR}} or {\tt PRTAB},
+which allow one to inspect the values directly, and {\tt EDITA}, which
+provides an interactive display of the {\tt TY} data and allows you to
+edit the data.  To make plots:
+\dispt{TASK\qs 'SNPLT' ; INP \CR}{to review the inputs needed.}
+\dispt{IND\qs {\it m\/} ; GETN {\it n\/} \CR}{to specify the input
+             \uv\ file.}
+\dispt{INEXT\qs 'TY' \CR}{to plot data from {\tt TY} extension table.}
+\dispt{INVERS\qs 0 \CR}{to use the highest version number.}
+\dispt{SOURCES\qs 'SUN' , ' ' \CR}{to plot solar source only.}
+\dispt{TIMERANG\qs 0 \CR}{to select all times.}
+\dispt{ANTENNAS\qs 5 11 12 18 \CR}{to select only CAL-equipped
+              antennas; this sample list for K, U, or C band.}
+\dispt{PIXRANGE\qs 0 \CR}{to self-scale each plot.}
+\dispt{NPLOTS\qs 4 \CR}{to do 4 plots on a page.}
+\dispt{FACTOR\qs 2 ; SYMBOL\qs 5 \CR}{to use triangles to mark the
+              data and enlarge them by a factor of 2.  The symbols may
+              even be connected by lines.}
+\dispt{XINC\qs 1 \CR}{to plot every {\tt XINC}$^{\uth}$ point.}
+\dispt{OPTYPE\qs 'TSYS' \CR}{to plot nominal sensitivities.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+\dispe{{\tt \tndx{SNPLT}} produces a {\tt PL} extension file which may
+be plotted using {\tt LWPLA}, {\tt TKPL}, or \hbox{{\tt TVPL}} --- or
+you could set {\us DOTV TRUE} in {\tt SNPLT} and get the display
+directly (and temporarily) on the \hbox{TV}.  Then to inspect the
+values over some limited time range in detail, run {\tt \tndx{LISTR}}
+(assuming the adverbs set above and):\Iodx{Solar data}\Iodx{calibration}}
+\dispt{TASK\qs 'LISTR' ; INP \CR}{to review the inputs needed.}
+\dispt{OPTYPE\qs 'GAIN' \CR}{to list quantities in a calibration
+              file.}
+\dispt{INEXT\qs 'TY' \CR}{to select the sensitivities.}
+\dispt{TIMER\qs {\it d1 h1 m1 s1 d2 h2 m2 s2} \CR}{to select by
+              suspect time range.}
+\dispt{DOCRT\qs -1 \CR}{to route output to the printer.}
+\dispt{DPARM\qs 10 0 \CR}{to list nominal sensitivities.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+\dispe{Task {\tt SNIFS} is similar to {\tt SNPLT} except that it
+plots IF on the $x$ axis to compare solutions across them.  It has
+numerous binning options to control the otherwise excessive plotting.}
+
+     The use of {\tt \tndx{EDITA}} with {\tt TY} tables is described
+extensively in \Sec{edita} and need not be described further here.
+
+\Subsections{Using {\tt SOLCL} to apply the system-temperature
+correction}{suntsys}
+\Iodx{Solar data}\Iodx{calibration}
+
+     Once you have identified the appropriate subset of reference
+solar CAL antennas for each source and IF, you are ready to bootstrap
+the system-temperature correction of the remaining antennas.  It is
+recommended that you run {\tt \tndx{SOLCL}} before applying any other
+calibration to the {\tt CL} table.  In this way, you can easily verify
+that the appropriate corrections have been made to each antenna.  If
+you are using a version of \AIPS\ older than {\tt 15JUL94}, you must
+copy {\tt CL} table version 1 into {\tt CL} table version 2 before
+running {\tt SOLCL} (which does the copy for you in later releases).
+Then you apply the system-temperature correction to version 2 and
+correct mistakes by deleting and recreating version 2.  To run {\tt
+SOLCL}:
+\dispt{TASK\qs 'SOLCL' ; INP \CR}{to review the inputs needed.}
+\dispt{SOURCES\qs '*' \CR}{to correct all sources.}
+\dispt{STOKES\qs '\ ' \CR}{to correct both polarizations.}
+\dispt{TIMERANG\qs 0 \CR}{to correct all times.}
+\dispt{ANTENNAS\qs 5 11 12 18 \CR}{to use the listed antennas as
+             references.}
+\dispt{SUBARRAY\qs 1 \CR}{to modify sub-array 1.}
+\dispt{GAINVER\qs 2 \CR}{to write corrected entries to {\tt CL} table
+             version 2.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the program when you're satisfied with inputs.}
+
+     After applying the system temperature correction, you may proceed
+with the usual \AIPS\ data calibration procedures outlined in previous
+sections, including the special solar tactics described in
+\Sec{sunread}.
+
+\sects{Completing the initial calibration}
+
+     When you are satisfied with the initial calibration (pre
+self-calibration) of your data set, you should back up your full
+multi-source data set on magnetic tape.  Then you can apply the
+calibration to the data for each program source, creating a separate
+single-source \uv\ data set for each.  These data sets are used with
+the imaging and self-calibration tasks to be described in the
+following chapters.  For the impatient, the recommended imaging task
+reads the multi-source data set directly, applying any calibration,
+
+\subsections{Using {\tt FITTP} and {\tt FITAB} to write multi-source
+data to tape}
+
+     The recommended way out of \AIPS\ for multi-source \uv\ data is
+to use {\tt \tndx{FITTP}} to write a FITS-format tape.  This will
+preserve the data and all associated calibration and editing tables in
+a machine-independent form.  {\tt \Tndx{FITAB}} also writes a
+FITS-format tape or disk file using tables rather than random groups.
+This has the advantages of allowing a compressed format and of allowing
+\uv\ files to be broken into ``pieces'' for increased reliability and
+control of space.  {\tt FITAB} output from earlier than 15-Oct-2007
+can be read by versions of \AIPS\ between {\tt 15APR99} and 15-Oct-2007,
+after 15-Oct-2007 it can only be read by versions of {\tt UVLOD} or
+{\tt FITLD} later than 15-Oct-2007.  Also note that {\tt FITAB} output
+cannot be read by other \uv-data software packages, except {\it obit}.
+{\tt FITTP} output can be read by some other packages.  Consult
+\Sec{magtape} about magnetic tapes in \hbox{\AIPS}.  That section
+tells you to mount your tape on the hardware device and then to do a
+software mount in \hbox{{\tt AIPS}}.  For example,
+\dispt{INTAP\qs {\it n\/} \CR}{to specify which tape drive to use.}
+\dispt{DENSITY\qs 6250 \CR}{to set the density to 6250-bpi, if needed.}
+\dispt{MOUNT \CR} {to mount the tape in software.}
+\dispe{This step used to be optional for some operating systems.
+However, in recent versions of \AIPS, it is required on all operating
+systems.}
+
+      To write the data to tape:
+\dispt{TASK\qs 'FITTP' \CR}{}
+\dispt{IND {\it m\/} ; GETN\qs {\it n\/} \CR}{to specify the
+          multi-source data set.}
+\dispt{DOEOT\qs TRUE \CR}{to write at the end of tape --- if there are
+          other data files on the tape you wish to preserve.}
+\dispt{OUTTA\qs INTAP \CR}{to write to tape just mounted.}
+\dispt{DOTABLE\qs TRUE \CR}{to write associated tables.}
+\dispt{FORMAT\qs 3 \CR}{to use IEEE floating format for data.}
+\dispt{BLOCKING\qs 10 \CR}{to use blocked FITS for tape efficiency.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+
+     Most people use 8mm Exabyte or 4mm DAT tapes today.  These have
+very large capacities.  However, if you must still use half-inch reel
+tapes, you will find that many data sets (particularly spectral line)
+may be too large to fit on one 6250 bpi tape even with {\tt BLOCKING =
+10}.  Since it is not possible to write multi-volume FITS tapes, it is
+recommended that you back up the single-source data sets formed after
+applying the calibration tables in {\tt SPLIT} (see \Sec{split}).
+{\tt FITAB} allows you to break up the data set into pieces which can
+fit on your tape.  Multiple executions will be needed for multiple
+tapes.  Alternatively, since all of the calibration information is
+contained in the extension tables, you may copy these to a dummy \uv\
+file with task {\tt TASAV} and write this new file to tape with
+\hbox{{\tt FITTP}}.
+
+     Be sure to run task {\tt \tndx{PRTTP}} to make sure that the data
+were written successfully on your tape {\it before\/} you delete your
+multi-source \uv\ data set!
+
+\Subsections{Creating single-source data files with {\tt SPLIT}}{split}
+
+      When you are happy with the calibration and editing represented
+by the current set of calibration and flag tables, you can convert the
+multi-source file into single-source files, applying your calibration
+and editing tables.  Remember that only one {\tt FREQID} can be {\tt
+\tndx{SPLIT}} at a time.
+\dispt{TASK\qs 'SPLIT' \CR}{}
+\dispt{SOURCE\qs '{\it sou1\/}' , '{\it sou2\/}' , $\ldots$ \CR}{to
+             select sources, '\ ' means all.}
+\dispt{TIMERANG\qs 0 \CR}{to keep all times.}
+\dispt{BIF\qs 1 ; EIF\qs 2 \CR}{to keep both IFs}
+\dispt{FREQID\qs 1 \CR}{to set the one {\tt FQ} value to use.}
+\dispt{DOCALIB\qs 1 \CR}{to apply calibration to the data and the
+             weights.}
+\dispt{GAINUSE\qs 0 \CR}{to use the highest numbered {\tt CL} table.}
+\dispt{DOPOL\qs TRUE \CR}{to correct for feed polarization.}
+\dispt{DOBAND\qs 3 \CR}{to correct bandpass with time smoothing.}
+\dispt{BPVER\qs 1 \CR}{to select {\tt BP} table to apply.}
+\dispt{STOKES\qs ' ' \CR}{to write the input Stokes type.}
+\dispt{DOUVCOMP\qs FALSE \CR}{to write visibilities in uncompressed
+            format.}
+\dispt{APARM\qs 0 \CR}{to avoid channel averaging and autocorrelation
+            data.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run the program when inputs set correctly.}
+\dispe{The files produced by this process should be completely
+calibrated and edited and ready to be imaged or further processed as
+described in later chapters.  Note that one may wish to defer the {\tt
+DOPOL 1} part of this until after self-calibration of the
+parallel-hand visibilities.}
+
+     It is not necessary to run {\tt SPLIT} to make images with
+{\tt \tndx{IMAGR}} and it is probably a good idea to make a couple of
+quick images to make sure that the calibration is okay.  However, for
+serious imaging, it is probably best to run {\tt SPLIT} and then use
+the single-source output files.  See \Sec{imagr} for details of the
+imaging process.
+
+\subsections{Making images from multi-source data with {\tt IMAGR}}
+
+     {\tt IMAGR} can be used to make images from multi-source data
+files.  It is probably a good idea to make a couple of quick images to
+make sure that the calibration is okay.  An example set of inputs to
+{\tt \tndx{IMAGR}} is:
+\dispt{TASK\qs 'IMAGR' ; DEFAULT \CR}{to select task and initialize
+            all its parameters.  This selects the usual convolution
+            and weighting functions among other things.}
+\dispt{IND {\it m\/} ; GETN\qs {\it n\/} \CR}{to specify the
+            multi-source data set.}
+\dispt{SOURCE\qs '{\it sou1\/}' , ' ' \CR}{to choose one source to
+            image.}
+\dispt{STOKES\qs 'I' ; TIMERANG\qs 0 \CR}{to image total intensity
+            from all times.}
+\dispt{FREQID\qs 1 \CR}{to select {\tt FQ} value to image.}
+\dispt{BIF\qs 1 ; EIF 0 \CR}{to image all IFs --- multi-channel mode
+            images only one \hbox{IF}.}
+\dispt{BCHAN\qs {\it n\/} ; ECHAN\qs {\it m\/} \CR}{to combine a range
+            of channels.}
+\dispt{NCHAV\qs {\it N\/} \CR}{to include {\it N\/} spectral channels
+            in each image where $N \leq (m - n + 1)$; for each
+            spectral channel, IFs {\it bif\/} through {\it eif\/} are
+            also included.  Note that each channel and IF included in
+            the ``average'' image is handled individually at its
+            correct frequency.}
+\dispt{DOCALIB\qs 1 \CR}{to apply calibration.  Use {\us DOCAL 100
+            \CR} if the weights should {\it not} be calibrated.}
+\dispt{GAINUSE\qs 0 \CR}{to use highest numbered {\tt CL} table.}
+\dispt{FLAGVER\qs 1 \CR}{to edit data.}
+\dispt{DOPOL\qs TRUE \CR}{to correct for feed polarization.}
+\dispt{DOBAND\qs 3 \CR}{to correct bandpass with time smoothing.}
+\dispt{BPVER\qs 1 \CR}{to select {\tt BP} table to apply.}
+\dispt{OUTNAME\qs '{\it sou1\/}' \CR}{to set the output file name to
+             the source name.}
+\dispt{OUTDISK\qs 0 \CR}{to use any output disk with enough space.}
+\dispt{IMSIZE\qs 512 512  \CR}{to set the size in cells of image.}
+\dispt{CELLSIZE\qs 0.25 , 0.25 \CR}{to set the size of each image cell
+             in arc-seconds.}
+\dispt{RASHIFT\qs 0 ; DECSHIFT\qs 0 \CR}{to (not) shift image center.}
+\dispt{NFIELD\qs 1 ; NGAUSS\qs 0\CR}{to make only one image at high
+             resolution.}
+\dispt{UVWTFN\qs ' ' \CR}{to use uniform weighting.}
+\dispt{ZEROSP\qs 0 \CR}{to introduce no zero-spacing flux.}
+\dispt{NITER\qs 0 \CR}{to do no Cleaning.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO\qs \CR}{to run {\tt \tndx{IMAGR}} when the inputs are set
+             correctly.}
+
+\sects{Additional recipes}
+
+% chapter   *************************************************
+\recipe{Banana storage}
+
+      Bananas ripen after harvesting.  They do it best at room
+temperature.  Because of this there are three stages to banana
+storage.
+\par\bre
+\Item {{\bf On the counter:} When you buy a bunch of
+   bananas that are not exactly at the ripeness you want, you
+   can keep them at room temperature until they are just right for
+   you.  Be sure to keep them out of any plastic bags or containers.}
+\Item {{\bf In the refrigerator:} If there are any bananas left,
+   and they are at the ripeness you like, you can put them in the
+   refrigerator.  The peel will get dusty brown and speckled, but the
+   fruit inside will stay clear and fresh and at that stage of
+   ripeness for 3 to 6 days.}
+\Item {{\bf In the freezer:} If you want to keep your bananas even
+   longer, you can freeze them.  Mash the bananas with a little lemon
+   juice, put them in an air tight freezer container and freeze.  Once
+   they're defrosted, you'll go bananas baking bread, muffins and a
+   world of other banana yummies.  Or, you can freeze a whole banana
+   on a Popsicle stick.  When it is frozen, dip it in chocolate sauce,
+   maybe even roll it in nuts, then wrap it in aluminum foil and put
+   it back in the freezer.  Talk about a scrumptious snack.}
+\ere

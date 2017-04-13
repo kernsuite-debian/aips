@@ -1,0 +1,132 @@
+      .TITLE ZRENA2 (OLDNAM, NEWNAM, SYSERR, IERR)
+;-----------------------------------------------------------------------
+;! rename a file
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Renames a file.
+;   Inputs:
+;      OLDNAM   H*48   Old physical file name (Hollerith for Macro...)
+;      NEWNAM   H*48   New physical file name (Hollerith for Macro...)
+;   Output:
+;      SYSERR   I      System error code
+;      IERR     I      Error return code: 0 => no error
+;                         2 => old file not found
+;                         3 => device not found
+;                         4 => old file busy
+;                         6 => new name already exists
+;                         7 => other
+;   VMS version
+;-----------------------------------------------------------------------
+        $RMSDEF
+;
+                                        ;Define argument list offsets.
+OLDNAM=4
+NEWNAM=8
+SYSERR=12
+IERR=16
+                                        ;Define maximum file name.
+FNALEN=48
+;-----------------------------------------------------------------------
+        .PSECT DATA,LONG
+OLDFAB: $FAB                            ;FAB for the old file.
+NEWFAB: $FAB                            ;FAB for the new file.
+OLDNBK: $NAM    ESA=OLDESA,-
+                ESS=48
+NEWNBK: $NAM    ESA=NEWESA,-                            ;NAME BLOCK
+                ESS=48
+OLDESA: .BLKB   48                      ;OLD EXPANDED STRING AREA
+NEWESA: .BLKB   48                      ;NEW EXPANDED STRING AREA
+;-----------------------------------------------------------------------
+        .PSECT CODE,NOWRT
+        .ENTRY  ZRENA2,^M<R2,R3,R4,R5,R6,R7,R8,R9>
+
+        MOVL    #0,@IERR(AP)            ;Initialize IERR
+        MOVL    #0,@SYSERR(AP)          ;Initialize SYSERR
+        MOVL    OLDNAM(AP),R1           ;R1 = ADDR (old name)
+        BSBW    LEN                     ;Go get name length in R8
+        MOVL    R8,R7                   ;Save length.
+        MOVL    NEWNAM(AP),R1           ;R1 = ADDR (new name)
+        BSBW    LEN                     ;Go get name length in R8
+
+                                        ;FILL IN THE FAB'S
+        $FAB_STORE      FAB=OLDFAB,-
+                        FNA=@OLDNAM(AP),-
+                        FNS=R7,-
+                        NAM=OLDNBK
+
+        $FAB_STORE      FAB=NEWFAB,-
+                        FNA=@NEWNAM(AP),-
+                        FNS=R8,-
+                        NAM=NEWNBK
+
+                                        ;Rename the file.
+        $RENAME OLDFAB=OLDFAB,-
+                NEWFAB=NEWFAB
+        BLBS    R0,EXIT                 ;Return if okay
+                                        ;Check the type of error
+ERR:
+        MOVL    R0,@SYSERR(AP)
+        CMPL    #RMS$_FNF,R0            ;File not found?
+        BNEQ    10$
+        MOVL    #2,@IERR(AP)            ;IERR = 2
+        BRW     EXIT
+10$:    CMPL    #RMS$_DNF,R0            ;Directory not found?
+        BNEQ    20$
+        MOVL    #2,@IERR(AP)
+        BRW     EXIT
+20$:    CMPL    #RMS$_FLK,R0            ;File in use? (locked)
+        BNEQ    30$
+        MOVL    #4,@IERR(AP)            ;IERR=4
+        BRW     EXIT
+30$:    CMPL    #RMS$_ACT,R0            ;File activity precludes?
+        BNEQ    40$
+        MOVL    #4,@IERR(AP)            ;IERR=4
+        BRW     EXIT
+40$:    CMPL    #RMS$_DNR,R0            ;Device not ready?
+        BNEQ    50$
+        MOVL    #3,@IERR(AP)            ;IERR=3
+        BRW     EXIT
+50$:    CMPL    #RMS$_FEX,R0            ;File already exists?
+        BNEQ    60$
+        MOVL    #6,@IERR(AP)            ;IERR=6
+        BRW     EXIT
+60$:    MOVL    #7,@IERR(AP)            ;Unknown. IERR=7
+
+EXIT:
+        RET
+;-----------------------------------------------------------------------
+                                        ;Subroutine to calc. lengths.
+LEN:
+        LOCC    #^A/ /,#FNALEN,(R1)     ;Find a space.
+        BEQL    10$                     ;Branch if no spaces.
+        SUBL3   R0,#FNALEN,R8           ;R8 = length of name
+        BRW     20$
+10$:    MOVL    #FNALEN,R8              ;R8 = Max length
+20$:    RSB
+        .END

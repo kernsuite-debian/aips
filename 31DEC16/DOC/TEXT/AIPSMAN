@@ -1,0 +1,198 @@
+     Program to print tape produced by PRNTMN on an IBM
+  (annotated so that it's no longer a proper PLI program)
+;  Copyright (C) 1995
+;  Associated Universities, Inc. Washington DC, USA.
+;
+;  This program is free software; you can redistribute it and/or
+;  modify it under the terms of the GNU General Public License as
+;  published by the Free Software Foundation; either version 2 of
+;  the License, or (at your option) any later version.
+;
+;  This program is distributed in the hope that it will be useful,
+;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;  GNU General Public License for more details.
+;
+;  You should have received a copy of the GNU General Public
+;  License along with this program; if not, write to the Free
+;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;  MA 02139, USA.
+;
+;  Correspondence concerning AIPS should be addressed as follows:
+;         Internet email: aipsmail@nrao.edu.
+;         Postal address: AIPS Project Office
+;                         National Radio Astronomy Observatory
+;                         520 Edgemont Road
+;                         Charlottesville, VA 22903-2475 USA
+
+     PRNTMN puts out tape records of 100 80-byte lines.  It also
+puts out control lines to indicate end of data (first 2 characters
+$$) or to indicate a possible ('@@  ') or required ('@@@@') paging.
+AIPSMAN looks to see, on possible paging marks, whether all of the
+next section (e.g. an individual HELP file) will fit on the current
+printer page.  It does this by having 2 input buffers.  FORTRAN
+programmers should note that BIN FIXED(15) is INTEGER*2 and BIT(1)
+is a logical ('0' is false).
+
+
+//AIPS   JOB (269,VLA),MANUAL,MSGLEVEL=(1,1),CLASS=B
+// EXEC PLIXCL,PARM.PLI='X(S),NA,NAG,NEST,OPT(TIME)',
+// PVTLIB1='VLA.ERIC.DEC',PARM.LKED='LIST,MAP,SIZE=(104K,12K)',
+// SRCLIB='GREISEN.VLA.PANDORA'
+//PLI.SYSIN DD *
+
+ AIPSMAN: PROC OPTIONS(MAIN) REORDER;
+      DCL (IPAGE,NLINES) INIT(0) BIN FIXED(15) EXT ;
+      DCL (INBUF1(100),INBUF2(100)) CHAR(80);
+      DCL WASEOF BIT(1) INIT('0'B) ;
+      DCL (ILINES,NTC,NTR) BIN FIXED(15) ;
+      DCL (TC(1000), TCNOW) CHAR(6), (TR(1000), TRNOW) CHAR(8),
+         (TCP, TRP)(1000) BIN FIXED(15) ;
+      DCL INFIL SEQUENTIAL RECORD FILE EXT ;
+
+
+0     ON ENDFILE(INFIL) BEGIN ;
+         WASEOF = '1'B ;
+         GO TO CONT ;
+         END ;
+
+section to print title at top of each page
+
+0     OPEN FILE(SYSPRINT) LINESIZE(132) PAGESIZE(66);
+      ON ENDPAGE(SYSPRINT) BEGIN ;
+         IPAGE = IPAGE + 1 ;
+         IF IPAGE > 1 THEN PUT PAGE ;
+         PUT EDIT('AIPS: A MANUAL',TCNOW,'PAGE',IPAGE)
+            (COL(20),A,COL(56),A,COL(82),A,F(5)) ;
+         PUT SKIP(3) ;
+         NLINES = 0  ;
+         END ;
+
+0     OPEN FILE (INFIL) INPUT ;
+
+      NLINES, NTC, NTR  = 0 ;
+      TCNOW = '  ' ;
+
+read tape until end of file mark
+
+      READ FILE(INFIL) INTO(INBUF1) ;
+      DO WHILE ('1'B) ;
+         READ FILE(INFIL) INTO(INBUF2) ;
+
+go through each card in buffer 1
+
+ CONT:   DO I = 1 TO 100 ;
+
+test for end of data mark
+
+            IF SUBSTR(INBUF1(I),1,2) = '$$' THEN GO TO BLW;
+
+normal text line: just print it
+
+            IF SUBSTR(INBUF1(I),1,2) ^= '@@' THEN DO ;
+               NLINES = NLINES + 1 ;
+               PUT SKIP(1) EDIT(INBUF1(I)) (COL(20),A) ;
+               END ;
+
+possible page request given
+
+            ELSE DO ;
+
+pick up page headings
+
+               TCNOW = SUBSTR(INBUF1(I),5,6) ;
+               TRNOW = SUBSTR(INBUF1(I),11,8) ;
+
+"required" page request
+
+               IF SUBSTR(INBUF1(I),3,2) = '@@' | NLINES >= 57 THEN DO;
+                  SIGNAL ENDPAGE(SYSPRINT) ;
+                  END ;
+
+will next section fit on page? for possible page requests
+
+               ELSE DO ;
+                  ILINES = 6 ;
+                  DO J = I+1 TO 100 ;
+                     IF SUBSTR(INBUF1(J),1,2) = '$$' | SUBSTR(INBUF1(J),
+                        1,2) = '@@' THEN GO TO GOTNEXT ;
+                     ILINES = ILINES + 1 ;
+                     END ;
+                  IF ^WASEOF THEN DO J = 1 TO 100 ;
+                     IF SUBSTR(INBUF2(J),1,2) = '$$' | SUBSTR(INBUF2(J),
+                        1,2) = '@@' THEN GO TO GOTNEXT ;
+                     ILINES = ILINES + 1 ;
+                     END ;
+
+It will fit - space forward 6 lines
+
+ GOTNEXT:         IF NLINES + ILINES < 58 THEN DO ;
+                     NLINES = NLINES + 6 ;
+                     PUT SKIP(6) ;
+                     END ;
+
+It does not fit - new page
+
+                  ELSE DO ;
+                     SIGNAL ENDPAGE(SYSPRINT) ;
+                     END ;
+                  END ;
+               END ;
+
+pick up index entry for chapters
+
+            IF (TCNOW ^= '      ') & (NTC = 0 | TCNOW ^= TC(NTC))
+               THEN DO ;
+               NTC = NTC + 1 ;
+               TC(NTC) = TCNOW ;
+               TCP(NTC) = IPAGE ;
+               END ;
+
+pick up index entry for subsections
+
+            IF (TRNOW ^= '        ') & (NTR = 0 | TRNOW ^= TR(NTR))
+               THEN DO ;
+               NTR = NTR + 1 ;
+               TR(NTR) = TRNOW ;
+               TRP(NTR) = IPAGE ;
+               END ;
+            END ;
+         IF WASEOF THEN GO TO BLW ;
+         INBUF1 = INBUF2 ;
+         END ;
+ BLW: CLOSE FILE(INFIL) ;
+
+Do index listings: first the chapter headings
+
+      TCNOW = 'INDEX' ;
+      SIGNAL ENDPAGE (SYSPRINT) ;
+      DO I = 1 TO NTC ;
+         IF MOD(I,5) = 0 THEN DO ;
+            NLINES = NLINES + 1 ;
+            IF NLINES >= 58 THEN SIGNAL ENDPAGE(SYSPRINT) ;
+            ELSE PUT SKIP(1) ;
+            END ;
+         NLINES = NLINES + 1 ;
+         IF NLINES >= 58 THEN SIGNAL ENDPAGE (SYSPRINT) ;
+         PUT SKIP(1) EDIT(TC(I),TCP(I)) (X(30),A,X(4),F(5)) ;
+         END ;
+
+Then the subsections
+
+      NLINES = NLINES + 4 ;
+      IF NLINES >= 58 & NTR > 0 THEN SIGNAL ENDPAGE(SYSPRINT) ;
+         ELSE PUT SKIP(4) ;
+      DO I = 1 TO NTR ;
+         IF MOD(I,5) = 0 THEN DO ;
+            NLINES = NLINES + 1 ;
+            IF NLINES >= 58 THEN SIGNAL ENDPAGE(SYSPRINT) ;
+            ELSE PUT SKIP(1) ;
+            END ;
+         NLINES = NLINES + 1 ;
+         IF NLINES >= 58 THEN SIGNAL ENDPAGE (SYSPRINT) ;
+         PUT SKIP(1) EDIT(TR(I),TRP(I)) (X(30),A,X(4),F(5)) ;
+         END ;
+      RETURN ;
+      END AIPSMAN ;
+
+//LKED.SYSLMOD DD DSN=VLA.ERIC.DEC(AIPSMAN),DISP=SHR

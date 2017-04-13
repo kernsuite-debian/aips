@@ -1,0 +1,108 @@
+*.
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*.   Runfile to set SPEC_AVG in the AN table to enable or
+*.   disable delay decorrelation corrections for the VLBA.
+*.
+PROC VARDEF
+  string*10 axstr;
+  scalar  nfreq, nlim, ndim, j, navg, nfft, ianver;
+  FINISH;
+
+PROC FAXIS (AXSTR, NDIM)
+*.   --- find dimension of a given header axis
+  ndim = 0; keyword = 'NAXIS';
+  geth;
+  nlim = keyvalue(1);
+  for j = 1 to nlim
+     keyword = 'CTYPE'!!char(j);
+     geth;
+     if (keystrng = axstr) then
+        keyword = 'NAXIS'!!char(j);
+        geth;
+        ndim = keyvalue(1);
+        end;
+     end;
+  RETURN; FINISH;
+
+PROC CALC (NFFT, NAVG)
+*.   --- calculate the spectral averaging factor
+*.   --- from the FFT size and the present number
+*.   --- of spectral channels
+  navg = 0;
+  if (nfft > 0) then
+     faxis ('FREQ', nfreq);
+     if (nfreq > 0) then
+        navg = nfft / (2 * nfreq);
+        end;
+     end;
+  RETURN; FINISH;
+
+*.
+*.  --- Main
+*.
+PROC MAIN;
+*.  --- Get input adverb values
+  nfft = aparm(1);
+  navg = aparm(2);
+  ianver = subarray;
+  if (ianver < 1) then
+     ianver = 1;
+     end;
+*.
+  if (nfft > 0) then
+    if (navg < 1) then
+*.  --- Calculate spectral averaging factor
+       calc (nfft, navg);
+       end;
+  else
+*.  --- Disable spectral averaging correction
+    navg = 0;
+    end;
+*.  --- Set SPEC_AVG in AN table
+*.
+  task 'tabed';
+  inext 'AN'; invers = ianver;
+  outname = inname; outclass = inclass;
+  outseq = inseq; outdisk = indisk;
+  outvers = invers; bcount = 1; ecount = 0;
+  optype = 'KEY'; aparm = 0, 0, 0, 4, 0;
+  keyword = 'SPEC_AVG'; keyvalue = navg, 0;
+  keystrng = ' '; timerang = 0;
+  go 'tabed'; wait 'tabed';
+  if (navg > 0) then
+    type 'Spectral Averaging factor set to: ',navg;
+  else
+    type 'Delay de-correlation correction disabled';
+    end;
+  RETURN; FINISH;
+
+*. Execute main procedure
+
+tput fxavg;
+main;
+tget fxavg;

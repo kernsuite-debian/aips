@@ -1,0 +1,265 @@
+@@
+
+            DESCRIPTION OF AIPS UV DATA BASE         25 Feb. 82
+               W. D. Cotton
+
+     This document is to describe the current implementation of a UV
+data base in AIPS.
+
+     The bulk of the UV data is stored as reals in a form which is
+similar to the FITS random data format.  Necessary
+information about the data is kept in the catalog header record and
+one or more antenna (AN) files.  In particular, the order of the
+random and uniform parameters is given in the catalog header.  This
+information can be easily obtained via the subroutine UVPGET 
+(see below).  Data from one or more arrays may be combined in one
+data base so the information specific to each array is kept in the
+antenna (AN) files, one per array.  The information in these AN files
+includes frequency, date of observation, location of array center,
+location of the antennas etc.  The array number is included in the
+baseline information (see below).  The time in each array is offset
+from the date given in the AN file by 5 days times (array # - 1) to
+avoid confusion.
+ 
+     Other extension files are history (HI), gain tables (GA) and
+plot (PL) files.  Other types may be added if necessary.
+
+1) Order of the data in a record.
+ 
+     As for FITS, uv data records contain two kinds of data; first
+are the random parameters (u, v, w, time, etc).  The number and order
+of the random parameters are given in the catalog header. The types
+currently in use are:
+     'U       '   u spatial frequency coordinate (wavelength at 
+                  the reference frequency in the catalog header.
+     'V       '   v spatial frequency coordinate.
+     'W       '   w spatial frequency coordinate.
+     'BASELINE'   ant #2 + 256*(ant #1) + 0.01*(array # - 1)
+     'TIME1   '   relative time in IAT days + 5.*(array # -1)
+     'DELAY   '   (VLBI) group delay residual used (microsec.)
+     'RATE    '   (VLBI) Fringe rate residual used (mHz)
+Other random parameters may be added as needed although there is a
+limit of 7 which can be named in the catalog header.
+ 
+     Following the random parameters comes the data array.  The
+order, number of values on each axis, reference pixel, reference
+value at the reference pixel, and the increment are given in the
+catalogue header as in the case of images.  In principle the order
+is completely arbitrary but in many tasks it is assumed that the
+'COMPLEX' axis is first.  'STOKES','FREQ','RA' and 'DEC' axes must
+be present even if the dimension is 1.  The types currently in use are:
+     'COMPLEX'    Visibility, (Real, Imaginary, Weight)
+     'STOKES '    Polarization (1=RR, 2=LL, 3=RL, 4=LR)
+     'FREQ   '    Frequency (Hz)
+     'RA     '    Right Ascension (degrees)
+     'DEC    '    Declination (degrees)
+     'DELAY  '    (VLBI) group delay residual
+     'RATE   '    (VLBI) fringe rate residual
+ 
+     In order to facilitate use of the catalogue header subroutine
+UVPGET is available.  This subroutine determines the order of the
+data and other useful information and places this information in
+common /UVHDR/.  The use of UVPGET is explained in the precursor
+comments for UVPGET which follow:
+C----------------------------------------------------------------------
+C   UVPGET determines pointers and other information from a UV CATBLK.
+C   The address relative to the start of a vis record for the real part
+C   for a given spectral channel (CHAN) and stokes parameter (ICOR)
+C   is given by :
+C      NRPARM+(CHAN-1)*INCF+(ICOR-ICOR0)*INCS
+C   Inputs: From common /MAPHDR/
+C      CATBLK(256)   I*2  Catalogue block
+C      CAT4          R*4  same as CATBLK
+C      CAT8          R*8  same as CATBLK
+C   Output: In common /UVHDR/
+C      SOURCE(2)     R*4  Packed source name.
+C      ILOCU         I*2  Offset from beginning of vis record of U
+C      ILOCV         I*2                "                        V
+C      ILOCW         I*2                "                        W
+C      ILOCT         I*2                "                        Time
+C      ILOCB         I*2                "                      Baseline
+C      JLOCC         I*2  Order in data of complex values
+C      JLOCS         I*2  Order in data of Stokes' parameters.
+C      JLOCF         I*2  Order in data of Frequency.
+C      JLOCR         I*2  Order in data of RA
+C      JLOCD         I*2  Order in data of dec.
+C      INCS          I*2  Increment in data for stokes (see above)
+C      INCF          I*2  Increment in data for freq. (see above)
+C      ICOR0         I*2  Stokes value of first value.
+C      NRPARM        I*2  Number of random parameters
+C      LREC          I*2  Length in values of a vis record.
+C      NVIS(2)     P I*4  Number of visibilities
+C      FREQ          R*8  Frequency (Hz)
+C      RA            R*8  Right ascension (1950) deg.
+C      DEC           R*8  Declination (1950) deg.
+C      NCOR          I*2  Number of correlators
+C      ISORT         C*2  Sort order
+C      IERR          I*2  Return error code: 0=>OK, 
+C                            1, 2, 5, 7 : not all normal rand parms
+C                            2, 3, 6, 7 : not all normal axes
+C                            4, 5, 6, 7 : wrong bytes/value
+C----------------------------------------------------------------------
+ 
+2) UV data specific catalogue header values
+ 
+     The following catalogue header locations (using the notation
+of the /HDRVAL/ common) have uses specific to uv databases:
+      CAT4(K4CRT+JLOCD)  Any rotation of UV from the normal RA-Dec
+                         relation. >0 => ccw. 
+      CAT8(K8BSC)        Not used.
+      CAT8(K8BZE)        Not used.
+      CAT4(K4PTY)        'UV'
+      CATBLK(K2GCN)      NVIS(1)  NVIS = pseudo I*4 # vis. rec.
+      CATBLK(K2GCN+1)    NVIS(2)
+      CATBLK(K2TYP)      Sort order ( 2 char. see below)
+                         (sort order '**' indicates unsorted data)
+
+Following is the HELP file explaining the sort order code:
+
+
+SORT
+Type:  Adverb (character string, 2 bytes)
+Use:   Specify which order data are to be sorted into.  Two
+       are packed into SORT with the second key to vary fastest.
+       Legal values are:
+             B => baseline number
+             T => time order
+             U => u spatial freq. coordinate
+             V => v spatial freq. coordinate
+             W => w spatial freq. coordinate
+             R => baseline length.
+             P => baseline position angle.
+             X => descending ABS(u)
+             Y => descending ABS(v)
+             Z => ascending ABS(u)
+             M => ascending ABS(v)
+        For example SORT='XY' is required by APMAP.
+Tasks:
+  UVSRT  Sorts UV data.
+ 
+3) Routines to access uv data bases.
+ 
+     Routines UVINIT and UVDISK are the uv database analogues of
+MINIT and MDISK used for maps.  Their use is described in their
+precursor comments which follow:
+      SUBROUTINE UVINIT (OP, LUN, FIND, NVIS, VISOFF, LREC, NPIO,
+     *   BUFSZ, BUFFER, BO, BP, BIND, IERR)
+C----------------------------------------------------------------------
+C   UVINIT sets up bookkeeping for the UV data I/O routine UVDISK.
+C   I/O for these routines is double buffered (if possible)
+C   quick return I/O.  UVDISK will run much more efficiently if
+C   on disk LREC*NPIO*BP is an integral number of blocks.  Otherwise
+C   partial writes or oversize reads will have to be done.
+C   Minimum disk I/O is one block.  Smaller calls to UVINIT may be
+C   as long as the buffer is large enough (double buffer req).
+C   The buffer size should include an extra NBPS bytes for each
+C   buffer for non tape read if NPIO records does not
+C   correspond to an integral number of disk sectors (NBPS bytes).
+C   2*NBPS extra bytes required for each buffer for write.
+C
+C  Inputs:
+C  OP        R*4  OP code, 'READ' or 'WRIT' for desired operation.
+C  LUN       I*2  Logical unit number of file.
+C  FIND      I*2  FTAB pointer for file returned by ZOPEN.
+C  NVIS    P I*4  Number of visibilities to be transfered.
+C  VISOFF  P I*4  Offset in vis. rec. of first vis. rec. from BO.
+C  LREC      I*2  Number of values in a visibility record.
+C  NPIO      I*2  Number of visibilities per call to UVDISK.
+C                 Determines block size for tape I/O
+C  BUFSZ     I*2  Size in bytes of the buffer.
+C                 If 32767 given, 32768 is assumed.
+C  BUFFER( ) I*2  Buffer
+C  BO      P I*4  Block offset to begin transfer from (1-relative)
+C  BP        I*2  Bytes per value in the vis. record.
+C
+C  Output:
+C  NPIO      I*2  For WRITE, the max. number of visibilities
+C                 which can be accepted.
+C  BIND      I*2  Pointer in BUFFER for WRITE operations.
+C  IERR      I*2  Return error code:
+C                     0 => OK
+C                     1 => file not open in FTAB
+C                     2 => invalid input parameter.
+C                     3 => I/O error
+C                     4 => End of file.
+C                     7 => buffer too small
+C
+C  Note: VISOFF and BO are additive.
+C  UVINIT sets and UVDISK uses values in the FTAB:
+C
+C  FTAB(FIND+0) = LUN
+C            1  = # Bytes per I/O
+C          2-3  = # vis. records left to transfer.
+C                 For double buffer read, 1 more I/O will have
+C                 been done than indicated.
+C          4-5  = Block offset for next I/O.
+C            6  = byte offset of next I/O
+C            7  = bytes per value
+C            8  = Current buffer #, -1 => single buffering
+C            9  = OPcode 1 = read, 2 = write.
+C           10  = Values per visibility record.
+C           11  = # vis. records per UVDISK call
+C           12  = max. # vis. per buffer.
+C           13  = # vis. processed in this buffer.
+C           14  = Buffer pointer for start of current buffer.(values)
+C                 Used for WRIT only; includes any data carried over
+C                 from the last write.
+C           15  = Buffer pointer for call (values)
+C----------------------------------------------------------------------
+      SUBROUTINE UVDISK (OP, LUN, FIND, BUFFER, NIO, BIND, IERR)
+C----------------------------------------------------------------------
+C  UVDISK reads and writes records of arbitrary length especially
+C  uv visibility data.  Operation is faster if blocks of data
+C  are integral numbers of disk blocks.  There are three operations
+C  which can be invoked: READ, WRITE and FLUSH (OPcodes READ,
+C  WRIT and FLSH).
+C
+C  READ reads the next sequential block of data as specified to
+C  UVINIT and returns the number of visibilities in NIO and
+C  the pointer in BUFFER to the first word of this data.
+C
+C  WRIT arranges data in a buffer until it is full.  Then as
+C  many full blocks as possible are written to the disk with the
+C  remainder left for the next disk write.  For tape I/O data
+C  is always written with the block size specified to UVINIT;
+C  one I/O operation per call.  For disk write, left-over data
+C  is transfered to the beginning of buffer 1 if that is the
+C  next buffer to be filled.  Value of NIO in the call is the
+C  number of vis. rec. to be added to the buffer and may be fewer
+C  than the number speecified to UVINIT.  On return NIO is the
+C  maximum number which may be sent next time.  On return BIND
+C  is the pointer in BUFFER to begin filling new data.
+C
+C  FLSH writes integral numbers of blocks and moves any data left
+C  over to the beginning of buffer 1.  One exception to this is
+C  when NIO => -NIO or 0, in which case the entire remaining data
+C  in the buffer is written.
+C  After the call BIND is the pointer in BUFFER for new data.
+C  The principal difference between FLSH and WRIT is that
+C  FLSH always forces an I/O transfer.  This may cause trouble
+C  if a transfer of less than 1 block is requested.  A call
+C  with a nonpositive value of NIO should be the last call and
+C  corresponds to a call to MDISK with opcode 'FINI'.
+C
+C  NOTE:  A call to UVINIT is REQUIRED prior to calling UVDISK.
+C
+C  Inputs:
+C  OP        R*4  Opcode 'READ','WRIT','FLSH' are legal
+C  LUN       I*2  Logical unit number
+C  FIND      I*2  FTAB pointer returned by ZOPEN
+C  BUFFFER() I*2  Buffer for I/O
+C  NIO       I*2  No. additional visibilities to write.
+C
+C  Output:
+C  NIO       I*2  No. visibilities read.
+C                 Max. no. vis. for next write.
+C  IERR      I*2  Return error code.
+C                 0 => OK
+C                 1 => file not open in FTAB
+C                 2 => input error
+C                 3 => I/O error
+C                 4 => end of file
+C                 7 => attempt to write more vis than specified
+C                      to UVINIT or will fit in buffer.
+C
+C----------------------------------------------------------------------

@@ -1,0 +1,134 @@
+          DEFINE GRIDAP(UV,VIS,WT,L,G,CX,CY,N2,M,LROW,CNT,TY)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Grid row of uv data.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+          LOCAL UV1,UV2,IWORK1,IWORK2,VIS2,NOSHF,NOTAP
+"
+"     GRIDAP GRIDS VISIBILITY DATA THAT HAS BEEN LOADED INTO THE AP
+"     PREVIOUSLY.  IF REQUESTED, POSITIONS ARE SHIFTED AND THEN
+"     A TAPER IS APPLIED TO THE WEIGHTS IF REQUESTED BEFORE GRIDDING.
+"     WHEN TAPER IS REQUESTED AND TY=2 OR 3 LOCATIONS VIS-2 AND
+"     VIS-1 ARE USED FOR WORK SPACE. IF TY=1 LOCATIONS VIS+2 AND
+"     VIS+3 ARE USED.
+"
+"                UV = BASE ADDRESS OF U,V VECTOR
+"                VIS = BASE ADDRESS OF VISIBILITY
+"                WT = BASE ADDRESS OF WEIGHTS
+"                L  = LENGTH OF VISIBILITY RECORD
+"                G  = BASE ADDRESS OF GRID
+"                CX = BASE ADDRESS OF ROW CONVOLVING FN. (Y ON SKY)
+"                CY = BASE ADDRESS OF COL. CONVOLVING FN. (X ON SKY)
+"                     CONVOLVING FNS TABULATED EVERY 1/100 CELL
+"                N2 = INT ( (NO. CELLS USED ON A ROW)/2 )
+"                M = NUMBER OF ROWS KEPT IN AP (MUST BE ODD)
+"                LROW = LENGTH OF A ROW (V)
+"                CNT =  NUMBER OF VISIBILITY POINTS.
+"                TY  =  TYPE OF VISIBILITY DATA.
+"                       1 = I MAPS
+"                       2 = Q,U MAPS, OR TWO LINE MAPS
+"                       3 = V MAPS
+"                 IF TY IS NEGATIVE THEN TAPERING IS REQUESTED.
+"                 IF CNT IS NEG, DO NOT SHIFT DATA.
+"
+"     EXPECTS NECESSARY CONSTANTS IN FOLLOWING AP LOCATIONS:
+"
+"           8 = -SIG(U)**2 (CELLS**2) FOR TAPER
+"           9 = -SIG(V)**2 (CELLS**2) FOR TAPER
+"          10 = U SCALING TO CELLS
+"          11 = V SCALING TO CELLS
+"          12 = W SCALING TO CELLS
+"          13 = DXC = -2 * PI * DELTA RA (IN 1/CELLS)
+"          14 = DYC = -2 * PI * DELTA DEC
+"          15 = DZC = -2 * PI * DELTA Z
+"
+"
+         SP09 = UV
+         UV1 = SP09 + 1
+         UV2 = SP09 + 2
+"                                       Check shift
+         NOSHF = CNT
+         IF CNT=0 GOTO S999
+         IF CNT>0 GOTO A
+         CNT = -CNT
+"                                       Scale u,v,w to cells.
+A:       CALL VSMUL (UV,L,10,UV,L,CNT)
+         CALL VSMUL (UV1,L,11,UV1,L,CNT)
+         CALL VSMUL (UV2,L,12,UV2,L,CNT)
+"                                       Check if tapered and set work
+"                                       pointers.
+         NOTAP = TY
+         IF TY > 0 GOTO A1
+         TY = -TY
+A1:      IF TY=1 GOTO TYP1
+         IWORK1 = VIS-2
+         GOTO TYP23
+TYP1:    IWORK1 = VIS+2
+TYP23:   IWORK2 = IWORK1+1
+         IF NOTAP > 0 GOTO NOTAPE
+"                                       Taper
+            CALL VMUL(UV,L,UV,L,IWORK1,L,CNT)
+            CALL VMUL(UV1,L,UV1,L,IWORK2,L,CNT)
+            CALL VSMUL(IWORK1,L,8,IWORK1,L,CNT)
+            CALL VSMA(IWORK2,L,9,IWORK1,L,IWORK1,L,CNT)
+            CALL VEXP(IWORK1,L,IWORK1,L,CNT)
+            CALL VMUL(WT,L,IWORK1,L,WT,L,CNT)
+"                                       Check if shift is requested.
+NOTAPE:  IF NOSHF<0 GOTO CHOSE
+"                                       Shift position.
+            CALL VSMUL(UV,L,13,IWORK1,L,CNT)
+            CALL VSMA(UV1,L,14,IWORK1,L,IWORK1,L,CNT)
+            CALL VSMA(UV2,L,15,IWORK1,L,IWORK1,L,CNT)
+            CALL VSIN(IWORK1,L,IWORK2,L,CNT)
+            CALL VCOS(IWORK1,L,IWORK1,L,CNT)
+            CALL CVMUL(IWORK1,L,VIS,L,VIS,L,CNT,1)
+"                                       Check map type.
+CHOSE:   IF TY = 2 GOTO TWOM
+"                                       IPOL (and beam) or VPOL.
+LOOP1:   CALL APGRD3 (UV,VIS,WT,G,CX,CY,N2,M,LROW)
+         SP10 = L
+         UV = UV + SP10
+         VIS = VIS + SP10
+         WT = WT + SP10
+         CNT = CNT - 1
+         IF CNT > 0 GOTO LOOP1
+         GOTO S999
+"                                       Two map gridding.
+TWOM:    IF NOSHF < 0 GOTO LOOP2
+"                                       Shift positions.
+            VIS2 = VIS + 2
+            CALL CVMUL (IWORK1,L,VIS2,L,VIS2,L,CNT,1)
+LOOP2:   CALL APGRD2(UV,VIS,WT,G,CX,CY,N2,M,LROW)
+         SP10 = L
+         UV = UV + SP10
+         VIS = VIS + SP10
+         WT = WT + SP10
+         CNT = CNT - 1
+         IF CNT > 0 GOTO LOOP2
+S999:    END

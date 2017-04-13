@@ -1,0 +1,323 @@
+% AIPSMEM113.TEX
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2009
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;         Internet email: aipsmail@nrao.edu.
+%;         Postal address: AIPS Project Office
+%;                         National Radio Astronomy Observatory
+%;                         520 Edgemont Road
+%;                         Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\documentclass[twoside]{article}
+\usepackage{graphics}
+\newcommand{\AIPS}{{$\cal AIPS\/$}}
+\newcommand{\whatmem}{\AIPS\ Memo \memnum}
+%\newcommand{\whatmem}{{\bf D R A F T}}
+\newcommand{\boxit}[3]{\vbox{\hrule height#1\hbox{\vrule width#1\kern#2%
+\vbox{\kern#2{#3}\kern#2}\kern#2\vrule width#1}\hrule height#1}}
+%
+\newcommand{\memnum}{113}
+\newcommand{\memtit}{Faceted imaging in \AIPS}
+\title{
+   \vskip -35pt
+   \fbox{{\large\whatmem}} \\
+   \vskip 28pt
+   \memtit \\}
+\author{Leonid Kogan \&\ Eric W. Greisen}
+\date{May~22, 2009}
+%
+\parskip 4mm
+\linewidth 6.5in                     % was 6.5
+\textwidth 6.5in                     % text width excluding margin 6.5
+\textheight 8.91 in                  % was 8.81
+\marginparsep 0in
+\oddsidemargin .25in                 % EWG from -.25
+\evensidemargin -.25in
+%\topmargin -.5in
+\topmargin 0.25in
+\headsep 0.25in
+\headheight 0.25in
+\parindent 0in
+\newcommand{\normalstyle}{\baselineskip 4mm \parskip 2mm \normalsize}
+\newcommand{\tablestyle}{\baselineskip 2mm \parskip 1mm \small }
+%
+%
+\begin{document}
+
+\pagestyle{myheadings}
+\thispagestyle{empty}
+
+\newcommand{\Rheading}{\whatmem \hfill \memtit \hfill Page~~}
+\newcommand{\Lheading}{~~Page \hfill \memtit \hfill \whatmem}
+\markboth{\Lheading}{\Rheading}
+%
+%
+
+\vskip -.5cm
+\pretolerance 10000
+\listparindent 0cm
+\labelsep 0cm
+%
+%
+
+\vskip -30pt
+\maketitle
+\vskip -30pt
+\normalstyle
+
+
+\begin{abstract}
+``Image-plane faceting,'' in which each small image plane or facet is
+  computed as tangent to the celestial sphere, has been the solution
+  to the ``W problem'' in \AIPS\ for some time.  This memo describes
+  another approach in which the facets are all in the same plane which
+  is tangent to the sphere at the center of the field of view.  This
+  ``uv-plane faceting'' method may have some computational advantages
+  and has replaced the {\tt DO3DIMAG = FALSE} methods in \AIPS\@.
+\end {abstract}
+
+\section{Basic concepts}
+
+The visibility {\em Vis} as a function of the baseline vector
+components is related with the source brightness distribution $B(l,m)$
+(times the array element primary beam) by the expression (see Thompson
+et al., for example):
+\begin{equation}
+   Vis(U_i,V_i,W_i) = \int B(l, m) \exp(j 2\pi (U_i \cdot l + V_i
+   \cdot m - \frac{1}{2} W_i \cdot (l^2 + m^2) ) dl dm \label{eq:vis2}
+\end{equation}
+\begin{tabbing}
+where~  \=  {\em l, m} are direction cosines of the vector to a point
+            in the source picture plane; \\
+        \>  $U_i, V_i, W_i$ are the components of the baseline vector i; \\
+        \>  B({\em l, m}) is the source brightness distribution.\\
+\end{tabbing}
+
+Having measured the set of the visibilities ($Vis(U_i,V_i,W_i),
+i=1,2...Nvis$), we need to restore the two-dimensional source
+brightness distribution B({\em l, m}).  This task has a
+straight-forward solution if the term $\frac{1}{2} W_i \cdot (l^2 +
+m^2)$ is negligible.  This requirement puts a limit on the maximum
+allowed $l$ and $m$, limiting the field of view.  To get around this
+limitation, one may divide the desired large field of view into a
+number of small images (``facets'') each of which is small enough to
+allow the W term to be neglected.
+
+\AIPS\ has implemented a multi-faceted ({\tt DO3DIMAG = TRUE}) scheme in
+which, for each facet, the $U_i, V_i, W_i$ are rotated to the values
+they would have had if the observations were made with the facet
+center as the tangent point.  The phases of the observed $Vis$ are
+also rotated to the center of the facet.  Both of these are
+implemented by straightforward 3x3 matrix multiplies during the
+gridding.  Field rotation is also implemented through these matrices.
+Component subtraction requires similar multiplies to produce
+appropriate baseline components and adjusted phases.  The separate
+small images, each tangent to the sphere at their center, along with
+their Clean components, remain the primary ``image'' and source model.
+However, for display and analysis, the separate facet images may be
+interpolated and averaged onto another larger grid, usually the
+tangent plane at the original phase stopping point.  This is done with
+\AIPS\ task {\tt FLATN}\@.
+
+If one could image instead each facet on a co-planar geometry, then
+the operation of {\tt FLATN} could be simplified.  It cannot be
+eliminated, since it is very unwise to use the image pixels along the
+edges and in the corners of each facet.  Aliasing from the Fourier
+transform operation renders the edges unreliable and cumulative
+arithmetic errors are multiplied by very large correction functions in
+the corners rendering them even less reliable.  \AIPS\ allows users to
+place facets wherever they desire.  However, the task {\tt SETFC} will
+recommend placing the facets in a circular pattern on the sky with
+considerable overlap so the Clean need not extend outside an inscribed
+circle within each facet.  {\tt FLATN} will therefore be required to
+deal with the non-rectangular pattern of facet centers and with the
+overlaps even if the geometry is able to be co-planar.
+
+We propose below a new (to \AIPS) way to arrange the mathematics that
+allows the facet images to be co-planar.  It has been implemented as
+the {\tt DO3DIMAG = FALSE} method in \AIPS, eliminating the previous,
+openly incorrect, method by that name.  The only imaging task able to
+handle this new method is {\tt IMAGR}; old tasks {\tt MX} and {\tt
+  HORUS} were removed from \AIPS\@.
+
+\section{The new facet algorithm}
+
+We derive equation \ref{eq:vis2} using vector terminology.  The
+visibility for the baseline vector $\vec{D}$ due to the brightness in
+the direction of the unit vector $\vec{e}$ is:
+
+\begin{equation}
+        Vis(\vec{D}) = \int B(\vec{e})
+        \exp \; j 2\pi (\vec{D} \cdot ( \vec{e}-\vec{e_0})) \; d\vec{e}
+        \label{eq:vis3}
+\end{equation}
+
+Relation \ref{eq:vis3} is correct in any coordinate system so long as
+all vectors are in the same coordinate system.   Let us chose the
+Cartesian coordinate system in which $\vec{u}, \vec{v}$ are in the
+tangent plane perpendicular to the vector $\vec{e_0}$ and vector
+$\vec{w}$ is along vector $\vec{e_0}$. Then
+\begin{eqnarray*}
+\vec{D}  & = &\{U,V,W\} \\
+\vec{e} - \vec{e_0} & = & \{l,m,n\} \\
+l & = & \sin(\theta) \cos(\phi) \\
+m & = & \sin(\theta) \sin(\phi) \\
+n & = & 1 - \cos(\theta) \\
+  & = & 1 - \sqrt{1-\sin^2(\theta)} \\
+  & \sim & \frac{1}{2}(l^2+m^2) \\
+\end{eqnarray*}
+Substituting the last equalities into equation \ref{eq:vis3}, we
+arrive at equation \ref{eq:vis2} easily.  Now remove the phase shift
+corresponding to the facet center by multiplying all visibilities by
+the relevant complex exponent:
+\begin{eqnarray}
+ & &   Vis(U,V,W) \cdot  \exp -j 2\pi (U \cdot l_{i0} + V \cdot m_{i0}
+       - \frac{1}{2} W \cdot (l_{i0}^2 + m_{i0}^2) )  =  \nonumber \\
+ & &  \int B(l, m) \exp(j 2\pi (U \cdot (l-l_{i0}) + V \cdot
+       (m-m_{i0}) - \frac{1}{2} W \cdot ((l^2-l_{i0}^2) +
+       (m^2-m_{i0}^2) ) dl dm          \label{eq:vis4}
+\end{eqnarray}
+where $l_{i0}, m_{i0}$ are direction cosines of the vector directed to
+the center of the facet ``i.''
+
+Introducing relative coordinates within the facet, $\Delta l_i = l -
+l_{i0}$ and $\Delta m_i = m - m_{i0}$, we obtain
+\begin{eqnarray}
+ l^2 - l_{i0}^2 & = & l_{i0}^2+2l_{i0} \Delta l_i + \Delta l_i^2 -
+       l_{i0}^2  \nonumber \\
+ m^2 - m_{i0}^2 & = & m_{i0}^2+2m_{i0} \Delta m_i + \Delta m_i^2 -
+       m_{i0}^2 \label{eq:lsqr}
+\end{eqnarray}
+The facet algorithm rule allows us to ignore both $\Delta l_i^2$ and
+$\Delta m_i^2$, simplifying equation \ref{eq:lsqr} to:
+\begin{eqnarray}
+ l^2 - l_{i0}^2 & = & 2l_{i0} \Delta l_i  \nonumber \\
+ m^2 - m_{i0}^2 & = & 2m_{i0} \Delta m_i \label{eq:lsqr1}
+\end{eqnarray}
+Using the equations \ref{eq:lsqr1} and the introduced relations
+$\Delta l_i = l - l_{i0}$ \hspace{3mm} $ \Delta m_i = m - m_{i0}$, we
+can convert equation \ref{eq:vis4} to the final relation between the
+brightness distribution in facet ``i'' and the measured visibilities:
+\begin{eqnarray}
+  & &  Vis(U,V,W) \cdot \exp(-j 2\pi (U \cdot l_{i0} + V \cdot m_{i0}
+    - \frac{1}{2} W \cdot (l_{i0}^2 + m_{i0}^2) )   =   \nonumber \\
+  & & \int B(\Delta l_i,\Delta m_i) \exp(j 2\pi (U^{'} \cdot \Delta
+    l_i + V^{'} \cdot \Delta m_i ) \;  dl_i dm_i  \label{eq:vis5} \\
+\noalign{where}
+  & & U^{'} = U - W \cdot l_{i0} \nonumber \\
+  & & V^{'} = V - W \cdot m_{i0} \nonumber
+\end{eqnarray}
+
+\section{Improving the precision of the method}
+
+In the previous section, a simplified representation of the W term ($
+\frac{1}{2} W \cdot (l^2 + m^2) $) was used.  To extend the analysis
+to a larger field of view, we present the analysis using the full
+correct representation of the W term: $ -W (1 - \sqrt{1 - (l^2+m^2)})$
+Equation \ref{eq:vis4} should be rewritten:
+\begin{eqnarray}
+ & & Vis(U,V,W) \cdot  \exp -j 2\pi (U \cdot l_{i0} + V \cdot m_{i0}
+     - W \cdot (1- \sqrt{1- (l_{i0}^2 + m_{i0}^2)})  =  \nonumber \\
+ & & \int \exp(j 2\pi (U \cdot (l-l_{i0}) + V \cdot (m-m_{i0})
+     + W \cdot \left(\sqrt{1- (l^2 + m^2)} -  \sqrt{1- (l_{i0}^2 +
+       m_{i0}^2)} \right) \nonumber\\
+ & &  B(l, m) \; dl dm   \label{eq:vis31}
+\end{eqnarray}
+where $l_{i0}, m_{i0}$ are the direction cosines of the vector
+directed to the center of the facet ``i''
+
+We re-introduce $\Delta l_i = l - l_{i0}$ and $\Delta m_i = m -
+m_{i0}$ as positions relative to the center of facet ``i.''.
+Representing the difference of the square roots in equation
+\ref{eq:vis31} as a Taylor series, we include only the first order
+terms in $\Delta l_i$ and $\Delta m_i$ and omit the higher orders
+terms because of the facet algorithm rule.  Thus
+
+\begin{eqnarray}
+\left(\sqrt{1- (l^2 + m^2)} -  \sqrt{1- (l_{i0}^2 + m_{i0}^2)}\right)
+ & = & \frac{\partial \sqrt{()}} {\partial l} \Delta l_i \;+\;
+    \frac{\partial \sqrt{()}} {\partial m} \Delta m_i \nonumber \\
+ & = & -\frac{1}{\sqrt{1- (l_{i0}^2 + m_{i0}^2)}} (l_{i0} \cdot \Delta
+    l_i + m_{i0} \cdot \Delta m_i)  \label{eq:vis32}
+\end{eqnarray}
+Substituting equation \ref{eq:vis32} into equation \ref{eq:vis31}, we
+can convert the latter to the final relation between the brightness
+distribution in facet ``i'' and the measured visibilities:
+\begin{eqnarray}
+ & & Vis(U,V,W) \cdot  \exp -j 2\pi (U \cdot l_{i0} + V \cdot m_{i0}
+     -  W \cdot (1- \sqrt{1- (l_{i0}^2 + m_{i0}^2)})  =  \nonumber \\
+ & & \int B(\Delta l_i,\Delta m_i) \exp(j 2\pi (U^{'} \cdot \Delta l_i
+     + V^{'} \cdot \Delta m_i ) \;  dl_i dm_i   \label{eq:vis33} \\
+\noalign{where}
+ & & U^{'} = U - W \frac{l_{i0}} {\sqrt{1- (l_{i0}^2+ m_{i0}^2)}};
+   \nonumber \\  \; \;
+ & & V^{'} = V - W \frac{m_{i0}} {\sqrt{1- (l_{i0}^2+ m_{i0}^2)}}
+   \nonumber
+\end{eqnarray}
+
+\vfill\eject
+\section{Summary}
+
+The classic faceting algorithm computes a different coordinate system
+for each facet.  In this coordinate system, the image plane is tangent
+to the celestial sphere at the facet center.  As a result, the facet
+planes are not co-planar.  The new faceting algorithm locates all
+facets on the same plane which is tangent to the celestial sphere at
+the center of field of view.  In this case, all facets are co-planar.
+This should simplify the combination of the facets into a single large
+image for display and analysis, although issues of pixel overlap and
+reliability must still be handled.
+
+In both faceting algorithms, the adjustment of the visibility phases
+and uv-plane coordinates are handled by 3x3 matrix multiplies.  These
+allow for coordinate rotation about the facet center as well as
+correction for the W term.  The matrix in the new algorithm has some
+terms which are zero, but not enough to justify using a more direct
+implementation.  The fact that $U$ and $V$ now depend on facet, even
+when {\tt DO3DIMAG = FALSE}, requires software which is more adaptable
+than the old routines used by {\tt MX} and {\tt HORUS}, requiring
+their elimination from \AIPS\@.  Because $U$ and $V$ depend on facet,
+the point-spread function (``dirty beam'') of each facet is different
+from that of every other facet.  These differences may have a small
+effect in the scaling of each facet and small effects in the finding
+of components within the inner cycle of Clean.  The components are
+subtracted correctly from the residual visibility data, so the
+adaptive nature of Clean should minimize any errors in the minor
+cycles.  Therefore, \AIPS\ task {\tt IMAGR} now allows the specification
+of {\tt ONEBEAM} to allow Cleaning only with the dirty beam of the
+first facet.  Tests suggest that the errors from this choice are not
+entirely corrected in later cycles leading to the suggestion that the
+slower {\tt ONEBEAM FALSE; OVERLAP 2} methods be used while Cleaning
+the highest dynamic range portions of an image.  Faster {\tt ONEBEAM
+TRUE; OVERLAP 1} methods may be used in the later stages of Clean so
+long as no object is Cleaned in more than one facet.
+
+\begin{figure}
+\centering
+\resizebox{6.3in}{!}{\includegraphics{COMP4-1.PS}\ %
+    \includegraphics{COMP4-1N.PS}}
+\caption{Model data imaged with {\tt DO3DIMAG = FALSE} in {\tt
+    31DEC09} (left) and {\tt 31DEC08} (right) \AIPS\@.  The sources to
+  the lower left were Cleaned in a central facet, only the source
+  somewhat to the right and above the center was Cleaned in this
+  facet.  The image to the left is indistinguishable from one made
+  with {\tt DO3DIMAG = TRUE} except for the geometric differences.}
+\end{figure}
+\end{document}

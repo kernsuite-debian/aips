@@ -1,0 +1,265 @@
+@@
+Plot files:                  PLdsssvv
+ 
+ 
+ 
+A. Overview
+ 
+ 
+   Plot files are a generalized representation of a graphics display.
+They contain scaling information and commands for drawing lines,
+pixels, and characters.  Plot files for a certain type of plot
+(contour maps, grey scales, etc.) are written by one routine
+and then another routine must read the plot file and write to
+a particular graphics device (plotter, graphics terminal, ect.).
+In AIPS these functions are performed by separate tasks.
+This two step approach offers several advantages.  A plot
+file may exist for an extended period of time allowing plots to be
+written to different devices and copies to be generated at later times
+without duplicating the calculations needed in making the plot.
+Also only one program for a particular plot need be written instead
+of one program for each graphics device.
+ 
+   I/O to the plot files consists of reading and writing 256-word
+blocks.  The logical records are of 6 types and vary in length.  With
+the exception of the 'draw pixels' record, logical records do not span
+the 256-word blocks.  Unused space at the end of a block consists of
+integer zeros.  All values in the plot file are I*2 variables or ASCII
+characters.  This aids in exporting plot files to other computers via
+tape.  Plot files have names of the format PLdsssvv, where d is the
+disk volume number, sss is the Catalog slot number of the associated
+map, and vv is the version number.  Plot files are usually extension
+files associated with a cataloged map.
+ 
+ 
+ 
+B. Record layouts
+ 
+ 
+(0)  The first physical record
+ 
+     contains information about the task which created the file.  It
+     is not logically part of the "plot file", but is there to provide
+     documentation of the file's origins should it be needed.  The
+     first logical record (see below) starts in word 1 of the second
+     physical record in the file.  The contents of the first physical
+     record are task-dependent and have the form:
+ 
+FIELD   TYPE        DESCRIPTION
+  1.    I*2(3)       Task name (2 chars / word)
+  2.    I*2(6)       Date/time of file creation YYYY,MM,DD,HH,MM,SS
+  3.    I*2          Number of words of task parameter data
+  4.    R*4(*)       Task parameter block as transmitted from AIPS
+                     (preferably with defaults replaced by the values
+                      used).
+ 
+ 
+ 
+ 
+ 
+(1)  Initialize plot record.
+ 
+       The first logical record in a plot file must be of this type.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equal to 1 for this record type).
+  2.   I*2      User number.
+  3.   I*2(3)   Date:  yyyy, mm, dd
+  4.   I*2      Type of plot:  1 = miscellaneous
+                               2 = contour
+                               3 = grey scale
+                               4 = 3D profile
+                               5 = slice
+                               6 = contour plus polarization lines
+                               7 = histogram
+ 
+ 
+(2)  Initialize for line drawing record.
+ 
+       This record provides scaling information needed for a plot.
+    The plot consists of a 'plot window' in which all lines are drawn
+    and a border (defined in terms of character size) in which
+    labeling may be written.  The second record in a plot file must be
+    of this type.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equal to 2 for this record type).
+  2.   I*2      X Y ratio * 100.  The Ratio between units on the X axis
+                and units on the Y axis (X / Y).  For example if the
+                decrement between pixels in the X direction on a map
+                is twice the decrement in the Y direction the X Y ratio
+                can be set to 2 to provide proper scaling.  Some
+                programs may ignore this field.  For example IISPL when
+                writing grey scale plots to the IIS.
+  3.   I*2      Scale factor (currently 16383 in most applications).
+                This number is used in scaling graph positions before
+                they are written to disk.  BLC values in field 4 are
+                represented on disk by zero and TRC values are
+                represented by integers equal to the scale factor).
+  4.   I*2(4)   The bottom left hand corner X and Y values and the top
+                right hand X and Y values respectively in the plot
+                window (in pixels).
+  5.   I*2(4)   1000 * the fractional part of a pixel allowed to occur
+                outside the (integer) range of BLC and TRC (field 4
+                above) in line drawing commands
+  6.   I*2(4)   10 * the number of character positions outside the plot
+                window on the left, bottom, right, and top respectively
+  7.   I*2(5)   Location of the X Y plane on axes 3,4,5,6,7.  This
+                field is valid only for plots associated with a map.
+ 
+@@
+(3)  Initialize for grey scale record.
+ 
+       This record if needed must follow the 'init for line drawing'
+    record.  This record allows proper interpretation of pixels for
+    raster type display devices.  Programs that write to line drawing
+    type devices (e.g. the TEKTRONIX 4012) ignore this record.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 3 for this record type).
+  2.   I*2      Lowest allowed pixel intensity.
+  3.   I*2      Highest allowed pixel intensity.
+  4.   I*2      Number of pixels on the X axis.
+  5.   I*2      Number of pixels on the Y axis.
+ 
+ 
+ 
+(4)  Position record.
+ 
+       This record tells a device where to start drawing a line,
+    row/column of pixels or character string.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 4 for this record type).
+  2.   I*2      scaled x position i.e. a value of 0 represents the
+                BLC values defined in the 'init for line drawing'
+                record, and a value equal to the scale factor
+                represents the TRC value.
+  3.   I*2      Scaled Y position.
+ 
+ 
+ 
+(5)  Draw vector record.
+ 
+       This record tells a device to draw a line from the current
+    position to the final position specified by this record.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 5 for this record type).
+  2.   I*2      Scaled final X position.
+  3.   I*2      Scaled final Y position.
+ 
+ 
+ 
+(6)  Write character string record.
+ 
+       This record tells a device to write a character string starting
+    at the current position.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 6 for this record type).
+  2.   I*2      Number of characters.
+  3.   I*2      Angle code: 0 = write characters horizontally.
+                            1 = write characters vertically.
+  4.   I*2      X offset from current position in characters * 100
+  5.   I*2      Y offset from current position in characters * 100
+                (net position refers to lower left corner of 1st char)
+  6.   I*2(n)   ASCII characters (n = INT((field2 + 1) / 2))
+ 
+ 
+ 
+(7)  Write pixels record.
+ 
+       This record tells a raster type device to write an n-tuple of
+    pixel values starting at the current position.  Programs that write
+    to line drawing type devices ignore records of this type.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 7 for this record type).
+  2.   I*2      Number of pixel values.
+  3.   I*2      Angle code: 0 = write pixels horizontally.
+                            1 = write pixels vertically (up).
+  4.   I*2      X offset in characters * 100.
+  5.   I*2      Y offset in characters * 100.
+  6.   I*2(n)   n (equal to field 2) pixel values.
+ 
+ 
+ 
+(8)  Write misc. info to image catalog record.
+ 
+        This record tells the programs that write to interactive
+     devices (TEKPL, IISPL) to put up to 20 words of miscellaneous
+     information in the image catalog starting at word I2TRA + 2.
+     This information is interperted by routines such as AU9A
+     ( TKSKYPOS, TKMAPPOS, ect.).  Routines that write to non-
+     interactive graphics devices (PRTPL) ignore this record.
+ 
+FIELD  TYPE      DESCRIPTION
+  1.   I*2       Opcode (equals 8 for this record type).
+  2.   I*2       Number of words of information.
+  3.   I*2(n)    Miscellaneous info (n=value of field 2).
+ 
+ 
+ 
+(9)  End of plot record.
+ 
+       This record marks the end of a plot file.
+ 
+FIELD  TYPE     DESCRIPTION
+  1.   I*2      Opcode (equals 32767 for this record type).
+@@
+C. Subroutines and Commons for Writing.
+ 
+GINIT   Creates and opens a plot file, initializes the graphics
+        common GPHCOM and writes an 'Initialize plot' record.
+GINITL  Writes an 'init for line drawing' record to the plot file.
+GINITG  Writes an 'init for grey scale' record to a plot file.
+GPOS    Writes a 'position' record to the plot file.
+GVEC    Writes a 'draw vector' record to the plot file.
+GCHAR   Writes a 'write character string' record to the plot file.
+GRAYPX  Writes a 'write pixels' record to the plot file.
+GFINIS  Writes an 'end of plot' record to the plot file and closes
+        the file.
+GPHWRT  This routine is called by the above routines if I/O is needed.
+        It writes the current buffer to the plot file and zeros the
+        buffer.  Then the record count and buffer position pointer
+        are updated in common GPHCOM.
+GPHCOM  (common) contains variables used for inter-subroutine
+        communication.  It is declared by including DGPH.INC and CGPH.IN
+        and has the structure:
+           GPHSIZ  I*2      File size in 256-word blocks
+           GPHLUN  I*2      Logical unit number
+           GPHIND  I*2      Pointer to FTAB
+           GPHPOS  I*2      Position in work buffer of last word used
+           GPHRRN  I*2      Number of records written
+           GPHVOL  I*2      Disk volume number
+           GPHNAM  I*2(12)  Physical file name
+           GPHX1   R*4      Leftmost (col) pixel position
+                            (as passed in file logical record type 2,
+                             field 4 above; i.e. integer part)
+           GPHX2   R*4      Rightmost (col) pixel position
+           GPHY1   R*4      Lowest (row) pixel position
+           GPHY2   R*4      Highest (row) pixel position
+           GPHTLO  I*2      Lowest allowed pixel value
+           GPHTHI  I*2      Highest allowed pixel value
+        This common is handled fully by the routines listed here.  A
+        user of these routines only needs to declare the common in his
+        main program to insure that adequate space is reserved for it.
+ 
+ 
+D. Subroutines and Commons for Reading.
+ 
+TVPL     Reads a plot file and writes the corresponding commands
+         to the IIS tv device.
+TVSPCL   (common) for inter-subroutine communication for IISDRW and
+         its subroutines.
+PRTDRW   Reads a plot file and builds a bit map representation on
+         disk.  This bit map is then written to a printer/plotter.
+CPRT     (common) allows inter-subroutine communication for PRTDRW
+         and its subroutines.
+TEKDRW   Reads a plot file and writes the corresponding commands
+         to the TEKTRONIX 4012 graphics screen.
+TVCHAR   (common) for inter-subroutine communication for TEKDRW and
+         its subroutines.
+IMAHDR   (common) plot file catalog header information.used in
+         IISDRW, PRTDRW, and TEKDRW.

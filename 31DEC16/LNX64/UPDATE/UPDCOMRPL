@@ -1,0 +1,78 @@
+#!/bin/sh
+# UPDCOMRPL
+#-----------------------------------------------------------------
+#! Update subroutine libraries
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Compile subroutines in COMRPL.UNQ and insert them in the
+#   appropriate libraries.
+#   Inputs:
+#      LogFile     update log file name
+#-----------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#
+echo ""                   >> $LogFile
+echo "UPDCOMRPL: COMRPLs" >> $LogFile
+echo ""                   >> $LogFile
+cat COMRPL.UNQ            >> $LogFile
+echo ""                   >> $LogFile
+echo "UPDCOMRPL: currently in `$LPWD`" >> $LogFile
+if [ "`$LPWD`" = "$AIPS_ROOT" ] ; then
+   if [ -d $AIPS_VERSION/$ARCH/UPDATE ] ; then
+      cd $AIPS_VERSION/$ARCH/UPDATE
+   else
+      cd $UPDUNIX
+   fi
+   echo "UPDCOMRPL: Darn it, had to move to `$LPWD`!" >> $LogFile
+fi
+rm -f COMRPL.AT COMRPL.LOG
+touch COMRPL.AT
+awk '{print "$" $5 "/" $6}' COMRPL.UNQ | \
+{
+     while read LINE
+     do    AREA=`echo $LINE | sed -e 's/\/.*//'`
+           FILE=`eval echo $LINE`
+#                                       Add module to the .AT file
+#                                       only if the area is defined
+#                                       in LIBR.DAT.
+           if   grep $AREA'$' $SYSLOCAL/LIBR.DAT >/dev/null
+           then echo $FILE >> COMRPL.AT
+           else echo "UPDCOMRPL: Reject $FILE (UNDEFINED)" >> $LogFile
+           fi
+     done
+}
+#                                       Do the compilations.
+COMRPL @COMRPL.AT >> COMRPL.LOG
+sed -n -e 's/^-/UPDCOMRPL: /p' COMRPL.AT >> $LogFile
+#                                       AIPSUPD will check COMRPL.AT for errors
+exit 0

@@ -1,0 +1,357 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2002-2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: SEARCH routine_pathname or program_pathname [alternate_path]
+# --------------------------------------------------------------------
+# Finds the "right" or proper routine/program for a given architecture.
+#
+# Inputs:
+#   -q         Quiet mode. (otherwise search is reported on stderr)
+#   pathname   of a file (simple filename => add current directory)
+#   alt_path   Alternate search path indicator code which selects
+#              $SYSLOCAL/SEARCHn.DAT (n=0 by default).  This is for
+#              systems with multiple device implementations (e.g.,
+#              two different models of TV).
+# Outputs:
+#   pathname   The pathname to the proper version of the module
+#              (null if no proper module exists).
+#
+# This script searches the AIPS directory structure starting at the
+# specified directory (or current working directory if given a simple
+# filename) and tries to determine the proper pathname given the
+# architecture, and other details as specified in $SYSLOCAL/LIBR.DAT.
+# The "type" or extension of the file is ignored and files of the same
+# basename with extensions of .FOR, .f, .C, .c, .S, .s and .o are
+# searched for instead.
+#
+# This can be used as a standalone procedure, but its purpose is to
+# serve the procedures COMRPL and COMLNK to:
+#
+#    1) insure that the proper version for $ARCH is used, and
+#    2) select the most up-to-date form (much as "make" does).
+#
+# This allows COMRPL and COMLNK to skip potentially unnecessary steps
+# such as preprocessing and compiling.
+#
+# For assembler modules, the most up-to-date form is based simply on
+# modification dates.  In the case of Fortran & C based modules, the
+# modification dates of any of its included text files are also checked.
+# If such a file is newer, then the un-preprocessed form of the proper
+# version is returned, and COMRPL or COMLNK will preprocess and compile.
+# In any case, only one pathname is returned if the pathname to a
+# legitimate version can be found.
+#
+# In the event that SEARCH cannot decide from several choices which
+# module is proper, it will report the ambiguity with an unmistakable
+# error message as well as an exit status of 1.  This is also true if it
+# cannot find any proper module in its search path.
+#
+# The search path is determined from $SYSLOCAL/SEARCHn.DAT when given a
+# file whose full pathname begins with current value of $AIPS_VERSION.
+# Otherwise, it on only checks the directory as extracted from the
+# pathname of the file specified, or the current working directory if
+# given a simple filename.  It gets its search path ($INCS) for INCLUDE
+# files from $STDINCS as defined in $SYSLOCAL/INCS.SH unless $INCS is
+# already defined by the user.
+#
+# By default, SEARCH executes in verbose mode where it reports its
+# actions and findings on 'stderr'.  The verbose mode can be suppressed
+# via the command line option '-q' (for quiet).  This is the mode used
+# by COMRPL and COMLNK, both of which are designed to tell you if any
+# substitution takes place.
+#
+# Generic UNIX version
+# --------------------------------------------------------------------
+trap 'rm -f /tmp/SEARCH.$$; exit 1' 1 2 3 15
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Any command line argument(s)?
+if [ "$*" = "" ] ; then
+   echo "Usage: SEARCH routine_pathname or program_pathname" \
+      "[alternate_search_path]" 1>&2
+   echo ""
+   exit 1
+fi
+#                                       Initialize variables.
+VERBOSE=TRUE
+AREA=""
+BASE=""
+ALT="0"
+#                                       Parse command line.
+for i
+do
+   case $i in
+      -q)    VERBOSE=FALSE ;;
+      [0-9]) ALT=$i ;;
+      *) case $AREA in
+            */*)
+#                                       User error: return null pathname
+               echo "Usage: SEARCH routine_pathname or" \
+                  "program_pathname [alternate_search_path]" 1>&2
+               echo ""
+               exit 1
+            ;;
+            *) case $i in
+                  */*)
+#                                       Pathname.
+                     AREA=`echo $i | sed -e 's/\/[^\/]*$//'`
+                     BASE=`basename $i`
+#                                       Strip extension, if any.
+                     BASE=`echo $BASE | sed -e 's/\..*//'`
+                  ;;
+                  *)
+#                                       Simple filename.  Form pathname
+#                                       using current working directory.
+                     AREA=`$LPWD`
+                     BASE=`basename $i`
+#                                       Strip extension, if any.
+                     BASE=`echo $BASE | sed -e 's/\..*//'`
+                  ;;
+               esac
+            ;;
+         esac
+      ;;
+   esac
+done
+#                                       If the source module belongs to
+#                                       to $AIPS_VERSION, get search
+#                                       path from $SYSLOCAL/SEARCHn.DAT.
+#                                       Otherwise, search only here.
+case $AREA in
+#                                       But make exception for this...
+   $APLCONTR*)
+      echo $APLCONTR >/tmp/SEARCH.$$
+      case $VERBOSE in
+         TRUE)
+            echo "SEARCH    : Search     $APLCONTR" 1>&2
+            echo "SEARCH    : for valid " \
+               "$BASE(.FOR,.f,.C,.c,.S,.s,.o)"  1>&2
+         ;;
+      esac
+   ;;
+   *$AIPS_VERSION*)
+#                                       See which is newer:
+      NEWEST=`NEWEST $SYSLOCAL/LIBR.DAT $SYSLOCAL/SEARCH$ALT.DAT`
+      case $NEWEST in
+         $SYSLOCAL/LIBR.DAT)
+            echo "SEARCH    : Remake     $SYSLOCAL/SEARCH$ALT.DAT" 1>&2
+            echo "SEARCH    : from newer $SYSLOCAL/LIBR.DAT"       1>&2
+            echo "SEARCH    : This may take a few minutes. " \
+               "Be patient."                                       1>&2
+            rm -f /tmp/SEARCH.$$
+            touch /tmp/SEARCH.$$
+            sed -n -e 's/^\$.*:'$ALT'://p' $SYSLOCAL/LIBR.DAT | \
+            {
+               while read ENV
+               do
+                  DEF=`eval echo $ENV`
+                  if test "$DEF" = ""
+                  then
+                     echo "SEARCH    : Variable   $ENV"             1>&2
+                     echo "SEARCH    : undefined!"                  1>&2
+                     echo "SEARCH    : Remake of " \
+                        "$SYSLOCAL/SEARCH$ALT.DAT"                  1>&2
+                     echo "SEARCH    : cannot be completed!"        1>&2
+                     echo "SEARCH    : Inform the AIPS Manager!"    1>&2
+                     rm -f /tmp/SEARCH.$$
+                     exit 1
+                  else
+                     echo $DEF >> /tmp/SEARCH.$$
+                  fi
+               done
+            }
+            if [ "$?" = "0" ] ; then
+#                                       Form new SEARCH$ALT.DAT
+               sort -ru -o /tmp/SEARCH.$$ /tmp/SEARCH.$$
+               cp /tmp/SEARCH.$$ $SYSLOCAL/SEARCH$ALT.DAT
+            fi
+            rm -f /tmp/SEARCH.$$
+         ;;
+      esac
+      grep $AREA $SYSLOCAL/SEARCH$ALT.DAT | sed -e 's/.*://' \
+         > /tmp/SEARCH.$$
+      case $VERBOSE in
+         TRUE)
+            echo "SEARCH    : Search     $AREA/..." 1>&2
+            echo "SEARCH    : for valid " \
+               "$BASE(.FOR,.f,.C,.c,.S,.s,.o)"          1>&2
+         ;;
+      esac
+   ;;
+   *)
+#                                       Search here, wherever here is.
+      $LPWD > /tmp/SEARCH.$$
+      case $VERBOSE in
+         TRUE)
+            echo "SEARCH    : Search     $AREA" 1>&2
+            echo "SEARCH    : for valid " \
+               "$BASE(.FOR,.f,.C,.c,.S,.s,.o)"  1>&2
+         ;;
+      esac
+   ;;
+esac
+#                                       Search for the proper module(s)
+#                                       for this system and check for
+#                                       ambiguities.
+FOUND=""
+#                                       Get directory search path for
+#                                       $AREAS as defined in
+#                                       $SYSLOCAL/SEARCH$ALT.DAT.
+cat /tmp/SEARCH.$$ | \
+{
+   while read DIR ; do
+#                                       Skip higher directories if a
+#                                       valid file has already been
+#                                       found for this system.
+      case $FOUND in
+         *.*) break ;;
+         *) [ "$VERBOSE" = TRUE ] && \
+               echo "SEARCH    : Check      $DIR" 1>&2
+         ;;
+      esac
+#                                       Look for .FOR, .f, .C,
+#                                       .c, .S, .s or .o match
+#                                       in $DIR.
+      FOUND=`ls $DIR/$BASE.FOR $DIR/$BASE.[CS] $DIR/$BASE.[cfos] \
+         2> /dev/null`
+      case $FOUND in
+         *.*) [ "$VERBOSE" = TRUE ] && \
+                  echo "SEARCH    : Found      $FOUND" | sed -e \
+                     's/^\//          : and        &/' 1>&2
+         ;;
+      esac
+#                                       Examine search results.
+      PART2=`echo $FOUND | awk '{print $2}'`
+      case $PART2 in
+         *.*)
+#                                       Multiple files.
+            case $FOUND in
+               *.FOR*.f | *.f*.FOR | *.C*.c | *.c*.C | *.S*.s | \
+                   *.s*.S | *.o)
+#                                       Fortran - check newer INCLUDEs
+                  case $FOUND in
+                     *.FOR*.f | *.f*.FOR | *.FOR*.o | *.o*.FOR )
+#                                       Get non-redundant list of
+#                                       INCLUDE files.
+                        MININCS=`sed -n -f $SYSUNIX/INCLUDES.SED \
+                           $DIR/$BASE.FOR | sort -u`
+#                                       Get standard INCLUDE search path
+#                                       unless user already redefined it
+                        case $INCS in
+                           */*) ;;
+                           *) . $SYSLOCAL/INCS.SH
+                              INCS=$STDINCS
+                              export INCS
+                           ;;
+                        esac
+#                                       What's newest.
+                        NEWEST=`NEWEST $FOUND $MININCS`
+                        case $NEWEST in
+                           *.INC)
+#                                       Some INCLUDE file is newer.
+#                                       Force new preprocessing.
+                              [ "$VERBOSE" = TRUE ] && \
+                                    echo "SEARCH    :" \
+                                       "Newest is  $NEWEST" 1>&2
+                              FOUND=$DIR/$BASE.FOR
+                           ;;
+#                                       INCs older than $FOUND, fallthru
+                           *) ;;
+                        esac
+                     ;;
+                     *.C*.c | *.C*.o)
+#                                       C oriented modules.
+                        MININCS=`sed -n -f $SYSUNIX/INCLUDES.SED \
+                           $DIR/$BASE.C | sort -u`
+                        NEWEST=`NEWEST $FOUND $MININCS`
+                        case $NEWEST in
+                           *.h | *.H)
+#                                       Some #include file is newer.
+#                                       Force new preprocessing.
+                              [ "$VERBOSE" = TRUE ] && \
+                                    echo "SEARCH    :" \
+                                       "Newest is  $NEWEST" 1>&2
+                              FOUND=$DIR/$BASE.C
+                           ;;
+#                                       nothing newer so fall through
+                           *) ;;
+                        esac
+                     ;;
+#                                       None of $FOUND Fortran or C
+#                                       oriented.  Fall through.
+                     *) ;;
+                  esac
+#                                       Determine newest of $FOUND.
+#                                       Can be as few as one file.
+                  FOUND=`NEWEST $FOUND`
+                  [ "$VERBOSE" = TRUE ] && \
+                        echo "SEARCH    : Newest is  $FOUND" 1>&2
+                  echo $FOUND
+                  rm -f /tmp/SEARCH.$$
+                  exit 0
+               ;;
+               *)
+#                                       Ambiguity!  Report so and return
+#                                       null pathname with error exit.
+                  echo "SEARCH    : Ambiguity!" 1>&2
+                  echo $FOUND | sed -e 's/ \//\
+SEARCH    : or        &/g' | sed -e \
+                     's/^\//SEARCH    : Could be   &/' 1>&2
+                  echo ""
+                  rm -f /tmp/SEARCH.$$
+                  exit 1
+               ;;
+            esac
+         ;;
+      esac
+   done
+   rm -f /tmp/SEARCH.$$
+#                                       Not a multiple response
+   case $FOUND in
+      *.*)
+#                                       Success!  Return proper
+#                                       pathname with no error exit.
+         echo $FOUND
+         exit 0
+      ;;
+      *)
+#                                       Nothing!  Report so and
+#                                       return null pathname with
+#                                       error exit.
+         echo "SEARCH    : No valid  " \
+            "$BASE(.FOR,.f,.C,.c,.S,.s,.o)" 1>&2
+         echo "SEARCH    : found in  " \
+            "$AREA/..."                     1>&2
+         echo ""
+         exit 1
+      ;;
+   esac
+}

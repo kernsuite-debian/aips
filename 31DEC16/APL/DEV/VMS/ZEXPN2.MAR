@@ -1,0 +1,143 @@
+      .TITLE ZEXPN2 (FCB, MAP, NRECS, IERR)
+;-----------------------------------------------------------------------
+;! expand an open disk file
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Expands an open disk file, reserving the disk space.
+;   Inputs:
+;      FCB     I(*)   File control block for opened disk file
+;      MAP     I      Double buffer file? 1 => yes, 0 => no
+;   In/out:
+;      NRECS   I      In:  number of 256-integer records to expand
+;                     Out: number of records expanded
+;                     ZEXPND checks with ZEXIST - is ok not to return
+;   Output:
+;      IERR    I      Error return code: 0 => no error
+;                        1 => error
+;   VMS version.
+;   After expanding the file, the end of file VBN is updated in the file
+;   header so that the used space will equal the allocated space.
+;-----------------------------------------------------------------------
+                                        ; System symbol definitions
+$IODEF
+$FIBDEF
+$ATRDEF                                 ;Attribute block offsets
+FAT$L_EFBLK=8                           ;EOF offset in rec. attr. blk.
+FAT$L_HIBLK=4                           ;High block offset in rat.
+                                        ;Argument list offets
+FCB=4
+MAP=8
+NRECS=12
+IERR=16
+;                      FCB offsets
+CHAN=0                                  ;Channel number.
+ERR1=8                                  ;system error filed
+FCBS1=16                                ;File size field
+FCBS2=100                               ;File size field
+EFN1=20                                 ;Event flag number.
+IOSB=24                                 ;I/O status block for QIO.
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZEXPN2,^M<R2,R3,R4,R5,R6,R7>
+                                        ;
+        CLRL    @IERR(AP)               ;Set IERR = 0 initially.
+                                        ;
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVW    #FIB$M_EXTEND,FIB+FIB$W_EXCTL   ; Set for 'EXTEND'
+        MOVL    @NRECS(AP),FIB+FIB$L_EXSZ       ; extend this # recs
+        ASHL    #1,FIB+FIB$L_EXSZ,FIB+FIB$L_EXSZ ; to 512-byte blocks
+        MOVL    FCB(AP),R6              ;R6->FCB
+        MOVL    #0,ERR1(R6)
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_MODIFY,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC               ; File info block.
+        BLBS    R0,OKSOFAR              ; check errors
+        MOVL    R0,STATUS               ; Save status.
+        BRW     ERROR
+OKSOFAR:                                ; more error test
+        BLBS    IOSB(R6),GATTR
+        MOVZWL  IOSB(R6),STATUS         ; Save the status.
+        BRW     ERROR
+;
+; READ THE CURRENT FILE ATTRIBUTES INTO THE ATTRIBUTE BUFFER
+;
+GATTR:
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVL    FCB(AP),R6              ;R6->FCB
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_ACCESS,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC,-             ; File info block.
+                P5=#ATTCB
+        BLBS    R0,WEOF                 ; Branch if no error.
+        MOVL    R0,STATUS               ; Save status.
+        BRW     ERROR
+;
+; SET THE END OF FILE VBN IN THE FILE HEADER
+;
+WEOF:
+        MOVW    ATBUF+FAT$L_HIBLK,-     ; Set end of file VBN to the
+                VBNSAV+2                ;   last block allocated plus
+        MOVW    ATBUF+FAT$L_HIBLK+2,-   ;   one. (inverted format)
+                VBNSAV
+        INCL    VBNSAV
+        MOVW    VBNSAV,-
+                ATBUF+FAT$L_EFBLK+2
+        MOVW    VBNSAV+2,-
+                ATBUF+FAT$L_EFBLK
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVL    FCB(AP),R6              ;R6->FCB
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_MODIFY,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC,-             ; File info block.
+                P5=#ATTCB
+        BLBS    R0,EXIT                 ; Branch if no error.
+        MOVL    R0,STATUS               ;Save the status.
+;
+ERROR:  MOVL    #2,@IERR(AP)            ;IERR=2, general error.
+        MOVL    STATUS,ERR1(R6)
+;
+EXIT:
+        RET
+;-----------------------------------------------------------------------
+        .PSECT  DATA,LONG
+FIBDSC: .LONG   FIB$K_LENGTH
+        .LONG   FIB
+FIB:    .BLKB   FIB$K_LENGTH
+;                                        Attribute control block
+ATTCB:  .WORD   ATR$S_RECATTR           ;Record attr. blk. size
+        .WORD   ATR$C_RECATTR           ;Record attr. blk. type
+        .LONG   ATBUF                   ;Record attr. blk. address
+        .LONG   0                       ;End of list marker
+ATBUF:  .BLKB   ATR$S_RECATTR           ;Attribute buffer
+VBNSAV: .LONG   0                       ;Store eof VBN HERE.
+STATUS: .LONG   0                       ;Save error code here.
+        .END

@@ -1,0 +1,78 @@
+@PROCESS VECTOR DIR('@DIR')
+      SUBROUTINE QVSMAF (A, I, B, C, D, L, N)
+C-----------------------------------------------------------------------
+C! Pseudo AP routine: Scalar multiply and and round.
+C# AP-appl
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+C-----------------------------------------------------------------------
+C   Pseudo-AP version
+C   Scalar multiply, add and fix (rounded)
+C      D(mL) = FIX ((A(mI) * B) + C)  for m = 0,N-1
+C   Inputs:
+C      A  I  First source vector base address
+C      I  I  A address increment
+C      B  I  Source multiplicative scalar address
+C      C  I  Second source vector base address
+C      D  I  Destination vector base address
+C      L  I  D address increment
+C      N  I  Element count
+C-----------------------------------------------------------------------
+      INTEGER   A, I, B, C, D, L, N, JA, JD, LOOP
+      REAL      XMULT, XADD, TEMPA(2048),TEMPB(2048)
+      INCLUDE 'INCS:DAPC.INC'
+C-----------------------------------------------------------------------
+      IF (N.LE.0) GO TO 999
+      IF (N.GT.2048) THEN
+         WRITE(*,*) '*************** ERROR *****************'
+         WRITE(*,*) 'ARRAYS IN QVSMAF TOO SMALL.  N =',N
+         GOTO 999
+      END IF
+C                                       Addresses 1-rel
+      JA = A + 1
+      JD = D + 1
+      XMULT = APCORE(B+1)
+      XADD = APCORE(C+1)
+C
+      JAP = JA
+      DO 10 LOOP = 1,N
+         TEMPA(LOOP) = (APCORE(JAP) * XMULT) + XADD
+         JAP = JAP + I
+ 10      CONTINUE
+C
+      DO 20 LOOP = 1,N
+         TEMPB(LOOP) = SIGN (0.5, TEMPA(LOOP))
+ 20      CONTINUE
+C                                       Loop
+CC@DIR IGNORE RECRDEPS
+      DO 100 LOOP = 1,N
+         APCORI(JD) = TEMPA(LOOP) + TEMPB(LOOP)
+         JD = JD + L
+ 100     CONTINUE
+C
+ 999  RETURN
+      END

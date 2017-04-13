@@ -1,0 +1,339 @@
+;---------------------------------------------------------------
+;! calibrating amplitude and phase, and imaging VLA data
+;# RUN POPS VLA UTILITY CALIBRATION IMAGING
+;---------------------------------------------------------------
+;;  Copyright (C) 2002-2007
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+VLARUN    LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VLARUN : Applies amplitude and phase calibration to VLA data
+          ** Type RUN VLARUN to load this procedure **
+WORKDISK                           Working disk, thus in/outdisk
+CATNUM                             Catalog number of the UV-file
+                                    must be 'CH 0' for line data
+INNAME                             Input UV file name (CATNUM<1)
+INCLASS                            Input UV file class(CATNUM<1)
+INSEQ                              Input UV file seq. (CATNUM<1)
+FASTSW                             > 0 Correct fast-sw source
+                                       names
+AUTOFLAG                           Level of automatic flags used
+                                   < 0: no automatic flagging.
+                                   = 0: default FLAGR
+                                   = 1: flag beginning of scans
+PHAINT                             phase solution interval (min)
+AMPINT                             ampl. solution interval (min)
+REFANT                             Reference antenna number
+DOMODEL                            > 0 Use standard flux
+                                       calibrator models
+                                   Note that most standard flux
+                                   calibrators have models but
+                                   the absence of a model will
+                                   make VLARUN CRASH. (see HELP)
+UVRANGE                            UV range for flux calibrator
+                                   (set if no model)
+          ** use next 2 lines if flux calib. is NOT standard **
+AMPCAL                             Alternative flux calib. name
+FLUX                               Flux calib. total flux dens.
+PHACAL                             Phase calibrators
+                                   '*' = any CALCODE (continuum)
+                                    All others are your targets
+BNDCAL                             Bandpass calibrators (max 5)
+                                   *BNDCAL only used for LINE*
+NOPAUSE                            > 0 no pause after GETJY
+AUTOPLOT                           > 0 make diagnostic plots
+          ** the following lines are for auto-imaging **
+DOIMAGES                           > 0 apply calibration and
+                                       image
+ARRYSIZE                           Max baseline in kilometers
+                                   = 0 let procedure find array
+IMSIZE                             Square size of image (pixels)
+NITER                              Max number of iterations/chan
+                                   = 0 recommended for LINE
+CUTOFF                             Clean threshold (Jy)
+ALLIMG                             > 0 also image continuum
+                                       calibrators
+                                   > 1 line calibrators too
+          ** interactive self calibration mode
+                    -- not recommended for beginners **
+SLFCAL                             > 0 do interactive selfcal
+                                   ABS(SLFCAL) the number of
+                                      iterations
+                                   See HELP VLARUN and
+                                   EXPLAIN SCIMG
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+VLARUN
+Type: Procedure
+Use:  VLARUN is a procedure that does quick and dirty VLA
+      calibration and imaging of line and continuum data,
+      including high frequency data.  Full polarization
+      calibration is not included.
+
+      To load the procedure into AIPS type:
+             (this is only required once per AIPS session)
+          > RESTORE 0 (recommended, not required)
+          > RUN VLARUN
+          > COMPRESS
+      To review inputs type:
+          > TASK'VLARUN';INPUTS
+      To execute it type:
+          > VLARUN
+
+Adverbs:
+CATNUM, or all of INNAME, INCLASS, INSEQ (and WORKDISK for both):
+      The catalog number of the file to calibrate (the continuum, or the
+      'CH 0'-file for spectral line data). If INNAME etc are used, then
+      set CATNUM to a non-positive value (<=0) -> CATNUM=0;GETNAME <catno>
+
+FASTSW:
+      Sometimes, with fast-switching, single calibrator may have more than
+      one name.  Set FASTSW positive to check the positions (closer than
+      3 mas in R.A. and DEC.), qualifier and calcode.  If sources have
+      the same position, VLARUN will rename them all with the shortest
+      name.  This will prevent multiple images of the same source.  Up to
+      100 source names can be modified.
+
+AUTOFLAG:
+      < 0 -> no automated flagging.
+      NOTE: if an FG table is detected, it WILL NOT DO any form of automated
+      flagging on the data.  You may not want to do autoflagging when you
+      have very short scans (i.e.  in fast-switching mode) and flag by hand.
+      The highest FG-table is always kept.
+      0 -> Perform FLAGR (OPTYPE'TIME') on the raw multi-source data set
+           VLARUN estimates the integration time and SOLINT, in FLAGR, is set
+           to 3 times the integration time.
+      1 -> Also flag beginning of scans (usually necessary).  Uses QUACK
+           (OPCODE'BEG'; APARM(2)=MIN(20 SEC, 3 int. times).
+           Again, you may not want to do this if you have short scans (~30s).
+
+PHAINT, AMPINT:
+      PHAINT is the solution interval in minutes for phase calibration
+        - typically the scan length on your phase calibrator, but much
+          shorter (0.2-0.5) for high-frequency data.
+      AMPINT is the solution interval for amplitude calibration
+        - probably best between 1-10 times the value of PHAINT.
+      VLARUN first calibrates the phases, then the amplitudes (including
+      phase), i.e., the second SN table should have phases very close to 0.
+
+REFANT:
+      # of antenna to be used as reference antenna, should be well behaving
+      antenna towards to middle of array.  AIPS will make a choice if left
+      zero.
+
+DOMODEL:
+      > 0 -> CALIB will use a standard model for any of the five standard
+      flux density calibrators (3C48, 3C138, 3C147, 3C286, 3C295, or their
+      standardized IAU names - see EXPLAIN VLARUN), assuming they exist.
+      Currently they exist for most calibrators and bands, and more are added
+      all the time. For the latest available models type 'CALDIR' and/or
+      'EXPLAIN CALRD'.  For lower frequencies, and for smaller arrays, it
+      is usually sufficient to use a non-positive DOMODEL, i.e., to use a
+      point source model for the standard flux density calibrators.
+
+      !! NOTE THAT IF YOU SELECT THIS MODE, VLARUN WILL CRASH IF NO MODEL !!
+      !! IS AVAILABLE FOR YOUR PARTICULAR CALIBRATOR.  Check this with    !!
+      !! 'CALDIR' and/or 'EXPLAIN CALRD'.                                 !!
+
+AMPCAL:
+      If none of the standard flux calibrators is observed (see EXPLAIN VLARUN),
+      then enter the name of an alternative source here.
+      NOTE: if specified it will be used by force even if a standard calibrator
+            is present! So you can force your own flux scale if desired.
+
+FLUX:
+      Total flux density of amplitude calibrator specified in AMPCAL.
+
+UVRANGE:
+      UV range for which flux calibrator (standard or not) is a point
+      source.
+      Leave zero if you are using a flux calibrator model (DOMODEL>0),
+      or want a point source model approximation for the one in AMPCAL.
+
+PHACAL:
+      Specify your continuum phase calibrators. Limited to  a total of 20. If
+      there are more, use '*' in the FIRST argument to select sources with any
+      calcode.  Include your flux and/or bandpass calibrators if you want them
+      to be calibrated.  Any source not appearing in PHACAL are considered
+      targets.
+
+BNDCAL:
+      Specify up to five bandpass calibrator sources. Only used for line data.
+      Bandpass calibrators defined here can be any (but maximum 5)
+      sources in your data.  If multiple sources are specified then an
+      average of the sources is used.
+
+NOPAUSE:
+      < 0 then VLARUN will pause after GETJY calculated the fluxes for the
+      secondary calibrators.  This allows you to check the flux densities
+      (specifically their errors) of your secondary calibrators, which is a
+      good diagnostic of the calibration up to this point.  Simply press
+      <return> to continue.
+
+AUTOPLOT:
+      Make diagnostic plots:
+      < 0 -> No plots
+        1 -> Only make plot files of SN tables
+        2 -> Also include plots of CL tables
+        3 -> (LINE data) add plots of the BP table
+        4 -> (LINE data) also plot BP calibrators with CL and BP table applied
+
+DOIMAGES:
+     > 0 -> continue with imaging.
+     < 0 -> do not image.
+            You may check the calibration (in a different window) and continue
+            with imaging by typing: "IMAPIPE(1,<workdisk>,<catno>)" in the
+            VLARUN window directly after the calibration part has finished.
+            The '1' in the first argument of IMAPIPE means to start with SPLIT,
+            but if you have SPLIT the data already in the other window, use
+            a 'zero' instead.
+
+ARRYSIZE (if DOIMAGES>0):
+     Maximum baseline length in kilometers; this sets the resolution. The
+     pixel size will be 17.5/freq(GHz)/ARRYSIZE.  For the VLA arrays use
+     35.4 (A-array), 10.8 (B), 3.3 (C), 1 (D), or 73 (PT-link) kilometer.
+     If =0, VLARUN will guess the maximum unprojected baseline from the
+     antenna file and ARRAYSIZE to the above values.
+     If <0, SETFC will be used to figure out the best cell size.
+
+IMSIZE (if DOIMAGES>0):
+     Target image size in pixels, with a minimum of 128.  For calibrators the
+     default is 256.
+     < 0, AIPS will try to image the full primary beam (using SETFC).
+     < -9, then this also applies to calibrator sources.
+
+NITER (if DOIMAGES>0):
+     The number of clean components to be used in the imaging.  Because
+     spectral line data can take a very long time to image you may want
+     to use zero or a low number of iterations and check that there is no
+     bad data or a faulty calibration.  Then you can re-imaging with
+     more iterations.  If ALLIMG >0 (i.e., image calibrators), 500
+     iterations is used as there should be no need for deep cleans for
+     calibration check images.  However if IMSIZE<-9, then the number of
+     iterations=NITER, for all sources.  If negative, NITER=6e6,
+     effectively using CUTOFF as the only criterion of when to stop.
+     Note that NITER=0 means zero iterations, i.e., make the dirty image
+     (and ignore CUTOFF).
+
+CUTOFF (if DOIMAGES>0):
+     Stop cleaning when this level (in Jy) is reached in the residual image.
+     < 0 and NITER >>> 0, then it will stop cleaning after the first negative
+         clean component.  Same for calibrators and targets, but also
+         competes with NITER, i.e., whichever is reached first will determine
+         when clean stops.
+     < 0 and NITER < 0 then VLARUN will estimate a conservative value for
+         the noise level from the visibility data header, and stop at three
+         times this noise level.
+         NOTE that for strong sources the dynamic range limitation may prevent
+         it from reaching this limit - it is VERY wise to set either NITER or
+         CUTOFF (or both) on a first trial of using the pipeline on a
+         particular data set.
+
+ALLIMG (if DOIMAGES>0):
+     > 0 -> image calibrators also.
+     > 0 ALLIMG >= 1 -> only image continuum calibrators in spectral line
+        dataset.
+     > 1 -> image both continuum and line calibrators.
+     Set IMSIZE to <-9 if you want larger images than 256 pixels squared
+     and deeper cleans than 500 iterations for the calibrators.
+
+SLFCAL (if DOIMAGES>0):
+     <> 0 -> do self-calibration for targets only in continuum data (SLFCAL
+        is ignored for spectral line data).
+     > 0 -> you wish to interact with the image using the AIPS TV, this
+        includes UV data editing options.
+     < 0 -> only display at the end of each clean.
+     ABS(SLFCAL) specifies how many cycles of self-cal to do.
+     This option should be used with EXTREME care.  Care should be taken that
+     there is enough flux in the field for self-cal to work.  Note that the
+     input PHAINT is taken as the solution interval, which in most cases will
+     be an invalid assumption
+            !! USE OF SLFCAL BY NOVICES IS HIGHLY DISCOURAGED. !!
+
+BADDISK
+     Disk not to use for scratch files.  Usually only used if there is a
+     read-only or 100% full disk.
+
+---------------------------------------------------------------------------
+VLARUN :            Procedure to calibrate VLA data blindly.
+Documenter:         Lorant Sjouwerman, Amy Mioduszewski
+Related Programs:   VLA calibration, imaging and plotting routines
+
+Type RUN VLARUN to define the VLARUN procedure (once is enough)
+
+BEFORE RUNNING VLARUN:
+    1) Load data with FILLM
+    2) Flag, although if there is a flag table then AUTOFLAGing is
+       disallowed.
+    3) If spectral line data, compile all flagging in the continuum (CH 0)
+       flag table #1.  Also add line flags here to the first flag table
+       attached to the CH 0 dataset.
+    4) Check for long (>12 char) source names - typically in mozaics and
+       for eg. full IRAS or CXO names. VLARUN expects names to be <= 12
+       characters, so they need to be changed if longer than 12 char. If
+       you don't care about the exact names you can get approximate/reversed
+       short names by running the predefined procedure 'shortnames' on the
+       data file (note, if spectral data then run it both on CH 0 and LINE).
+
+    Note that flag tables with numbers higher than 1 get deleted at
+    restarts.
+
+CLEAN STARTING CONDITIONS
+      Make sure only one frequency-ID is present (otherwise use UVCOP to
+      split them apart and INDXR to re-index the files). It can process both
+      continuum and line data, but the line files must have inclass 'CH 0'
+      and 'LINE'. If any, flags must be made in FG table number 1 on the
+      continuum or 'CH 0' files, so if you flag the 'LINE' data you have to
+      copy the line flags/flag-table to the 'CH 0' file.  Restarting is
+      straightforward - fluxes are reset and tables are deleted although
+      naming back fast-switching sources is irreversible (FASTSW>0).
+
+OTHER NOTES:
+    - There are NO DEFAULTS!
+    - Assumes you have observed 3C286 or other standard VLA amplitude
+      calibrator (see below) for absolute amplitude calibration.
+    - Will use up to 5 sources (maybe 3C286 etc) for bandpass in LINE,
+    - Will use up to 20 possible phase calibrators.
+
+PRIMARY FLUX CALIBRATORS:
+      List of all names recognized as a VLA amplitude calibrator in SETJY:
+        - 3C48  is also known as: 0134+329, 0137+331, or J0137+3309
+        - 3C138 is also known as: 0518+165, 0521+166, or J0521+1638
+        - 3C147 is also known as: 0538+498, 0542+498, or J0542+4951
+        - 3C286 is also known as: 1328+307, 1331+305, or J1331+3030
+        - 3C295 is also known as: 1409+524, 1411+522, or J1411+5212
+      At least one of these names (3C or other) must be in the data set for
+      the flux calibration. If a different source is used, then you have to
+      specify this other source using AMPCAL and FLUX (and maybe UVRANGE).
+
+ADVICE!
+      When using VLARUN for the first time on a data set (or on line data)
+      do not do any cleaning (NITER=0), or self-cal (very fragile!).  It will
+      go much faster and tell you right away if you should expect problems.
+      If you switch on autoflagging, you'll see where extra flags are needed
+      and whether it did what you expected and intended (i.e., if there are
+      any typo's in the input; if you can you do self-cal; if you should find
+      better reference antenna, PHAINT, etc).
+
+----------------------------------------------------------------------------

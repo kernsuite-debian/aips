@@ -1,0 +1,647 @@
+$ DDTLOAD.001
+$---------------------------------------------------------------
+$! RUN file to prepare to test performance of AIPS tasks on data
+$# Run POPS
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995-1999, 2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*
+* DDTLOAD.001 by Don Wells & Bill Cotton, NRAO-CV, Dec84-Feb85.
+* Modified by Eric Greisen Nov85 to offer 3 sizes of problem.
+* This is the "load file" for Liszt/Greisen "small" and "medium"
+* data sets.
+* Modified by Eric Greisen & Kerry Hilldrup Oct87 to use the
+* Bridle high dynamic range "large" data sets.
+* Modified by Chris Flatters Mar89 to merge clean components
+* before self-cal and to remove run files from tape.
+* Modified by Glen langston Jan90 to remove NPOINTS and
+* shorten standard print out
+* Modified by Eric Greisen, July 1993, to use CALIB rather than
+* ASCAL for the self calibration.
+* It compiles the POPS code and leaves it in SAVE/GET files.
+* The file DDTEXEC.001 executes the files.
+* See DDT.HLP for documentation (HELP DDT, EXPLAIN DDT).
+*
+*    Version for the 15OCT99 release of AIPS
+* ==============================================================
+* Remember prior state to permit restoration at end:
+* Declare variables needed by DDT
+PROCEDURE DCLDDT
+   SCALAR IOTAPE, TMASK, TDISK, MDISK, DDISK, TERSE
+   FINISH
+* Make default output short
+TERSE=1; TDISK=1; MDISK=1; DDISK=1; EDGSKP=4
+IOTAPE=1; TMASK=127; DOTV=-1
+STORE 1
+RESTORE 0
+CORE
+* ==============================================================
+* Declare variables for the procedures:
+PROCEDURE DCLRVR
+   STRING*50 BMBTXT, SPACER, MSGTXT
+   STRING*16 DDTFILE
+   STRING*12 PRCSV1, ZAPSV2, NCLSV2, PHDSV1, PHDSV3, CHKSV2
+   STRING*8  TNAME, TNAMF, DDTSIZE, DDTDISK
+   STRING*6  ZAPSV1, ZAPSV3, ZIGSV1, NCLSV1, NCLSV3, CHKSV1
+   STRING*6  ZIGSV2, ZIGSV3, PHDSV2, PHDSV4, TPLCLS
+   STRING*6  UVCLAS, CRCLAS, CRCLS2, BEAMCL
+   STRING*5  ZIGTSK, TPLTSK
+   STRING*4  TCODE
+   STRING*1  TMODE, SMODE, TMODES
+   SCALAR    TMASK, ERATIO, IGWSV1, IOTAPE, TERSE
+   SCALAR    UCHSV1, PRCSV2, PHDSV5, PHDSV6, ZAPSV4, TSTSCALE
+   SCALAR    CHKSV3, TINY99, NCLSV4, DDISK, MDISK, TDISK
+   SCALAR    XTRSV1, XTRSV2, JJCNT, NITSAVE, FLUSAVE
+   SCALAR    IMSAVE, CELSAVE, IN3OLD, IN4OLD
+   ARRAY     MAXDIF(3), MAPDIF(5,8)
+   RETURN
+FINISH
+SPACER='##################################################'
+MSGTXT=SPACER; SUBSTR(MSGTXT,17,34)='----- ------------'
+* ==============================================================
+* Procedure to print fatal error message:
+PROCEDURE DDTBOMB(BMBTXT)
+   TYPE 'FATAL ERROR:', BMBTXT
+   I = 1; I = I / 0; RETURN
+FINISH
+* ==============================================================
+* Procedure to list current catalog:
+PROCEDURE PRTCAT
+   PRCSV1 = INNAME; INNAME = '*' !! TNAMF; INCLASS = ''
+   INSEQ = 0; CATALOG
+   IF INDISK <> OUTDISK THEN PRCSV2 = INDISK; INDISK = OUTDISK
+       INSEQ = 0; CATALOG; INDISK = PRCSV2; END
+   INNAME = PRCSV1; RETURN
+FINISH
+* ==============================================================
+* Procedure to print header of a file:
+*               (inname, inclass)
+PROCEDURE PRTHED (PHDSV1, PHDSV2, PHDSV6); PHDSV3 = INNAME
+   INNAME = PHDSV1; PHDSV4 = INCLASS; INCLASS = PHDSV2
+   PHDSV5 = INDISK; INDISK = PHDSV6; IMHEADER
+   INNAME = PHDSV3; INCLASS = PHDSV4; INDISK = PHDSV5; RETURN
+FINISH
+* ==============================================================
+* Procedure to execute a task:
+PROCEDURE IGW (INCLASS, TASK)
+   IF (TERSE<=0) THEN INPUTS; END
+   IGWSV1 = DOWAIT; DOWAIT = TRUE
+   GO; DOWAIT = IGWSV1; RETURN
+FINISH
+* ==============================================================
+* Procedure to "ZAP" output files of specified class:
+*                (class), assumes OUTNAME
+PROCEDURE OUTZAP (ZAPSV1); ZAPSV2 = INNAME; INNAME = OUTNAME
+   ZAPSV3 = INCLASS; INCLASS = ZAPSV1; ZAPSV4 = INDISK
+   INDISK = 0; ALLDEST; INDISK = ZAPSV4
+   INNAME = ZAPSV2; INCLASS = ZAPSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to "ZAP" prior output files, then execute:
+*              (inclass, task, outclass)
+PROCEDURE ZIGW (ZIGSV1, ZIGTSK, ZIGSV2)
+   OUTZAP(ZIGSV2); ZIGSV3 = OUTCLASS; OUTCLASS = ZIGSV2
+   IGW(ZIGSV1, ZIGTSK); OUTCLASS = ZIGSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to list header of tape file and read it:
+PROCEDURE TPLOD(TPLTSK)
+   DOUVCOMP = -1; DOCONCAT = -1
+   IF (TERSE <= 0) THEN TPHEAD; END;
+   IGW('', TPLTSK); RETURN
+FINISH
+* ==============================================================
+* Procedure to compare test image against master:
+*               (inclass), assumes OUTNAME
+PROCEDURE CHECK (JJCNT, CHKSV1); CHKSV2 = INNAME
+   IN2DISK = MDISK; APARM = 1,-1; INNAME = OUTNAME
+   IN2NAME = 'M' !! TNAMF; IN2CLASS = CHKSV1
+   IF (TERSE <= 3) THEN PRTHED(IN2NAME, IN2CLASS, IN2DISK); END
+   CHKSV3 = INDISK; INDISK = OUTDISK
+   OPCODE = 'SUM'; IN3OLD=IN3SEQ; IN4OLD=IN4SEQ; IN3SEQ=0; IN4SEQ=0
+   ZIGW (CHKSV1, 'COMB', 'DIFF'); IN3SEQ=IN3OLD; IN4SEQ=IN4OLD
+   SUBSTR(MSGTXT,23,28)=CHKSV1; TYPE SPACER,MSGTXT,SPACER
+   INCLASS='DIFF'; ; BLC=EDGSKP+1,EDGSKP+1,0
+   KEYWORD='NAXIS1'; GETHEAD; TINY99=KEYV(1); KEYWORD='NAXIS2'
+   GETHEAD; TRC = TINY99-EDGSKP,KEYVAL(1)-EDGSKP,0; IMSTAT
+   ERATIO = MAX(ABS(PIXVAL),ABS(PIX2VAL)); INCLASS = IN2CLASS
+   INDISK = IN2DISK; INNAME = IN2NAME
+   KEYWORD = 'DATAMAX'; GETHEAD; ERATIO = ERATIO / KEYVALUE(1)
+   TYPE 'Relative to abs(maximum):', ERATIO
+   TINY99 = 1.5768E-20 * 1E-10
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   MAPDIF(1,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits max: ', MAPDIF(1,JJCNT)
+   ERATIO = PIXSTD / KEYVALUE(1)
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   MAPDIF(2,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits rms: ', MAPDIF(2,JJCNT)
+   BMBTXT = INNAME
+   SUBSTR(BMBTXT,19,24)='IMSTAT'; TYPE SPACER,BMBTXT; IMSTAT
+   SUBSTR(BMBTXT,19,24)='MAXFIT'; TYPE SPACER,BMBTXT; MAXFIT
+   MAXDIF = PIXXY(1), PIXXY(2), PIXVAL
+   INNAME = OUTNAME; INDISK = OUTDISK; BMBTXT = INNAME
+   SUBSTR(BMBTXT,19,24)='MAXFIT'; TYPE SPACER,BMBTXT; MAXFIT
+   BLC = 0; TRC = 0
+   MAXDIF=MAXDIF(1)-PIXXY(1),MAXDIF(2)-PIXXY(2),MAXDIF(3)-PIXVAL
+   TYPE SPACER, '**** DIFFERENCE IN X, Y, VAL: ****', MAXDIF
+   MAPDIF(3,JJCNT)=MAXDIF(1); MAPDIF(4,JJCNT)=MAXDIF(2)
+   MAPDIF(5,JJCNT)=MAXDIF(3)
+   TYPE SPACER, SPACER; INNAME = CHKSV2; INDISK = CHKSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to compare test uv file against master:
+*               (inclass), assumes OUTNAME
+PROCEDURE UCHECK (CHKSV1); CHKSV2 = INNAME; APARM=0.05,1000,.1
+   INNAME = OUTNAME; CHKSV3 = INDISK; INDISK = OUTDISK
+   IN2NAME = 'M' !! TNAMF; IN2DISK = MDISK; IN2CLASS = CHKSV1
+   IF (TERSE <= 3) THEN PRTHED(IN2NAME, IN2CLASS, IN2DISK); END
+   SUBSTR(MSGTXT,23,28)=CHKSV1; TYPE SPACER,MSGTXT,SPACER
+   UCHSV1 = NITER; NITER = 45; DOCRT = -1
+   OPCODE = ''; IGW (CHKSV1, 'UVDIF'); INNAME = CHKSV2
+   NITER = UCHSV1; INDISK = CHKSV3; TYPE SPACER; RETURN
+FINISH
+* ==============================================================
+* Procedure to rename a file:
+*                  (inclass, outclass), assumes OUTNAME
+PROCEDURE NEWCLASS (NCLSV1, OUTCLASS); NCLSV2 = INNAME
+   INNAME = OUTNAME; NCLSV3 = INCLASS; INCLASS = NCLSV1
+   NCLSV4 = INDISK; INDISK = OUTDISK; RENAME
+   INNAME = NCLSV2; INCLASS = NCLSV3; INDISK = NCLSV4; RETURN
+FINISH
+* ==============================================================
+* procedure to build name
+PROCEDURE FILENAME; I = LENGTH(DDTDISK); DDTFILE=DDTDISK
+   IF (I) THEN; SUBSTR(DDTFILE,I+1,16)= ':'!!TNAME!!SMODE
+   END; RETURN
+FINISH
+* ==============================================================
+* Dummy procedure in case ALLDEST not executed:
+PROCEDURE YES; RETURN
+FINISH
+* ==============================================================
+* Set default variable values:
+TNAME = 'DDT'; TASK = TNAME; TMASK = 127; TMODE = 'T'
+DDTSIZE = 'SMALL' ; TNAMF = TNAME !! SUBSTR (DDTSIZE,1,1)
+INNAME = TMODE !! TNAMF; INCLASS  = ''; INSEQ  = 0
+OUTNAME = 'T' !! TNAMF; OUTCLASS = ''; OUTSEQ = 0
+CLR2NAME; CLR3NAME; DOTWO = FALSE; FORMAT = 3; BLOCKING = 10
+PRIORITY=5; DOCAL=-1; DOTV=-1; NCOUNT=1; OPTYP=''
+* Save current POPS image to allow restore after each step:
+CORE
+SAVE DDT000
+* ==============================================================
+* Check variables:
+GET DDT000
+PROCEDURE DDTPROC; TASK=TNAME; TGET; SMODE = SUBSTR(DDTSIZE,1,1)
+   I = (SMODE='S')!(SMODE='M')!(SMODE='L')!(SMODE='H')
+   IF (I) THEN TNAMF = TNAME !! SMODE
+    ELSE DDTBOMB('DDTSIZE MUST BE SMALL, MEDIUM, LARGE OR HUGE')
+      END
+   IN2DISK = MDISK; INDISK = MDISK; OUTDISK = MDISK
+   IF (TCODE='INIT') THEN INNAME='M'!!TNAMF; OUTNAME=INNAME
+   ELSE IF ((TCODE = 'TEST')!(TCODE='WRIT')) THEN
+      INNAME = TMODE !! TNAMF; OUTNAME = 'T' !! TNAMF
+      OUTDISK = TDISK
+      IF TMODE='T' THEN INDISK=TDISK; END
+   ELSE IF (TCODE = 'READ') THEN OUTNAME = 'M' !! TNAMF; END
+      END END
+   IF ((TMODE='T') & (SMODE='H')) THEN
+      DDTBOMB ('TMODE=T DOES NOT WORK FOR HUGE DDT'); END
+   I=(TCODE='INIT')!(TCODE='TEST')!(TCODE='WRIT')!(TCODE='READ')
+   IF (I) THEN
+      ELSE DDTBOMB('TCODE MUST BE INIT,TEST,WRIT, OR READ!')
+      END
+   IF ((TMASK<1)!(TMASK>127)) THEN
+      DDTBOMB('MUST HAVE 0<TMASK<128 !'); END
+   IF ((TCODE='TEST')!(TCODE='WRIT')) THEN
+      IF (TMODE='') THEN TMODE='M'; END
+      IF ((TMODE='T')!(TMODE='M')) THEN ;
+        ELSE DDTBOMB('TMODE MUST BE T OR M IF TCODE=TEST/WRIT!')
+         END END
+   I = (IOTAPE<1)!(DDISK<1)!(MDISK<1)!(TDISK<1)
+   IF (I) THEN
+      DDTBOMB('NEED IOTAPE, DDISK, MDISK & TDISK >0 !')
+      END
+   UVTAP = 0; INTAPE = IOTAPE; OUTTAPE = IOTAPE
+   IF EDGSKP < 0 THEN EDGSKP=4; END; SCALR2=-10
+* set mapping parameters for problems
+   TYPE '# SET MAPPING PARAMETERS #'; ; MINPATCH = 51;
+   IF SMODE = 'S' THEN;  ROTAT=56; SHIFT=-5.2; CELLSIZE=1.3
+      IMSIZE=256; NITER=2000; FLUX=14.7; MAXPIXEL=6000
+      CLBOX=102,108,194,155; SCALR1 = 13.0; NOISE=0.1,0
+      END
+   IF SMODE = 'M' THEN   ROTAT=-5; SHIFT=6,-6; CELLSIZE=1.15
+      IMSIZE=512; NITER=5000; FLUX=5.5; MAXPIXEL=10000
+      CLBOX=138,178,353,352; SCALR1 = 8.4; NOISE=0.01,0
+      END
+   IF SMODE = 'L' THEN   ROTAT=30; SHIFT=-0.049,+0.026
+      CELLSIZE=0.1; IMSIZE=1024; NITER=15000; MAXPIXEL=20050
+      CLBOX=340,390,630,630; SCALR1 = 13.1;FLUX=0.83
+      ZEROSP=FLUX,0,0,0,15.0; NOISE=0.0001,0
+      END
+   IF SMODE = 'H' THEN   ROTAT=0; SHIFT=0
+      CELLSIZE=0.2; IMSIZE=4096; NITER=40000; MAXPIXEL=30000
+      CLBOX=0; SCALR1=10; FLUX=250
+      ZEROSP=FLUX,300,300,0,10; NOISE=0.005,0; SCALR2=-40
+* quick test values
+*      TSTSCAL=MIN(MAX(1,TERSE),16)
+*      TSTSCAL=2**FLOOR(LN(TSTSCAL)/LN(2))
+*      IF (TSTSCAL > 1) THEN TYPE SPACER
+*        TYPE '## QUICK TEST, SCALING BY ' TSTSCAL '##'
+*        TYPE SPACER
+*      END
+*      CELLS=CELLS(1)*TSTSCAL; NITER=NITER/TSTSCAL
+*      IMSIZE=IMSIZE(1)/TSTSCAL,IMSIZE(2)/TSTSCAL
+      END
+   MAPDIF = -100; NCOMP = 0; FILENAME
+   TYPE 'TERSE=',TERSE; TYPE 'EDGSKP=',EDGSKP
+   TYPE 'TMASK=',TMASK; TYPE 'BADDISK=',BADDISK;
+   TASK = TNAME !! 'SAVE'; INPUTS; TPUT; RETURN
+FINISH
+CORE
+SAVE DDTINIT
+* ==============================================================
+* Read/Write the input visibility dataset:
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   SMODE = SUBSTR (TNAMF, 4, 4) ; NFILES=0; CRCLAS = 'UVDATA'
+   IF SMODE='M' THEN NFILES=11; END
+   IF SMODE='L' THEN NFILES=22; END
+   IF SMODE='H' THEN NFILES=33; END
+   I = LENGTH (DDTFILE)
+   IF (TCODE = 'WRIT') THEN
+      XTRSV1=INDISK; INDISK=DDISK;
+      PRTCAT; INNAME = 'D' !! TNAMF; DOEOT=FALSE; DONEWTAB=TRUE
+      IF (I) THEN; DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+      ELSE; DATAOUT = ''; REWIND; AVFILE; NFILES = 0; END
+      IGW(CRCLAS, 'FITTP'); INDISK=XTRSV1
+   ELSE IF (TCODE = 'READ') THEN
+      INCLASS = CRCLAS;  SOURCE = '';
+      INNAME = 'D' !! TNAMF; INDISK=0; ALLDEST; INDISK=DDISK
+      OUTNAME = 'D' !! TNAMF; FREESPAC; OUTDISK = DDISK
+      IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+      ELSE; DATAIN = ''; REWIND; AVFILE; END;
+      NFILES=0; TPLOD('FITLD'); PRTCAT
+      END; END
+   RETURN
+FINISH
+CORE
+SAVE DDT000RW
+* ==============================================================
+* Sort the visibility data:
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   CRCLAS='UVSRT'; J = 1; I = LENGTH (DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      INNAME = 'D' !! TNAMF; XTRSV1 = INDISK; INDISK = DDISK
+      IF (TERSE<=3) THEN PRTHED(INNAME, 'UVDATA',INDISK); END
+      SORT = 'XY'; ZIGW ('UVDATA','UVSRT',CRCLAS)
+      IF (TERSE<=3) THEN PRTHED (OUTNAME,CRCLAS,OUTDISK); END
+      IF TCODE='TEST' THEN UCHECK(CRCLAS); END
+      IF (TERSE<=2) THEN PRTCAT; END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP') END;
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN; INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK=0;ALLDEST;INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN;NFILE=1; AVFIL; NFILE=0; END; END
+      END END END
+FINISH
+CORE
+SAVE DDT001
+* ==============================================================
+* Compute the dirty map:
+GET DDT000
+PROCEDURE DDTPROC; STRING*6 BEAMCL; TASK = TNAME !! 'SAVE'; TGET
+   J = 2; BEAMCL = 'IBM001'; CRCLAS='UVMAP'; CRCLS2='UVBEAM'
+   I = LENGTH (DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      OUTZAP('IIM001'); OUTZAP(BEAMCL); OUTZAP(CRCLS2)
+      IMSAVE=IMSIZE(1); CELSAVE=CELLS(1)
+      IF (DDTSIZE='HUGE') THEN
+         IMSIZE=IMSAVE/2,IMSAVE/2; CELLSI=CELSAV*2,CELSAV*2
+         END
+      ZIGW('UVSRT', 'UVMAP', CRCLAS)
+      IMSIZE = IMSAVE,IMSAVE; CELLSI = CELSAV,CELSAV
+      NEWCLASS('IIM001',CRCLAS); NEWCLASS(BEAMCL,CRCLS2)
+      IF (TERSE <= 3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK)
+         PRTHED(OUTNAME, CRCLS2, OUTDISK); END
+      IF (TCODE='TEST') THEN CHECK(1,CRCLAS)
+         CHECK(2,CRCLS2); END
+      IF (TERSE <= 2) THEN PRTCAT; END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP')
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         IGW(CRCLS2, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP')
+         IGW(CRCLS2, 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK = 0; ALLDEST
+         INCLAS=CRCLS2; ALLDEST; INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD')
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=2; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE DDT002
+* ==============================================================
+* Clean the dirty map:
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   CRCLAS='APCLN'; CRCLS2 = 'APRES'; J = 4; I=LENGTH(DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IN2NAME = INNAME; IN2CLASS = 'UVBEAM'
+      FLUSAVE = FLUX; FLUX = 0
+      XTRSV1 = IN2DISK; IN2DISK = INDISK; NBOXES = 1
+      IF (DDTSIZE='HUGE') THEN GAIN = 0.01
+         TMODES = TMODE; TMODE = 'M'; OUTS = 1
+         IF (TCODE='TEST') THEN; ZIGW(CRCLAS,'SUBIM',CRCLAS);
+         END; TMODE = TMODES
+         NITER = 500000; BITER = 400000; FLUX = 0.0117
+         OUTCLASS = CRCLAS; OUTSEQ=1
+         IGW('UVMAP', 'APCLN'); IN2DISK = XTRSV1
+      ELSE
+         ZIGW('UVMAP', 'APCLN', CRCLAS); IN2DISK = XTRSV1
+         END
+      IF (TERSE<=3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK); END
+      IF (TCODE = 'TEST') THEN CHECK(3,CRCLAS) END
+      ZIGW('APCLN', 'SUBIM', CRCLS2)
+      IF (DDTSIZE='HUGE') THEN NITER = 422953; END
+      BMAJ = -1; BITER = NITER; OUTCLASS = CRCLS2; OUTSEQ = 1
+      IN2NAME = INNAME; IN2CLASS = 'UVBEAM'; IN2DISK = INDISK
+      IGW('UVMAP', 'APCLN')
+      IF (TERSE<=3) THEN PRTHED(OUTNAME,CRCLS2,OUTDISK); END
+      IN2DISK = XTRSV1; OUTS = 0
+      IF (TCODE = 'TEST') THEN CHECK(4,CRCLS2) END;
+      IF (TERSE <= 2) THEN PRTCAT; END;   FLUX = FLUSAVE
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP')
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         IGW(CRCLS2, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP')
+         IGW(CRCLS2, 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK = 0; ALLDEST
+         INCLAS=CRCLS2; ALLDEST; INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD')
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=2; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE DDT004
+* ==============================================================
+* Compute revised gain & phase solution by self-calibration:
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   CRCLAS='CALIB'; CRCLS2 = 'CALTMP'; J = 8; I=LENGTH(DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+      XTRSV1 = INDISK; XTRSV2 = IN2DISK; IN2DISK = INDISK
+      IN2NAME = INNAME; IN2CLASS = 'APCLN'
+*     Merge deltas to avoid CALIB times dominating the result
+      OUTVERS = 2; IGW('APCLN', 'CCMRG')
+      INDISK = DDISK; INNAME = 'D' !! TNAMF; OUTCLASS=CRCLS2
+      SOLTYP=''; SOLMOD='P'; SOLCON=0; CPARM=0,1,0; DOFIT=0
+      FLUX=0.0
+      IF (DDTSIZE='HUGE') THEN
+         REFANT=22; SOLINT=3.0; UVRANG=5,1E8
+         APARM=3,0,1,0,0,0,3,28,1,0; NCOMP=10000,0
+      ELSE
+         APARM=3,0,0,0,0,0,4,28,1,0; NCOMP=0; SOLINT=2.
+         END
+      ZIGW('UVDATA', 'CALIB', CRCLS2)
+*                   Remove SN table
+      INCLAS='UVDATA';INS=0;INEXT='SN';INVER=0;EXTDES
+*                   Destroy merged CC file
+      INDISK = XTRSV1; INVERS = 2; INNAME = IN2NAME
+      INCLASS = IN2CLASS; INEXT = 'CC'; EXTDEST; INVERS = 0
+      IF (TERSE<=3) THEN PRTHED(OUTNAME,CRCLS2,OUTDISK); END
+      INNAME = OUTNAME; INDISK = OUTDISK
+      ZIGW(CRCLS2, 'UVSRT', CRCLAS)
+      IF (TERSE<=3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK); END
+      OUTZAP(CRCLS2); IN2DISK = XTRSV2
+      IF TCODE='TEST' THEN UCHECK(CRCLAS); END
+      IF (TERSE <= 2) THEN PRTCAT; END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP') END;
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK=0;ALLDEST;INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=1; AVFIL; NFILE=0; END; END
+      END END END;
+   RETURN
+FINISH
+CORE
+SAVE DDT008
+* ==============================================================
+* Make a new map with MX
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   CRCLAS = 'MXMAP'; CRCLS2 = 'MXBEAM'; J=16; I=LENGTH(DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      FLUSAVE = FLUX; FLUX = 0; NBOXES = 1; STOKES = 'I'
+      NFIELD = 1 ; RASHIFT = SHIFT(1),0; DECSHIFT = SHIFT(2),0
+      NITSAVE = NITER ; NITER = 0; IN2DISK = OUTDISK
+      IN2NAME = ''; IN2CL = ''; OUTZAP(CRCLS2)
+      IF (DDTSIZE='HUGE') THEN; UVWTFN='O' ; END
+      ZIGW('CALIB', 'MX', CRCLAS); NEWCLASS('IIM001', CRCLAS)
+      NEWCLASS('IBM001', CRCLS2); OUTZAP('UVWORK')
+      IF (TERSE <=3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK)
+         PRTHED(OUTNAME, CRCLS2, OUTDISK); END
+      IF (TCODE = 'TEST') THEN CHECK (5,CRCLAS)
+         CHECK (6,CRCLS2); END
+      IF (TERSE <= 2) THEN PRTCAT; END
+      NITER = NITSAVE; FLUX = FLUSAVE
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP')
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         IGW(CRCLS2, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP')
+         IGW(CRCLS2, 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK = 0; ALLDEST
+         INCLAS=CRCLS2; ALLDEST; INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD')
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLS2;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=2; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE DDT016
+* ==============================================================
+* Make a new clean map with MX:
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   CRCLAS = 'MXCLN'; J = 32; I=LENGTH(DDTFILE)
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+      OUTZAP('IBM001'); OUTZAP('UVWORK')
+      IN2NAME = ''; IN2CLASS = ''; IN2DISK = OUTDISK
+      STOKES= 'I'; NFIELD = 1; FLUSAVE = FLUX; FLUX = 0
+      NBOXES = 1; RASHIFT=SHIFT(1),0; DECSHIFT=SHIFT(2),0
+      IF (DDTSIZE='HUGE') THEN
+         BMAJ=1; BMIN=1; FACTOR=5; GAIN=0.01; UVWTFN='O'
+         FLDSI=IMSIZ(1)*0.6,IMSIZ(2)*0.6,0
+         TMODES = TMODE; TMODE = 'M'; OUTS=1
+         ZIGW('MXCLN','SUBIM', 'ICL001'); TMODE = TMODES
+         NITER = 400000; BCOMP = 240000,0; FLUX = 0.0106; OUTS=1
+         IGW('CALIB', 'MX')
+         CLBOX=0; BMAJ=0; BMIN=0; BCOMP=0; OUTS = 0
+      ELSE
+         OUTZAP(CRCLAS); ZIGW('CALIB', 'MX', 'ICL001')
+      END
+      OUTZAP('IBM001'); NEWCLASS('ICL001', CRCLAS)
+      OUTZAP('UVWORK');
+      IF (TERSE<=3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK); END
+      IF (TCODE='TEST') THEN CHECK(7,CRCLAS) END;
+      IF (TERSE <= 2) THEN PRTCAT; END; FLUX = FLUSAVE
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP') END;
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK=0;ALLDEST;INDISK=MDISK
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=1; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+OUTSEQ=1
+CORE
+SAVE DDT032
+* ==============================================================
+* Deconvolve the map using Maximum Entropy: 1
+
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+   IF (DDTSIZE<>'HUGE') THEN
+      CRCLAS='VTESS'; CRCLS2='MXINVT'; J=64; I=LENGTH(DDTFILE)
+   IF (((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+        IN2NAME = INNAME; IN2CLASS = 'MXBEAM'; IN2DISK = INDISK
+        ZIGW('MXCLN','SUBIM',CRCLS2); IN3CLAS = CRCLS2
+        IN3NAME = OUTNAME; IN3DISK = OUTDISK; IN3SEQ = -1
+        INCLAS = IN3CL; INNAME = IN3NA; INDISK = IN3DISK
+        OFFSET = 0; FACTOR = 1/SCALR1; RESCALE; BMAJ=-1
+        NITSAVE = NITER; NITER = SCALR2; NMAPS = 1
+        INNAME = IN2NAM; INDISK = IN2DISK
+        ZIGW('MXMAP', 'VTESS', CRCLAS)
+        IF (TERSE<=3) THEN PRTHED(OUTNAME, CRCLAS, OUTDISK); END
+        IF (TCODE = 'TEST') THEN CHECK(8,CRCLAS); END
+        OUTZAP (CRCLS2);   NITER = NITSAVE
+        IF (TERSE <= 2) THEN PRTCAT; END
+      ELSE IF (TCODE = 'WRIT') THEN
+         IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+            DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS
+            IGW(CRCLAS, 'FITTP'); END
+         ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP') END
+      ELSE IF (TCODE = 'READ') THEN
+         IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+            INNAME = 'M' !! TNAMF; INDISK=0;ALLDEST;INDISK=MDISK
+            IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+            ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+         ELSE IF (^I) THEN; NFILE=1; AVFIL; NFILE=0; END; END
+      END; END; END; END
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE DDT064
+* ==============================================================
+* Thats all, folks!
+GET DDT000
+PROCEDURE DDTPROC; TASK = TNAME !! 'SAVE'; TGET
+STRING*6 DIFNAM(8)
+   DIFNAM = 'UVMAP','UVBEAM','APCLN','APRES','MXMAP','MXBEAM'
+   DIFNAM(7) = 'MXCLN'; DIFNAM(8) = 'VTESS'; I=LENGTH(DDTFILE)
+   IF (TCODE = 'TEST') THEN PRTCAT;
+      FOR I = 1:8; ERATIO = MAPDIF(1,I); JJCNT=MAPDIF(2,I);
+         IF (ERATIO > -90) THEN
+            PRINT DIFNAM(I), ERATIO, JJCNT;
+         END; END
+      FOR I = 1:8; ERATIO = MAPDIF(1,I)
+         IF (ERATIO > -90) THEN
+            PRINT DIFNAM(I), MAPDIF(3,I),MAPDIF(4,I),MAPDIF(5,I)
+         END; END
+      PRINT SPACER
+      PRINT 'PRINTING MESSAGES SUGGESTIVE OF ERROR: PRIO > 5'
+      PRIORITY=6; PRNUM=0; PRTASK=''
+      IF (TERSE > 0) THEN DOCRT=1; ELSE DOCRT=-1; END; PRTMSG
+      PRINT SPACER ; CPUTIME
+      PRINT SPACER
+      PRINT 'PRINTING ANSWERS, ERRORS, OTHER IMPORTANT MESSAGES'
+      DOCRT=-1; PRIORITY=5; PRNUM=0; PRTASK=''; PRTMSG
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I=0) THEN; NFILES = 0; IGW('', 'PRTTP'); REWIND; END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (I=0) THEN; REWIND; END; PRTCAT
+   END END END;
+   DOWAIT -1; PRTIME=2; DOCRT=-1; OPTYPE = 'DDT'
+   IF (TERSE <= 0) THEN IGW('','PRTAC'); END
+   TYPE 'That"s all, Folks!'
+   RETURN
+FINISH
+CORE
+SAVE DDT9999
+* ==============================================================
+* Restore to prior status:
+RESTORE 1
+CORE
+SGDESTR DDT000
+SGINDEX

@@ -1,0 +1,417 @@
+@@
+Chapter V. Writing tasks and verbs
+
+
+     Writing tasks for the AIPS system involves four basic steps:
+creating the necessary new adverbs (if any), creating the INPUTS file
+for the task, writing the task itself, and updating the documentation
+files.  Verbs are more complicated since they involve all of the above
+steps plus modifications to the verb branch tables in the subroutines
+VERBS and VERBSB.  Some knowledge of the structure of POPS itself is
+also valuable in writing verbs.  The service programs, data files, and
+conventions for doing these operations are described in the following
+sections.
+
+
+A. Adding symbols to the AIPS symbol table
+
+
+     The fundamental symbol table, containing all of the verbs, pseudo-
+verbs, procedures, adverbs, and adverb values up by the programmers,
+is the symbol table given to the user when he first activates AIPS
+(or when he does a RESTART or a RESTORE 0).  This symbol table is
+prepared via a text file stored in the [HELP] text area and the stand-
+alone program POPSGN.  By convention, the text file for interactive
+and batch AIPS is called POPSDAT.  This file is listed in Chapter IV of
+Volume I of this manual and may be listed at run time (via HELP
+POPSDAT).
+
+     Each line in POPSDAT is used to define a symbol.  (Comment lines
+may be introduced by placing 'C-' in the first two columns.)  The cards
+are read via a fixed Fortran format as follows:
+
+  FIELD   COLUMNS    FMT      DESCRIPTION
+    1      1 - 10    A10    Symbol name (8 or fewer characters)
+    2     12 - 14    I3     Number of characters in symbol
+    3     16 - 18    I3     Symbol type code (see below)
+    4     20 - 23    I4     Number of axes in arrays, verb number
+    5     30 - 36    F7.2   Reals:initial value; Arrays:number points
+                            first axis
+    6     38 - 44    F7.2   Arrays: number points on second axis
+
+Where the symbol type codes are as follows:
+
+  CODE        TYPE            COMMENT
+    1     Real scalar adverb  Field 5 contains initial value
+    2     Real array adverb   Field 4 contains number of axes (1 or 2).
+                              Fields 5 and 6 contain the number of
+                              points on the first and second axes.
+                              Initial values set to zero.
+    4     Verb                Field 4 contains magic number by which
+                              verb will be recognized.
+    5     Pseudoverb          Field 4 contains magic number by which
+                              pseudoverb will be recognized.
+    6     non-symbol          Marks end of this portion of POPSDAT.
+    7     Character adverb    Field 4 contains 1 for scalars or 2 for
+                              one-dimensional arrays.  Field 5 contains
+                              number of characters scalar or an
+                              element of an array.  Field 6 contains
+                              number of elements in arrays.  Initial
+                              values are blank.
+
+
+       By convention, all basic POPS verbs and pseudoverbs appear first
+in numeric order (field 4 = 1 through 99) in POPSDAT.  Then come appli-
+cation verbs in numeric order, followed by the adverbs in arbitrary
+(but significant) order.  The last card in this portion of POPSDAT is
+the "QUIT" card of symbol type 6.  The rest of POPSDAT is optional and
+consists of more or less any executable POPS statements.  This area is
+used to insert non-zero initial values in arrays, non-blank initial
+values in character scalars and arrays, and to compile standard
+procedures.  (Procedures compiled via POPSDAT may not be editted or
+scratched at run time.)
+
+     The program POPSGN begins by asking for the range of POPS numbers
+to which this execution applies, the value of the debug parameter, and
+the name of the input text file.  The standard answer, for all of
+AIPS at one go, is
+
+                010j00POPSDAT
+
+where n = the number of interactive AIPSs (NINTRN) and
+j = 2*n+1+NBATQS (the number of batch queues).  POPSGN then reads and
+compiles the specified text file.  When it is done, it prompts the
+user with '>'.  This prompt is answered with a carriage return (since
+POPSGN will ignore any input anyway).  Finally, POPSGN writes the
+symbol and procedure code tables to the memory files assigned to the
+specified range of POPS numbers.  It signals completion with the
+message 'POPSGEN COMPLETE'.
+
+     In AIPS, the symbol table is kept in an array K in the common
+/CORE/.  For those adverbs created via POPSGN, the positions of their
+values within the K array are known.  The first adverb in POPSDAT will
+have its value(s) placed at a point determined by the (hard-coded) size
+and structuring of the K array.  Susbsequent adverbs simply place their
+values following those of the preceding one occupying as much space as
+required.  The subroutines which execute verbs within AIPS and AIPSB
+get the adverb values which they require directly from the K array
+using this a priori knowledge of their locations.  This knowledge is
+conveyed via the standard include files DAPL.INC and CAPL.INC  For a
+shortened list of adverbs their contents could look like:
+
+  C                                           Include DAPL
+        INTEGER*2 K(4318)
+        REAL*4 XTRUE, XFALSE, PRUSER, PRPRIO, TASK(2), IWAIT,
+      *    TAPEIN, DSKIN, DSKOUT, NAMIN(3), NAMIN2(3),
+      *    NAMIN3(3), ...
+  C                                           End DAPL
+
+  C                                           Include CAPL
+        COMMON /CORE/ K, XTRUE, XFALSE, PRUSER, PRPRIO, TASK,
+      *   IWAIT, TAPEIN, DSKIN, DSKOUT, NAMIN, NAMIN2,
+      *   NAMIN3, ...
+  C                                           End CAPL
+
+Every time POPSDAT is modified by altering the list of adverbs, these
+include files must be altered correspondingly.  If adverbs are deleted
+or added in the middle of the list, all subroutines which use these
+includes must be recompiled.  (The code of these subroutines does not
+need to be modified normally.  One just has to recompile them with the
+new includes.)  For this reason, new adverbs are normally added at the
+end of the current list of adverbs.
+
+
+B. Creating INPUTS files for tasks and verbs
+
+
+   Every task and verb must have a corresponding INPUTS file.  These
+files are text files located in the area called [INPUTS] and named with
+the name of the verb or task.
+
+     The inputs files are text files prepared by the local text editor.
+Thus, the details of their structures and their relationship to the
+operating system are machine dependent.  On the VAX, they are separate
+physical, FORTRAN files in a logon area called INPUTS.  On the MODCOMP,
+they are members of a directoried source editor (SEDIT) file called
+IN100000.
+
+     The textual contents of Inputs files are specified, however.  The
+first line is ignored, but still has a conventional form:
+
+     columns         description
+      1 - 10     File name, left-justified and blank filled
+     11 - 22     Filled with L's
+     23 - 34     Filled with U's
+     35 - 64     Filled with C's
+     65 - 80     Blank filled
+
+The L, U, and C areas are simply aids to typing the following parts of
+the text.  The second line is used as a header for the user display of
+the inputs.  It has the form
+
+     columns          description
+      1 - 10     Verb or task name
+     11 - 64     Description of function of the verb/task
+     65 - 80     Blank filled
+
+All following lines in the file have the form
+
+     columns         description
+      1 - 10     Adverb name, left-justified and blank filled
+     11 - 22     Lower limit for real (numeric) adverbs, free format
+     23 - 34     Upper limit for real (numeric) adverbs, free format
+     35 - 64     Comment field to describe adverb
+     65 - 80     Blank filled
+
+The upper and lower limit fields are optional for numeric adverbs and
+should be omitted for character-valued adverbs.  The comment field is
+optional, but highly recommended.  If the adverb field is blank, then
+the rest of the line (columns 11 - 64) are treated as a comment.  Use
+only columns 35 - 64, however, if the preceding adverb was an array.
+As an example, consider
+
+IMLOD     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+IMLOD:  Task to store an image from a FITS or IBM-CV tape
+INTAPE            0.0       2.0    Input tape drive # (0=> 1)
+OUTNAME                            Image name (name)
+                                     blank=> file or source name
+OUTCLASS                           Image name (class)
+                                     blank=> STYP (See HELP)
+OUTSEQ            0.0    9999.0    Image name (seq. #)
+                                     0=> first unique number
+OUTDISK           0.0       3.0    Disk drive # (0=> user disk)
+
+Note that the adverb names must be typed with capital letters, but the
+comment fields should be typed in lower case.
+
+   All adverbs used by the verb or task must be listed in the INPUTS
+file.  For verbs, the order in which the adverbs are listed is of no
+consequence.  For tasks, however, the order in the INPUTS file
+determines the order in which the (binary) adverb values are received
+by the task.  This order, plus the dimensions of the adverbs declared
+in POPSDAT, totally determines the structure of the binary array
+received by the task.
+
+
+C. Writing a task
+
+
+   Before writing any code for AIPS, please study Chapter II of this
+volume.  Code which does not meet the standards espoused in that chapter
+cannot be accepted into the system.  Source code is stored in text
+files using the name of the program, subroutine, or function as the
+file name.  Specialized subroutines for use in AIPS, BATER, POPSGN,
+AIPSC, and AIPSB are stored in an area called [.AIPS].  All other code
+is stored in an area called [.APL].  Specialized subroutines for use
+by a single task are stored in the same text file as the main program
+of that task.  Subroutines of more general interest are stored in
+separate text files.  On most systems, the primary linkage editor
+libraries contain only the compiler output of the general interest
+subroutines.  The code of the task program and specialized subroutines
+is compiled together at link time into temporary linkage editor files.
+This convention substantially reduces the time it takes to link edit
+tasks (and to manipulate the linkage editor files).
+
+   The first concern in coding a task is establishing the environment
+parameters which, among other things, allow I/O to take place.  This is
+done in the main program of the task by
+        INTEGER*2 FTAB(<n>)
+        INCLUDE 'IDCH.INC'
+        - - -
+        INCLUDE 'CDCH.INC'
+        - - -
+        CALL ZDCHIN (<ndev>, <nfile>, <nmap>, <scrtch>)
+
+where <scrtch> is a 256-word buffer, <ndev> is the maximum number of
+devices which do not require I/O driving tables which may be open at
+once, <nfile> is the maximum number of wait-mode (slow I/O) files or
+devices which require I/O driving tables which may be open at once,
+and <nmap> is the maximum number of quick-return (fast I/O double-
+buffered) files or devices which may be open at once. The value of
+<n> is system dependent and must be at least as large as is needed to
+contain the specified numbers of the three types of files.  On the
+Modcomp,
+
+             <n> = <ndev> + 11 * <nfile> + 40 * <nmap>
+
+The Vax uses smaller tables, but for simplicity, we always declare
+Modcomp-sized FTAB's.  Your local AIPS manager can inform you of the
+required numerical constants in this formula for your system.  The call
+to ZDCHIN should be the first executable statement in each main program
+or in the subroutine first called by the main program.  The use of
+ZDCHIN is discussed in detail in Chapter III of this volume.
+
+   The next order of business for a task is obtaining the binary
+parameters transmitted to it by AIPS or AIPSBn.  This is done by
+calling the subroutine GTPARM with the arguments:
+
+   Inputs:  NAME     I*2(3)     Task name (5 ASCII characters, 2/word)
+            NPARMS   I*2        Number of R*4 values of binary data
+                                required by the task.
+   Outputs: RQUICK   L*2        T => release initiator task as soon as
+                                     possible
+                                F => release initiator task only after
+                                     the task is finished.
+            RPARM    R*4(NPARMS) Received parameters.
+            SCRTCH   I*2(256)    scratch buffer.
+            IERR     I*2         Error code: 0 - OK
+                                             1 - initiator not found.
+                                             2 - disk problems.
+
+To insure machine-independence of the length of the array (or common)
+RPARM, all string adverbs will occupy (nchar + 3) / 4 real values even
+on machines which have > 4 characters / real.  A complete example of a
+task is given in Chapter III of this manual.  Below is an abreviated
+example of how to use the routine (using the task IMLOD whose INPUTS
+were shown above).
+
+      INTEGER*2 NPARMS, PGMNAM(3), SCRTCH(256), IRET, IERR
+      REAL*4    NAMOUT(3), CLSOUT(2), SEQOUT, TAPEIN, DSKOUT
+      INTEGER*2 N2, N4
+      INTEGER*2 FTAB(128)
+      INCLUDE 'IDCH.INC'
+      INCLUDE 'DMSG.INC'
+      - - -
+      COMMON /MLPARM/ TAPEIN, NAMOUT, CLSOUT, SEQOUT, DSKOUT
+      INCLUDE 'CDCH.INC'
+      INCLUDE 'CMSG.INC'
+      - - -
+      DATA NPARMS, PGMNAM /8, 'IM', 'LO', 'D '/
+      DATA N2, N4 /2, 4/
+      - - -
+C---------------------------------------------------------------
+C                                       init environment common
+      CALL ZDCHIN (N4, N4, N2, SCRTCH)
+C                                       init cat pointers
+      CALL VHDRIN
+C                                       get task ID & parameters
+      CALL GTPARM (PGMNAM, NPARMS, RQUICK, NAMOUT, SCRTCH, IRET)
+      IF (IRET.EQ.0) GO TO 10
+         IF (IRET.EQ.1) GO TO 999
+         ENCODE (80,1000,MSGTXT)
+         CALL MSGWRT(9)
+ 10   IF (RQUICK) CALL RELPOP (IRET, SCRTCH, IERR)
+      IF (IRET.NE.0) GO TO 990
+      - - - (body of task)
+ 990  CALL DIETSK (IRET, RQUICK, SCRTCH)
+C
+ 999  STOP
+      - - -
+
+where I have illustrated the use of the next two routines as well.
+GTPARM does quite a number of things for a task.  It reads the first
+record of the task data file to determine which program spawned the
+task.  Using this information, it obtains the requested words of binary
+data and initializes the common /MSGCOM/ described below.  Before
+returning, GTPARM issues the message 'TASK <name> BEGINS'.  GTPARM also
+initializes the accounting for the task and finds out which, if any, TV
+and TK devices are available to the task.
+
+   Another operation which each task must perform is to restart the
+program which started it.  The parameter RQUICK returned by GTPARM
+tells the task when to do it.  The subroutine RELPOP performs the
+operation using arguments:
+
+   Inputs:   RETCOD   I*2       Return code: 0 ok, other => error.
+   Outputs:  SCRTCH   I*2(256)  Scratch buffer.
+             IERR     I*2       Error code:  0 => ok
+
+   The return code is transmitted back to the initiating program and
+will cause batch versions of AIPS to abort the batch job (if it is
+not zero).  Although RELPOP returns an error code,  the calling task
+should continue to function even though the initiating program did not
+get restarted.  The example shown above is typical of tasks whose
+functions are basically batch-like.  However, tasks which perform
+interactive algorithms or use interactive devices (e.g. the TV) may
+choose to ignore RQUICK and simply issue an uncoditional call to RELPOP
+when they are terminating.  (Intermediate cases are also, of course,
+possible.)  Interactive tasks must examine the value of NPOPS (in
+common /MSGCOM/ after calling GTPARM.  Such tasks are allowed to
+perform the interactive portions of their operation only if NPOPS <=
+NINTRN.
+
+   Another of the basic routines used by tasks is MSGWRT.  It takes a
+single call argument MSGLEV which conveys the meanings:
+
+   MSGLEV  < 0     Force message file to close with final message count.
+           = 0     Message to log file only (e. g. user input).
+           = 1     Message to terminal (e.g. HELPs)
+           = 2     Low interest normal message (e.g. INPUTS).
+           = 3     Normal message
+           = 4     Normal message
+           = 5     High interest normal message (i.e. the answer).
+           = 6-8   Error messages.
+           = 9-10  Severe error messages.
+
+MSGWRT lives on the common /MSGCOM/ :
+
+   MSGCNT   I*2        Number messages in file (< 0 => don't know).
+   TSKNAM   I*2(3)     Task name. (2 chars / word)
+   NPOPS    I*2        POPS number.
+   NLUSER   I*2        Logon user ID number.
+   MSGTXT   R*4(20)    80 character message. (packed chars)
+   MSGSUP   I*2        If = 32000, level 6 & 7 messages suppressed
+   NACOUN   I*2        Location of task's accounting entry (leave this
+                       one untouched !!!!)
+
+Any program or subroutine which wishes to write a "message" should
+include DMSG.INC and CMSG.INC.  The message is then ENCODEd into MSGTXT
+and MSGWRT is called.  "Messages" are defined as all communication from
+program to user except that explicitly assigned to the line printer
+(e.g. PRTMSG and PRTHI verbs, PRTIM task).
+
+   Because MSGWRT is a pivotal routine in the AIPS system it is
+fairly complicated and worth discussing in some detail.  It begins by
+determining whether it already has a valid message count (MSGCNT >= 0
+and the message file is open).  If not, it opens the message file and
+gets the current number of messages in the file.  Then, unless MSGLEV
+= 1, it adds the message found in MSGTXT to the file and increments
+MSGCNT.  The current date and time, the task name, and the user number
+are recorded with the message.  Then, unless MSGLEV is zero or the task
+is from a batch AIPS, MSGWRT puts the message on the terminal screen
+assigned to LUN = 6.  For AIPS itself, this terminal is the user's
+input terminal.  For tasks spawned by AIPS, it is a separate monitor
+shared by all such tasks.  In writing to the terminals, MSGWRT includes
+the task name.  Finally, if MSGLEV < 0 or if the task is from inter-
+active AIPS, MSGWRT puts the MSGCNT into the first record of the
+message file and closes the file.  All I/O performed by MSGWRT goes
+through the special Z routines ZMSGOP, ZMSGDK, and ZMSGCL.  These are
+special versions of ZOPEN, ZFIO, and ZCLOSE which do not call MSGWRT
+when errors arise.  These special routines are required in order to
+avoid recursion while allowing the fundamental IO routines to report
+any errors in the normal way.
+
+     The last of the basic routines which must be used by tasks is
+DIETSK.  Its arguments are
+
+   Inputs:   RETCOD   I*2       Status code: 0 => ok, other => failure
+             RQUICK   L*2       True => initiating task has already been
+                                resumed
+   Outputs:  SCRTCH   I*2(256)  Scratch buffer
+
+This subroutine issues standard task ends messages, resumes the version
+of AIPS which started it (if needed), and closes up the accounting for
+the task.  A call to DIETSK must be the last executable statement in
+every task, either explicitly or through service routines such as DIE 
+and TSKEND.
+
+     For a task to be useful, it must access some data via catalog and
+I/O routines.  These are discussed in Chapter III of this volume.
+
+@@
+D. Writing a verb
+
+
+
+
+E. Documenting your work
+
+
+         HELPs
+         WHATSUP, POPSUP, TASKSUP, etc.
+         Changes, additions to the manuals ????
+            e.g. Vol I, Chapter 1 lists at least
+@@
+F. Preparing your code and having it installed in the "released"
+   versions.
+

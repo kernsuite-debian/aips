@@ -1,0 +1,194 @@
+#!/bin/sh
+#UPDCOPYSUB
+#-----------------------------------------------------------------------
+#! Copy a file from the server
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1996, 1999-2001, 2005
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Copy a named file from the server
+#
+#   Usage: UPDCOPYSUB source destination
+#      source:       pathname of file on server
+#      destination:  pathname of output file on client
+#
+#   Environment Variables Required:
+#
+#      $ServerName   name of server
+#      $MasterName   name of master system (for UPD/UPD.SUM files)
+#      $ServerRoot   name of aips root area on server
+#      $ClientName   name of client
+#      $LogFile      name of update log file
+#      $ErrorFile    name of error log file
+#      $Account      Account name on remote system (Server and Master)
+#                    (defaults to aipsmgr if not set in UPDCONFIG).
+#      $UpdSSH       YES if we should use the secure shell; this will
+#                    soon be the only way to access the midnight job.
+#      $sshcmd       Syntax of ssh command (default works for ssh1,
+#                    and for OpenSSH when configured in 1,2 mode).
+#
+#   There are additional variables; see UPDCONFIG.
+#
+#   At CV, ServerName and Mastername are Kochab (the real master) for
+#   the MNJ on gibbon, and gibbon for everyone else.
+#
+#   NFS version, uses cp if it can.  Reverts to scp on error.  NFS code
+#   relies on the pathname being the same on the server and the client.
+#   This is true for any machine that mounts the relevant partition from
+#   the master machine.
+#
+# 1992.03.10: only try NFS if test -f succeeds on file.
+# 1992.03.30: use MasterName for the 5 *.UPD files.  This logic is
+#             still a bit flawed, especially the nfs portion.
+# 1994.03.04: get *.UPD.SUM from MasterName as well as *.UPD.
+# 1996.02.21: Use aipsmgr@ in the remote copy commands.  Could be done
+#             more generally sometime...
+# 1999.06.17: Use the secure shell, not rsh.
+# 2000.04.20: no more chmod; it fails sometimes.  Also deploy .old.
+#-------------------------------------------------------------------
+if [ "$sshcmd" = "" ] ; then
+   sshcmd="ssh -C -q -a -x -i ${HOME}/.ssh/mnj"
+fi
+Tries=0
+Done=False
+if [ "$MaxTries" = "" ] ; then
+   MaxTries=5
+fi
+[ "$Account" = "" ] && Account="aipsmgr"
+#                                       You REALLY should use ssh!
+rcmd="scp -q"
+#                                       Make sure we can proceed; is
+#                                       output file removable?
+myold=0
+if [ -r $2 ] ; then
+   if [ ! -w $2 ] ; then
+      rm -f $2.old
+      if mv -f $2 $2.old ; then
+         myold=1
+      else
+	 echo "UPDCOPYSUB: Cannot move $2 to $2.old" >> $LogFile
+         echo "UPDCOPYSUB: - File has NOT BEEN COPIED: local" \
+                            "copy is protected." >> $LogFile
+         if [ -f $2.old ] ; then
+            echo "UPDCOPYSUB: (perhaps $2.old in the way?)" >> $LogFile
+         fi
+         exit 1
+      fi
+   fi
+fi
+#                                       See if we can use NFS
+if [ "$UpdDoNFS" = "YES" ] ; then
+   [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: NFS indicated, try cp..."
+   while [ \( "$Done" = "False" \) -a \( $Tries -lt $MaxTries \) ] ; do
+      cp $1 $2
+      [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: cp $1 $2 done"
+      Newer=`find $2 -newer $LogFile -print 2> /dev/null`
+#                                       If the copy was successful
+#                                       then Newer contains the name
+#                                       of the output file.
+      case $Newer in
+         $2)
+#                                       NFS preserves mode, no chmod!!!
+             Done=True
+             [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: done" ;;
+          *) sleep 10
+	     [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: not newer" ;;
+      esac
+      Tries=`expr $Tries + 1`
+   done
+   if [ "$Done" = "False" ] ; then
+      echo "UPDCOPYSUB: Copy of ${ServerName}:$1" >> $LogFile
+      echo "UPDCOPYSUB: did not work using NFS.  Trying $rcmd..." \
+       >> $LogFile
+      Tries=0
+   fi
+fi
+if [ "$Done" = "False" ] ; then
+   [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: NOT using NFS copy"
+   case $2 in
+      *.UPD | *.UPD.SUM)
+         RemoteSystem=$MasterName;;
+      *) RemoteSystem=$ServerName;;
+   esac
+   while [ \( "$Done" = "False" \) -a \( $Tries -lt $MaxTries \) ] ; do
+      if [ "$UpdSSH" = "YES" ] ; then
+#                                       Secure shell (restricted)
+         [ "$UPDEBUG" = "YES" ] && \
+          echo "UPDCOPYSUB: $sshcmd $RemoteSystem -l $Account $1 >$2"
+#                                       Need to get mode first.
+         mode=`$sshcmd $RemoteSystem -l $Account $1 MODE`
+         [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: mode is $mode"
+#                                       restricted to one command.
+         $sshcmd $RemoteSystem -l $Account $1 >$2
+         if [ $? != 0 ] ; then
+            if [ -f $2.tmp ] ; then
+               /bin/rm -f $2
+               mv $2.tmp $2
+            fi
+            sleep 10
+         else
+            chmod $mode $2; Done=True
+         fi
+         Tries=`expr $Tries + 1`
+      else
+         [ "$UPDEBUG" = "YES" ] && \
+          echo "UPDCOPYSUB: $rcmd ${Account}@$RemoteSystem:$1 $2"
+         $rcmd ${Account}@$RemoteSystem:$1 $2 2> /dev/null
+         Newer=`find $2 -newer $LogFile -print 2> /dev/null`
+#                                       If the copy was successful, then
+#                                       Newer contains output filename.
+#                                       Checksum would be better....
+         case $Newer in
+            $2) chmod 775 $Newer; Done=True ;;
+             *) sleep 10 ;;
+         esac
+         Tries=`expr $Tries + 1`
+      fi
+   done
+fi
+if [ "$Done" = "True" ] ; then
+   echo "UPDCOPYSUB: Copied $1" >> $LogFile
+   echo "UPDCOPYSUB: to     ${ClientName}:$2" >> $LogFile
+   rm -f $2.old
+   Status=0
+else
+   echo "UPDCOPYSUB: Copy of $1" | tee -a $ErrorFile >> $LogFile
+   echo "UPDCOPYSUB: to      ${ClientName}:$2" | tee -a $ErrorFile \
+    >> $LogFile
+   echo "UPDCOPYSUB: failed after $MaxTries attempts." \
+    | tee -a $ErrorFile >> $LogFile
+   Status=1
+   if [ \( -f $2.old \) -a \( $myold -eq 1 \) ] ; then
+      echo "UPDCOPYSUB: restoring $2 from $2.old" >>$LogFile
+      mv $2.old $2
+      [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: mv $2.old $2"
+      if [ ! -f $2 ] ; then
+         echo "UPDCOPYSUB: - restore FAILED???" >>$LogFile
+         [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: OUCH!!!!"
+      fi
+   fi
+fi
+exit $Status

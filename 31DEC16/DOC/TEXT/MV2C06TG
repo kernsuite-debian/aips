@@ -1,0 +1,107 @@
+@@
+Task Adverb Save file       TGfvvvnnn.uuu;
+
+
+A. Overview
+
+Function:  The Task Save file stores the adverb values for the most
+recent execution of each task for each user.
+
+Details:  When AIPS, AIPSB, and AIPSC "spawn" tasks they pass adverb
+values to the task via the Task Data file.  The values are also saved
+in a directoried Task Save file.  The file contains only one area per
+task root name, but can hold areas for a large number of tasks.  The
+adverb values used for the last execution of a given task may be
+retrieved from this file using the task's Inputs file and a process
+similar to GO.  The adverb values may also be put into the file with
+the verb TPUT without actually spawning the task.
+
+Names:  The file is named TGfvvvnnn.uuu, where, for all interactive
+AIPS, vvv is a version code (0M8 = 800 in 31DEC14, 0B4 = 400
+previously), uuu is the user number in extended hex and nnn is 0 for
+the file used by GO, TGET, and TPUT.  For VPUT and VGET, nnn is the
+value of VNUMBER.  For batch AIPS, vvv is 800 + the POPS number.  For
+batch, these files are temporary and last only through the execution
+of the batch (or Checker) job.  For interactive however, they are
+created when first needed and remain until explicitly destroyed.  Note
+too that TGET and TGINDEX in 31DEC14 looks for tasks first in the new
+format file and then in the old format file.  The format revision code
+letter is f (D at present).
+
+
+B. File structure
+
+
+     The first ten (was 6) 256-word blocks in the file consist of
+5-word logical records, 51 per block.  The first logical record
+(called logical record # 0) contains
+
+    FIELD   TYPE           DESCRIPTION
+
+      1     I*4         Number of 256-word blocks in file
+      2     I*4         Number of tasks currently in directory
+      3     I*4(2)      Most recent write access (packed YY/MM/DD,
+                           HH/MM/SS)
+      4     I*4         Reserved
+
+Logical records 1 through 509 (was 305) contain task information:
+
+    FIELD   TYPE           DESCRIPTION
+
+      1     I*4(2)      Task name (Hollerith)
+      2     I*4(2)      Last write access time (packed YY/MM/DD,
+                           HH/MM/SS)
+      3     I*4         Version code: 1-10 => OLD, NEW, TST, CVX,
+                           OLDPSAP, NEWPSAP, TSTPSAP, CVXPSAP,
+                           LOCAL, PRIVATE
+
+Note that we allow 8-character names here.  This permits a user to save
+the adverb values for verbs (via GO < verb-name >) if so desired.  The
+fact that a verb was specified will be trapped and the sequence
+TPUT < verb-name > ; < verb-name > will be substituted.  Of course,
+the user can simply save the verb parameters with TPUT < verb-name >.
+
+     The remainder of the file contains task data in a form similar to
+that transmitted to the task in the TD file.  The TD file contains
+only the adverb values one after another.  The TG file (in 31DEC14)
+contains the adverb name (8 hollerith characters) and the adverb size
+and type (integer = 10 * size + type, where size is the number of
+4-byte words in the value and the type is 1 for scalar, 2 for array,
+and 7 for character data) followed by size words of data.  The adverb
+names, sizes, and data follow each other in the file in the order in
+which they occur in the INPUTS file for the task or verb.  Eight (was
+4) records per task are provided.  If the task name occurs in the
+directory logical record IN, then the task data occur in physical
+blocks 8 * IN + 11 and, if needed, up to 8 * IN + 18.
+
+
+C. Usage notes
+
+     There should be no need for routines other than those listed below
+to access this file.
+
+
+D. Routines which read and write the Task Save file
+
+
+     The subroutine AU2 performs the operations of GO, TPUT, and VPUT
+(see description of the TD file in this chapter).  As it does so, it
+also opens the TG file (creating one if needed) and locates the task
+name in the directory (creating an entry and expanding the file, if
+needed).  When it writes a record to the TD file, it writes the same
+data (plus adverb names and descriptions) to the appropriate record of
+the TG file.
+
+     The subroutine AU2A performs the verb TGINDEX which lists the task
+names and last write times found in the TG file directory (both new
+and old formats).  AU2A also performs the verb-like portions of the
+pseudoverbs TGET and VGET.  Using code nearly identical to that of
+AU2, it locates the relevant Inputs file and locates the task name in
+the TG file directory.  It then parses the Inputs file identifying the
+adverb names and properties via POPS language processing routines and
+transfers the adverb values from the TG file to the in-core K array.
+In the new format, it gets the adverb names from the TG file, checks
+the size and type against those now known to POPS, and saves the data
+to the in-core K array.  It then compares the list of adverbs found in
+the TG file with those now found in the Inputs file.  Any differences
+in size, type, or adverb lists are reported to the user.

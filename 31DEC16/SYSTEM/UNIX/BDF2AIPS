@@ -1,0 +1,139 @@
+#!/bin/csh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2010-2011
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+set day = "`date +%Y.%j.%H%M%S`"
+set tmp = "/tmp"
+set run = "${tmp}/BDF2AIPS.run.${day}"
+set log = "${tmp}/BDF2AIPS.log.${day}"
+echo "Time is ${day}"
+#                                   aips_root
+if (-f $AIPS_ROOT/LOGIN.CSH ) then
+   set air = "$AIPS_ROOT"
+else
+   echo -n "enter $AIPS_ROOT"
+   set air = $<
+endif
+source ${air}/LOGIN.CSH
+echo "Obit is `which ObitTalk`"
+echo -n "BDF dir-path : "
+set bdfd = $<
+echo -n "AIPS usrnumb : "
+set anum = $<
+if ( ${anum} == "" ) then
+   echo -n "AIPS usrnumb REQUIRED: "
+   set anum = $<
+endif
+echo -n "AIPS outname : "
+set aout = $<
+if ( ${aout} == "" ) then
+   set aout = "BDFIn data"
+endif
+echo -n "AIPS outdisk : "
+set adsk = $<
+if ( ${adsk} == "" ) then
+   set adsk = 0
+endif
+echo "Do you want to select on calibrator code? Default/blank is no,"
+echo -n "otherwise eg ANY, NONE, D, DQ (max 4 in single string): "
+set code = $<
+set code = `echo "$code" | tr '[a-z]' '[A-Z]'`
+if ( ${code} == "ANY" ) then
+   set code = "*"
+endif
+echo "Only SpWs with this number of channels are selected, others ignored."
+echo -n "Default/blank is the #chans in 1st SpW. #chans select : "
+set achn = $<
+if ( ${achn} == "" ) then
+   set achn = 0
+endif
+echo "Do you want to retain the OBSERVED order of the SpWs?"
+echo -n "Default/blank is yes, otherwise reorder in increasing frequency: "
+set order = $<
+if ( ${order} == ""  ) then
+   set order = True
+else
+   set order = False
+endif
+echo -n "ASDM array configuration to select : "
+set aconf = $<
+set abnd = ""
+set aifs = 0
+if ( ${aconf} == "" ) then
+   set aconf = -1
+   echo "Only scans with this number of SpWs is selected, others ignored"
+   echo -n "Default/blank is the #SpWs in 1st scan. #SpWs select : "
+   set aifs = $<
+   if ( ${aifs} == "" ) then
+      set aifs = 0
+   endif
+   echo "Default band is the one in 1st PpW."
+   echo "Recognized: 4,P,L,S,C,X,Ku,K,Ka,Q,W,blank"
+   echo -n "Band select : "
+   set abnd = $<
+endif
+#echo "path ${PATH}"
+touch ${log}
+cat > ${run} << EOF
+#LS@NRAO: Runfile for ObitTalk auto-created ${day} (Y.j.HM)
+user=${anum}
+from OTObit import *
+AIPS.AIPS.userno=user
+OSystem.PSetAIPSuser (user)
+err=OErr.OErr()
+x=ObitTask("BDFIn")
+x.DataRoot="${bdfd}"
+x.DataType="AIPS"
+x.outName="${aout}"
+x.outClass="UVEVLA"
+x.outDisk=${adsk}
+x.calInt=0.25
+x.selChan=${achn}
+x.SWOrder=${order}
+x.selIF=${aifs}
+x.selBand="${abnd}"
+x.selCode="${code}"
+x.selConfig=${aconf}
+x.doCode=True
+x.doSwPwr=False
+x.Compress=False
+x.taskLog="${log}"
+x.inputs(file=x.taskLog)
+x.g
+EOF
+cat ${run} >> ${log}
+echo >> ${log}
+echo "Run file ${run}"
+echo "ObitTalk ${run} >> ${log}" >> ${log}
+echo "Resulting log from above input and command line follows:" >> ${log}
+echo >> ${log}
+ObitTalk ${run} >> ${log}
+echo >> ${log}
+echo "Done at `date +%H%M`" >> ${log}
+echo "Log file ${log}"
+cat ${log}
+#echo "Done at `date +%H%M`"
+exit

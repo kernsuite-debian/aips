@@ -1,0 +1,755 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2003
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\documentclass[11pt]{article}
+
+%\usepackage{graphicx}
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{amssymb}
+%\usepackage{times}
+\input{/home/planetas/TeX/inputs/macros}
+
+\newcommand{\aips}{${\cal AIPS}$}
+\renewcommand{\theequation}{\arabic{equation}}
+
+\evensidemargin=0truein
+\oddsidemargin=0truein
+\topmargin=-0.25truein
+\textheight=8.75truein
+\textwidth=6.5truein
+\headheight=0.25truein
+\headsep=0.25truein
+
+\addtocounter{secnumdepth}{2}
+
+\begin{document}
+
+\sloppy
+
+\
+
+\vskip 5truemm
+
+\begin{center}
+ \fontsize{12}{1.0\normalbaselineskip}\selectfont
+ \fbox{\aips \ Memo 108}
+
+ \
+
+ \
+
+ \
+
+ \fontsize{16}{1.0\normalbaselineskip}\selectfont
+ Weights for VLA Data
+
+ \
+
+ \
+
+ \fontsize{12}{1.0\normalbaselineskip}\selectfont
+ Bryan J. Butler
+
+ \
+
+ \
+
+ \isotoday
+
+ \
+
+ \
+
+ \fontsize{10}{1.0\normalbaselineskip}\selectfont
+ {\bf Abstract}
+\end{center}
+
+\fontsize{10}{1.0\normalbaselineskip}\selectfont
+
+A method for calculating the properly calibrated weights for VLA data
+in AIPS (or AIPS++, or any other package) is presented, along with some
+related information on the ``nominal sensitivity'' quantity stored in
+the VLA archive data.  A method of determining the quantity
+$T_{sys} / \eta_a$ for each antenna using the properly calibrated
+weights is also presented.
+
+\fontsize{11}{1.0\normalbaselineskip}\selectfont
+
+\section{Introduction}
+
+In AIPS Memo 103 (Desai 2000), a nice scheme for calculating weights
+for VLA data in AIPS is outlined.  This scheme allows for proper
+relative weighting of data based on the different surface and receiver
+characteristics for each antenna, and has been an important part of VLA
+data reduction since implemented into FILLM by Eric Greisen.
+Unfortunately, there is a scaling error in that memo, so the recommended
+weights aren't truly calibrated.  In addition, the implementation in
+FILLM is not strictly as recommended in AIPS Memo 103, resulting in a
+different scaling factor, which is also in error.  Since the error is
+only a scaling factor in the weights, as long as only VLA data which
+has all gone through this weighting scheme is used (including combining
+together different data sets), the error should not have any affect on
+the end-result.  The exception is that continuum data from before and
+after the change to full complex correlation should not be put together
+after using the current scheme (see discussion below).  In addition, it
+should not be assumed that these weights are calibrated correctly
+because of this error, i.e., one should not expect to be able to
+examine the weights at the end of the calibration process to deduce
+information about true visibility variance or rms, or antenna and
+receiver system characteristics (e.g., the antenna $G/T$).
+
+This memo outlines the proper way to do weighting of VLA data, which
+should result in true calibrated weights.  It is not recommended that a
+change be made to the way that FILLM calculates weights by default,
+since in most cases this scaling factor is transparent (the ones that
+come to mind where it is important are when combining VLA data with
+data from another telescope, or, again, when combining VLA continuum
+data from before and after the change to full complex correlation), but
+rather use this note as a guide to how the weighting should be done if
+true weights are desired.  It is recommended, however, that a user
+selectable option in FILLM to get this behavior be added (e.g., have
+the default DOWEIGHT=1 imply that the current scheme is used, but allow
+for DOWEIGHT=2 to specify that the scheme described herein be used, or
+something similar).
+
+\section{Deriving the AIPS weight}
+
+AIPS defines the ``weight'' on the visibility for the baseline between
+antennas $i$ and $j$, $w_{ij}$ as the inverse variance (i.e., in the
+standard way):
+\begin{equation}
+   \label{weighteqn}
+   w_{ij} = \frac{1}{\sigma_{ij}^2} \quad ,
+\end{equation}
+where $\sigma_{ij}$ is the standard deviation.  The standard deviation
+can be written, in units of Wm$^{-2}$Hz$^{-1}$:
+\begin{equation}
+   \label{sigmaeqn}
+   \sigma_{ij} = \frac{\sqrt{2} \, k \, \sqrt{T_{sys_i} \, T_{sys_j}}}
+                      {\eta_c \, \sqrt{\eta_{a_i} \, \eta_{a_j}} \, A \,
+                       \sqrt{\Delta\nu \, \Delta{t}}}
+   \quad ,
+\end{equation}
+where $k$ is Boltzmann's constant, $A$ is the physical antenna area,
+$T_{sys_i}$ and $\eta_{a_i}$ are the system temperature and aperture
+efficiency for antenna $i$, $\eta_c$ is the correlator efficiency,
+$\Delta\nu$ is the bandwidth, and $\Delta{t}$ is the integration time.
+I've ignored other system loss terms, assuming they are small.
+Substituting equation~\ref{sigmaeqn} into equation~\ref{weighteqn}
+yields:
+\begin{equation}
+   w_{ij} = \frac{\eta_c^2 \, A^2}{2 \, k^2} \ \Delta\nu \Delta{t} \
+            \frac{\eta_{a_i}}{T_{sys_i}}\, \frac{\eta_{a_j}}{T_{sys_j}}\
+            \times \ 10^{-52} \quad ,
+\end{equation}
+where the factor of $10^{-52}$ converts the weight into units of inverse
+Janskys squared (Jy$^{-2}$).
+
+To calculate the weight, therefore, it is necessary to know the
+quantity $\eta_a / T_{sys}$ for the two antennas forming the baseline.
+That quantity can be determined from the so-called ``nominal
+sensitivity'', $S_i$ which is written on the archive tape for each
+antenna at each integration.  That quantity is defined as (Butler 1998):
+\begin{equation}
+\label{nomsenseqn}
+   S_i = \frac{3}{V_{sd_i}}
+         \left(
+          \frac{1}{\kappa} \, \frac{T'_{cal_i} \, g_i}{\eta'_{a_i}}
+         \right)
+   \quad ,
+\end{equation}
+where $V_{sd_i}$ is the sync-detector voltage, $T'_{cal_i}$ and
+$\eta'_{a_i}$ are the {\it assumed} values for the noise tube
+temperature and aperture efficiency, $g_i$ is the peculiar gain, and
+$\kappa$ is a value which combines the area of the dish, Boltzmann's
+constant, the front end gain, and other constants.  In the current
+on-line system, $\kappa = 21.59$, but prior to May 1, 1990, the on-line
+system used $\kappa = 24.32$ (see Appendix A for comments on this).
+Assuming that the total power voltage is constant at 3 V, then (Butler
+1998):
+\begin{equation}
+   \label{Tsyseqn}
+   T_{sys_i} = \frac{45 \, T_{cal_i}}{V_{sd_i}} \quad ,
+\end{equation}
+where $T_{cal_i}$ is the {\it true} noise tube temperature (as opposed
+to that assumed in the on-line system).  Substituting
+equation~\ref{Tsyseqn} into equation~\ref{nomsenseqn} yields:
+\begin{equation}
+\label{Sieqn}
+   S_i = \frac{T_{sys_i}}{15 \, T_{cal_i}}
+         \left(
+          \frac{1}{\kappa} \, \frac{T'_{cal_i} \, g_i}{\eta'_{a_i}}
+         \right)
+   \quad .
+\end{equation}
+
+The VLA on-line system calculates visibilities in dekaJanskys as:
+\begin{equation}
+\label{VLAeqn}
+   \hat{V}_{ij} = 256 \ \sqrt{S_i \, S_j} \ \hat{r}_{ij} \quad ,
+\end{equation}
+where $\hat{r}_{ij}$ is the normalized correlation coefficient.  The
+relationship between $\rho_{ij}$ and $\hat{r}_{ij}$ is (Butler 1998):
+\begin{equation}
+   \rho_{ij} = 1.236 \, \hat{r}_{ij} \quad ,
+\end{equation}
+so,
+\begin{equation}
+\label{VLAeqn2}
+   \hat{V}_{ij} = \frac{256}{1.236} \ \rho_{ij} \ \sqrt{S_i \, S_j}
+   \quad .
+\end{equation}
+Substituting equation~\ref{Sieqn} into equation~\ref{VLAeqn2} yields:
+\begin{equation}
+\label{VLAeqn3}
+   \hat{V}_{ij} = \frac{13.81}{\kappa} \ \rho_{ij} \
+      \sqrt{\frac{T_{sys_i} \, T'_{cal_i} \, g_i}
+                 {T_{cal_i} \, \eta'_{a_i}} \
+            \frac{T_{sys_j} \, T'_{cal_j} \, g_j}
+                 {T_{cal_j} \, \eta'_{a_j}} } \quad .
+\end{equation}
+During calibration, complex antenna gain factors are determined which
+multiply the visibilities to put them on a properly calibrated flux
+density scale (in Jy).  If we refer to the amplitude of this complex
+calibration gain for antenna $i$ as $G_i$, then the calibrated
+visibilities are:
+\begin{equation}
+\label{VLAeqn4}
+   V'_{ij} = \frac{13.81}{\kappa} \ \rho_{ij} \ G_i \, G_j \
+             \sqrt{\frac{T_{sys_i} \, T'_{cal_i} \, g_i}
+                        {T_{cal_i} \, \eta'_{a_i}} \
+                   \frac{T_{sys_j} \, T'_{cal_j} \, g_j}
+                        {T_{cal_j} \, \eta'_{a_j}} }
+\quad .
+\end{equation}
+
+From theory, the conversion from correlation coefficient $\rho_{ij}$ to
+true visibility amplitude $V_{ij}$ in Jy is:
+\begin{equation}
+\label{viseqn}
+   V_{ij} = \frac{2 \, k}{A}
+          \sqrt{\frac{T_{sys_i} \, T_{sys_j}}{\eta_{a_i} \, \eta_{a_j}}}
+            \ \rho_{ij} \ \times \ 10^{26}
+   \quad .
+\end{equation}
+For the VLA, $A = 491$ m$^2$, so
+\begin{equation}
+\label{viseqn2}
+   V_{ij} = 5.625 \ \rho_{ij} \
+          \sqrt{\frac{T_{sys_i} \, T_{sys_j}}{\eta_{a_i} \, \eta_{a_j}}}
+   \quad .
+\end{equation}
+Set equation~\ref{VLAeqn4} and equation~\ref{viseqn2} equal, call
+$\kappa' = 10 \times 256 / (1.236 \times 15 \times 5.625) = 24.55$,
+and solve for the true aperture efficiency:
+\begin{equation}
+\label{etaeqn}
+   \eta_{a_i} = \frac{\kappa}{\kappa'} \
+                \frac{T_{cal_i} \ \eta'_{a_i} \ 10}
+                     {T'_{cal_i} \ g_i \ G_i^2}
+   \quad .
+\end{equation}
+From equation~\ref{Sieqn}, we know that
+\begin{equation}
+\label{Tsyseqn2}
+   T_{sys_i} = \frac{15 \ T_{cal_i} \ S_i \ \kappa \ \eta'_{a_i}}
+                    {T'_{cal_i} \ g_i}
+   \quad .
+\end{equation}
+Combining equation~\ref{etaeqn} and equation~\ref{Tsyseqn2} yields:
+\begin{equation}
+   \label{ratioeqn}
+   \frac{\eta_{a_i}}{T_{sys_i}} =
+      \frac{10}{15 \ \kappa' \ S_i \ G_i^2} \quad .
+\end{equation}
+As an aside, note that Rick Perley's ``$K$-term'' for calculating
+sensitivity on the VLA (see Taylor et al. 2002, section 3.2 and
+equations 1-3) can be calculated for each antenna via:
+\begin{equation}
+   K_i \sim 0.1186 \ \frac{T_{sys_i}}{\eta_{a_i}}
+       \sim 0.178 \ \kappa' \ S_i \ G_i^2
+   \quad .
+\end{equation}
+
+Substituting equation~\ref{ratioeqn} into equation~\ref{weighteqn}
+yields:
+\begin{equation}
+   w_{ij} = \frac{\eta_c^2 \ A^2}{2 \ k^2} \ \Delta\nu \Delta{t} \
+            \frac{10^2}
+                 {15^2 \ \kappa'^2 \ S_i \ S_j \ G_i^2 \ G_j^2} \
+            \times \ 10^{-52} \quad ,
+\end{equation}
+
+Desai (2000) claimed that there was no need to worry about the
+correlator efficiency, since it was accounted for in the nominal
+sensitivity.  This is not true, it is necessary to account for it, as
+has been shown above.  This is because correlator efficiency as defined
+here does not affect the amplitude scale (the scaling from correlation
+coefficient to Janskys), but does result in a decrease in SNR, or an
+effective increase in the noise (or decrease in the weight).  So, it
+{\it is} necessary to know what the correlator efficiency is for the
+VLA, and to include it when calculating the weight.  Unfortunately, it
+is not a single number.  There are separate values when using the
+correlator for spectral line and continuum, and the continuum case is
+further complicated by the fact that the correlator was modified several
+years ago for full complex correlation, changing the efficiency.  Before
+the full complex correlation improvement, the value when using the
+correlator in spectral line mode was $\eta_c \sim 0.77$, while that for
+continuum mode was $\eta_c \sim 0.79$ (Crane \& Napier 1994).  After
+the improvement, the continuum mode value increased to $\eta_c \sim
+0.87$ (Bagri 1997; Bagri 1998).  Ignoring the difference between 0.77
+and 0.79 (use $\eta_c = 0.78$ for both spectral line and continuum
+modes before the full complex correlation improvement), using $A = 491$
+m$^2$, and putting in the other constant numerical terms yields:
+\begin{equation}
+\label{finalweqn}
+   w_{ij} =
+      \begin{cases}
+         2.84 \times 10^{-5} \
+            \dfrac{\Delta\nu \ \Delta{t}}{S_i \ S_j} \
+            \dfrac{1}{G_i^2 \ G_j^2} &
+            \qquad {\rm Case \ 1}, \\[6truemm]
+         3.53 \times 10^{-5} \
+            \dfrac{\Delta\nu \ \Delta{t}}{S_i \ S_j} \
+            \dfrac{1}{G_i^2 \ G_j^2} &
+            \qquad {\rm Case \ 2},
+      \end{cases}
+\end{equation}
+where Case 1 is spectral line data taken at any time, or continuum data
+taken before July 30, 1998, and Case 2 is continuum data taken after
+July 30, 1998 (that is the date when, as accurately as can be
+reconstructed by Ken Sowinski, the change to full complex correlation
+was made in the on-line system).
+
+Does this make sense?  Invert equation~\ref{finalweqn} for the standard
+deviation, and use $S_j \equiv S_i$ and $G_j \equiv G_i$:
+\begin{equation}
+   \sigma_{ij} = \frac{1}{\sqrt{w_{ij}}} \sim
+                 \frac{S_i \ G_i^2}
+                    {\sqrt{3 \times 10^{-5} \ \Delta\nu \ \Delta{t}}}
+   \quad .
+\end{equation}
+Experience with the VLA at X- and C-bands is that the nominal
+sensitivity is of the order of 0.2, and the squared gain factors are
+roughly 10.  Plug in numbers for continuum ($\Delta\nu \sim 45$ MHz) and
+10 second integrations, and this gives $\sigma_{ij} \sim 18$ mJy.  This
+is a perfectly reasonable value for the rms per visibility.
+
+So, the weight that should be attached to each visibility before
+calibration (at the FILLM stage) is:
+\begin{equation}
+   \hat{w}_{ij} =
+      \begin{cases}
+         2.84 \times 10^{-5} \
+            \dfrac{\Delta\nu \ \Delta{t}}{S_i \ S_j} &
+            \qquad {\rm Case \ 1}, \\[6truemm]
+         3.53 \times 10^{-5} \
+            \dfrac{\Delta\nu \ \Delta{t}}{S_i \ S_j} &
+            \qquad {\rm Case \ 2}.
+      \end{cases}
+\end{equation}
+After calibration, this should be adjusted by the gain amplitudes:
+\begin{equation}
+   w'_{ij} = \hat{w}_{ij} \ \frac{1}{G_i^2 \ G_j^2} \quad .
+\end{equation}
+
+\section{Comparison with AIPS Memo 103}
+
+AIPS Memo 103 recommended the following weight calculation, using the
+notation used herein:
+\begin{equation}
+   \hat{w}_{ij_{103}} = \frac{\Delta\nu \, \Delta{t}}{S_i \, S_j}\quad .
+\end{equation}
+Again, this has the right functional form, but is missing the scaling
+factor.
+
+\section{Comparison with current FILLM implementation}
+
+FILLM calculates the weights in subroutine MCWAIT.  This subroutine is
+passed weights which are in 10's of seconds (i.e., a 10 second
+integration has an associated weight of 1.0), and modifies them.  In
+detail, the bit of code that does this (taking out loops, special cases,
+and condensing the code) is currently (in all 3 of OLD, NEW, and TST
+[31DEC00, 31DEC01, and 31DEC02]):
+
+{
+\samepage
+\begin{itemize}
+   \item[] XBW = SQRT (0.12 * RBW) / SQRT (1000.)
+   \vspace*{-2truemm}
+   \item[] CORFAC(IS) = XBW / MCANNS(IS,IA1)
+   \vspace*{-2truemm}
+   \item[] CORFAC(IS+4) = XBW / MCANNS(IS,IA2)
+   \vspace*{-2truemm}
+   \item[] CFACT = CORFAC(IP1) * CORFAC(IP2)
+   \vspace*{-2truemm}
+   \item[] VIS(INDEX+2) = VIS(INDEX+2) * CFACT
+\end{itemize}
+}
+
+\noindent
+where RBW is the bandwidth, and MCANNS(IS,IA$i$) is the nominal
+sensitivity for antenna $i$ and polarization IS as contained in the
+archive.  Writing this in the notation used herein:
+\begin{equation}
+   \hat{w}_{ij_{\rm FILLM}} = 1.20 \times 10^{-5} \
+                     \dfrac{\Delta\nu \, \Delta{t}}{S_i \, S_j}  \quad .
+\end{equation}
+Again, this has the right functional form, and at least it {\it has} a
+scaling factor, but that factor is not right.  It is a factor of 2.4 or
+2.9 too low when compared to the correct value.  The scaling factor in
+FILLM was determined by simply adjusting the numerical factors until the
+observed and expected weights agreed crudely (``chi-by-eye'', if you
+will) for a particular L-band data set being reduced at the time that
+the weighting scheme was being implemented (as explained by Eric
+Greisen).
+
+Note that AIPS++ currently calculates the visibility weights in exactly
+the same way as the current AIPS FILLM does (with the same scaling
+factor), and hence suffers from the same problem (see:
+http://aips2.nrao.edu/released/docs/user/NRAO/node74.html).
+
+\section{Other issues}
+
+The on-line system only calculates the $S_i$ at every 10 second tick,
+so fluctuations in system temperature on shorter timescales are not
+reflected in the $S_i$.  In fact, the system temperature is smoothed
+to roughly 6 seconds (the sync-detector voltage values are smoothed to
+that timescale - see description in Butler 1998) anyway for normal
+integration times (all $>$ 1.667 sec), so there shouldn't be substantial
+variations on timescales less than 10 seconds.  But users should be
+aware of the possibility.
+
+For sources which need the full van Vleck quantization correction (those
+which are very strong), there will be an error in the weights, since the
+equivalent of the nominal sensitivity will have a different value in
+that case, which is not accounted for above.
+
+It is unclear if this affects the solar-mode observing, and how those
+data are handled in FILLM.  It probably makes no difference, but that
+has not been checked.
+
+\section{Why bother?}
+
+If the scaling error in the current FILLM is not important for most
+cases, then why bother with the correct scaling?  The reasons are
+twofold.  First, if it is desired to combine data from the VLA taken
+before and after the change to full complex correlation, then if the
+current scheme is used, the weights will not be right between the
+datasets.  The scheme proposed in this memo provides a solution to this
+problem.  A similar argument may be made for the case when VLA data is
+combined with data from another telescope.  Secondly, if the weights
+were really properly calibrated, then they could be used to deduce
+information about the system which is hard to determine by other means.
+If the weights are really properly calibrated, then it should be
+possible to calculate the value of $T_{sys} / \eta_a$ for each antenna
+(see Appendix B).  One other possible use is if VLA data is combined
+with data from other telescopes which have realistic weights attached to
+them (on a calibrated flux density scale), then there will be no
+required mucking about with reweighting the data.
+
+\section{Conclusion}
+
+A method has been presented that calculates properly calibrated weights
+for VLA data.  The proper calibration is obtained by assuring that the
+initial raw visibilities and the weights assigned to them are on the
+same (uncalibrated) flux density scale.  After proper calibration,
+assuming that any calibrations that are applied to the raw visibilities
+are also applied to the weights, the weights will be properly
+calibrated, i.e., in units of Jy$^{-2}$.  The current weights assigned
+in AIPS via FILLM are nearly right, but off by a scaling factor.  It is
+not recommended that the current calculation of the weights in FILLM be
+replaced by the one presented here, since for most cases this scaling
+error is unimportant.  However, it {\it is} recommended that an option
+be added to do the proper scaling in FILLM (e.g., have the default
+DOWEIGHT=1 imply that the current scheme is used, but allow for
+DOWEIGHT=2 to specify that the scheme presented herein be used).  This
+could also be obtained by using the task WTMOD, but that seems less
+attractive.  Having these properly calibrated weights would allow for
+straightforward combination of all VLA data, as well as examination of
+the weights to determine actual system parameters.
+
+\
+
+\section*{Appendix A.  Derivation of $\kappa$}
+
+This appendix describes the calculation of the correct value for the
+quantity $\kappa$ used in the on-line system ``nominal sensitivity''.
+
+Assume that the peculiar gain is adjusted by monitoring so that:
+\begin{equation}
+   \frac{T'_{cal_i} \ g_i}{\eta'_{a_i}} = \frac{T_{cal_i}}{\eta_{a_i}}
+   \quad .
+\end{equation}
+This peculiar gain adjustment is done at all VLA bands except Q-band
+via the MODCAL procedure.  Now substitute this into
+equation~\ref{VLAeqn3}:
+\begin{equation}
+   \hat{V}_{ij} = \frac{256}{15 \times 1.236 \times \kappa} \ \rho_{ij}\
+      \sqrt{\frac{T_{sys_i}}{\eta_{a_i}} \
+            \frac{T_{sys_j}}{\eta_{a_j}} } \quad .
+\end{equation}
+
+Set this equal to equation~\ref{viseqn}, (but note that it needs to be
+in DJy, so the scaling factor is 10$^{25}$ instead of 10$^{26}$) and
+solve for $\kappa$:
+\begin{equation}
+   \kappa = \frac{256}{1.236 \times 15 \times 10^{25}} \
+            \frac{A}{2 \, k} \
+   \quad .
+\end{equation}
+For the VLA, $A = 491$ m$^2$, so
+\begin{equation}
+   \kappa = 24.55 \quad .
+\end{equation}
+This is exactly the $\kappa'$ term above, which is no coincidence.
+
+The value for $\kappa$ used in the on-line system until May 1, 1990
+(this date is a best estimate from Ken Sowinski based on perusal of old
+change logs and module listings) was $\kappa = 24.32$.  This agrees well
+with the value of 24.55 derived above (to better than 1\%).  The value
+was changed in the May 1, 1990 on-line code upgrade to $\kappa = 21.59$.
+This change was made in the midst of an overhaul of the solar observing
+code in the on-line system.  It is likely that the new value of $\kappa$
+was simply calculated incorrectly (and Ken does not disagree with this
+assessment).  The difference is probably manifested in a bias in the
+on-line values of the peculiar gain, and has not been noticed before
+because of the other various scaling factors which can be in error in
+the on-line system (e.g., the antenna efficiency, which is assumed to
+be the same for all antennas).
+
+%Note that the formally ``correct'' value of $\kappa$ is unimportant in
+%the context of determining the weights that AIPS should use.  As long
+%as the same value of $\kappa$ is used when setting the initial weights
+%as was used by the on-line system, then the (uncalibrated) weights and
+%raw visibilities will be on the same scale, and calibration will put
+%them both on the same (true) flux density scale.
+
+\
+
+\section*{Appendix B.  Deriving $T_{sys} / \eta_a$ from weights}
+
+This appendix describes the use of properly calibrated weights to
+determine the interesting quantity $T_{sys} / \eta_a$ for each antenna.
+
+Define for each antenna:
+\begin{equation}
+   \alpha_i \equiv \sqrt{\frac{T_{sys_i}}{\eta_{a_i}}} \quad ,
+\end{equation}
+then
+\begin{equation}
+   \frac{1}{\sqrt{w_{ij}}} = \sigma_{ij} = \beta \ \alpha_i \, \alpha_j
+   \quad ,
+\end{equation}
+where $\beta$ combines all the known quantities:
+\begin{equation}
+   \beta = \frac{\sqrt{2} \, k}
+                {\eta_c \, A \, \sqrt{\Delta\nu \, \Delta{t}}}
+  \quad .
+\end{equation}
+
+Given the values of $\sigma_{ij} = 1 / \sqrt{w_{ij}}$ for all of the
+baselines, it should then be possible to back out the values of
+$\alpha_i$ and hence the quantity $T_{sys_i} / \eta_{a_i}$ for all of
+the antennas.
+
+First, given $N$ antennas, form an upper diagonal $N \times N$ matrix
+${\bf A}$ where $A_{ij} = \sigma_{ij} / \beta$ for $i < j$, and
+$A_{ij} = 0$ for $i = j$:
+\begin{equation}
+  \label{Aeqn}
+   {\bf A} = \left(
+             \begin{array}{ccccccc}
+             0 & \alpha_1\alpha_2 & \alpha_1\alpha_3 & \alpha_1\alpha_4
+                  & \alpha_1\alpha_5& \ldots & \alpha_1\alpha_N \\
+             0 & 0 & \alpha_2\alpha_3 & \alpha_2\alpha_4
+                  & \alpha_2\alpha_5 & \ldots & \alpha_2\alpha_N \\
+               & & & \alpha_3\alpha_4
+                  & \alpha_3\alpha_5 & \ldots & \alpha_3\alpha_N \\
+               & & &
+                  & \alpha_4\alpha_5 & \ldots & \alpha_4\alpha_N \\
+             \vdots & & & \ddots & & & \vdots \\
+              & & &
+                  & & \alpha_{N-2}\alpha_{N-1} & \alpha_{N-2}\alpha_N \\
+              & & & & & & \alpha_{N-1}\alpha_N \\
+             0 & & & \ldots & & & 0
+             \end{array}
+             \right)
+  \quad .
+\end{equation}
+Then, form a chi-squared quantity:
+\begin{equation}
+   \chi^2 = \sum_{i=1}^{N-1} \sum_{j>i}^N
+              \left(A_{i,j} - \alpha'_i\alpha'_j\right)^2
+   \quad ,
+   \label{chisqeqn}
+\end{equation}
+where $\alpha'_i$ is some estimate of $\alpha_i$ (the true value).
+The derivatives of this chi-squared quantity with respect to the
+values of the $\alpha'_k$ are:
+\begin{equation}
+\frac{\partial\chi^2}{\partial\alpha'_k} =
+   -2\left[\sum_{i=1}^{k-1} \left(A_{i,k} -
+                                  \alpha'_i\alpha'_k\right) \, \alpha'_i
+         + \sum_{j=k+1}^N \left(A_{k,j} -
+                                \alpha'_k\alpha'_j\right) \, \alpha'_j
+     \right]
+\quad ,
+\end{equation}
+for each $k=1,2,\ldots,N$.  Setting this equal to 0, to minimize
+chi-squared, implies:
+\begin{equation}
+   \alpha'_k = \dfrac{
+      \displaystyle \sum_{i=1}^{k-1} A_{i,k}\,\alpha'_i +
+                      \sum_{j=k+1}^N A_{k,j}\,\alpha'_j}
+     {\displaystyle \sum_{l \neq k} \left(\alpha'_l\right)^2}
+  \quad .
+  \label{alphaeqn}
+\end{equation}
+
+A method for finding the best estimate of the true values for the
+$\alpha_k$ is to come up with some initial estimate, then iterate using
+the above relation and the given current estimates of the $\alpha'_k$,
+i.e.:
+
+{
+\samepage
+\begin{itemize}
+   \item[] estimate the initial $\alpha'_k$
+   \vspace*{-3truemm}
+   \item[] {\bf do} until some tolerance is reached
+   \vspace*{-3truemm}
+   \item[] \ \ \ \ \ {\bf do} for each antenna $k$
+   \vspace*{-3truemm}
+   \item[] \ \ \ \ \ \ \ \ \ \ use equation~\ref{alphaeqn} to find the
+              new estimate of $\alpha'_k$
+   \vspace*{-3truemm}
+   \item[] \ \ \ \ \ {\bf od}
+   \vspace*{-3truemm}
+   \item[] {\bf od}
+\end{itemize}
+}
+
+A reasonable initial estimate is:
+\begin{equation}
+   \alpha'_k = \frac{1}{\sqrt{N - 1}} \
+               \sqrt{ \displaystyle \sum_{i=1}^{k-1} A_{i,k} +
+                           \sum_{j=k+1}^N A_{k,j}}
+   \quad .
+\end{equation}
+For the tolerance criteria, check both the maximum relative change
+of any of the $\alpha'_k$, and the relative change in $\chi^2$ from
+iteration to iteration.  Also, as a practical matter, reverse the
+order of evaluation of the antennas each time through the loop.
+
+This method works very well on simulated data.  It has been implemented
+in AIPS by modifying FIXWT (into a task called FIXW2 - {\it not} in
+standard AIPS), which does the calculation of the $\sigma_{ij}$ and
+then the $\alpha_k$.  When tested on real VLA data, however, the best
+fit solutions leave what seem to be excessively large residuals (the
+final $\chi^2$ seems too big).  It is unclear whether this is related
+to baseline-based errors or some other effect.
+
+\
+
+\noindent A note:
+
+The chi-squared equation (equation~\ref{chisqeqn}) can be re-cast as:
+\begin{equation}
+   \chi^2 = {\rm tr}\left(\left[{\bf A} - {\bf A}'\right] \,
+                          \left[{\bf A} - {\bf A}'\right]^{\rm T}\right)
+   \quad ,
+   \label{chisqeqn2}
+\end{equation}
+where tr(${\bf M}$) is the {\it trace} of matrix $\bf M$ (the sum of
+the diagonal elements), and ${\bf A}'$ is given by:
+\begin{equation}
+   {\bf A}' = {\left(
+              \begin{array}{ccccccc}
+              0 & \alpha'_1 & \alpha'_1 & \alpha'_1 & \alpha'_1
+                & \ldots & \alpha'_1 \\
+              0 & 0 & \alpha'_2 & \alpha'_2 & \alpha'_2
+                & \ldots & \alpha'_2 \\
+                & & & \alpha'_3 & \alpha'_3 & \ldots & \alpha'_3 \\
+                & & & & \alpha'_4 & \ldots & \alpha'_4 \\
+              \vdots & & & \ddots & & & \vdots \\
+                & & & & & \alpha'_{N-2} & \alpha'_{N-2} \\
+                & & & & & & \alpha'_{N-1} \\
+              0 & & & \ldots & & & 0
+              \end{array}
+              \right)}
+              {\left(
+              \begin{array}{ccccccc}
+              \alpha'_1 & 0 & 0 & 0 & 0 & \ldots & 0 \\
+              0 & \alpha'_2 & 0 & 0 & 0 & \ldots & 0 \\
+              0 & 0 & \alpha'_3 & 0 & 0 & \ldots & 0 \\
+              0 & 0 & 0 & \alpha'_4 & 0 & \ldots & 0 \\
+              \vdots & & & \ddots & & & \vdots \\
+              0 & \ldots & 0 & 0 & \alpha'_{N-2} & 0 & 0 \\
+              0 & \ldots & 0 & 0 & 0 & \alpha'_{N-1} & 0 \\
+              0 & \ldots & 0 & 0 & 0 & & \alpha'_N \\
+              \end{array}
+              \right)}
+\end{equation}
+This probably has some snazzy matrix solution (minimizing the
+$\chi^2$ in equation~\ref{chisqeqn2}), but it is beyond my skill.
+
+\
+
+\section*{Acknowledgements}
+
+Ken Sowinski provided extremely helpful input, checked the calculation
+in Appendix A, and reminded me about the change in correlator efficiency
+resulting from the full complex correlation improvement.  Eric Greisen
+provided helpful input on the history of the weight scheme
+implementation in FILLM.
+
+\section*{References}
+
+\bib{
+ Bagri, D., SNR Improvements with Full Complex Correlation, VLA Test
+ Memo 206, 1997
+ }
+\bib{
+ Bagri, D., Benefits of Using Full Complex Correlation, VLA Test Memo
+ 210, 1998
+ }
+\bib{
+ Butler, B., Measuring the Aperture Efficiency ($\eta_a$) of the VLA
+ antennas, VLA Test Memo 212, 1998
+ }
+\bib{
+ Crane, P.C., \& P.J. Napier, Lecture 7. Sensitivity, in {\it SIRA},
+ ASP Conference Series Volume 6, 1994
+ }
+\bib{ Desai, K.M., Weighting data in AIPS, AIPS Memo 103, 2000 }
+\bib{
+ Taylor, G.B., J.S. Ulvestad, \& R.A. Perley, The Very Large Array
+ Observational Status Summary, 2002
+ }
+
+\end{document}

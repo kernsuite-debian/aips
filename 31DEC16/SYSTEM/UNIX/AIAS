@@ -1,0 +1,703 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: AIAS [directory-path/][@]source[.s] [AIPS-sytle-options]
+#           [UNIX-style-options] [file.LOG]
+#-----------------------------------------------------------------------
+# Perform assemblies under UNIX/AIPS.  Object modules from successful
+# compilations are left in the same directory as the source code, or in
+# $PREP for source files in the $AIPS_VERSION directory tree.  Note that
+# COMRPL will move such $PREP files to the relevant $LIBR subdirectory
+# for later inclusion in the AIPS libraries by LIBR.
+#
+# Inputs (can appear in any order):
+#
+#    1) [directory-path/][@]source[.s]
+#
+#       At least one (uppercase) preprocessed assembler source with
+#       or without the '.s' extension.  If not a pathname, the
+#       current working directory is assumed and prepended.
+#       Pathnames can be given either literally or using environment
+#       variables defined as directory paths (e.g.,
+#       $QVEX/[@]source[.s]).  The special character '@', if
+#       prepended to the filename, denotes the name of a file
+#       containing a list of such source pathnames.  If the '.s'
+#       extension is given with simple filenames, (i.e. no
+#       'directory-path/' prefix), it speeds up the command line
+#       parsing somewhat.  This is because filename versus
+#       AIPS-style option ambiguities are resolved by first testing
+#       for AIPS-style option recognition then assuming the argument
+#       is a simple filename.
+#
+#    2) [AIPS-sytle-options]
+#
+#       Recognizable AIPS-style options.  These are translated into
+#       local syntax based on the definitions in the host specific
+#       ASOPTS.SH file.  Recognized AIPS-style options
+#       include:
+#
+#       (NO)DE[BUG]   - generate code suitable for execution under
+#                       host debugger(s).
+#       (NO)DI[RTY]   - compile letting declarations default (not
+#                       recommended)
+#       (NO)LI[ST]    - generate line numbered listing of source
+#                       code as part of compilation process (if no
+#                       compilation is necessary, no listing is
+#                       generated)
+#       (NO)MAP       - generate link map
+#       (NO)OPTn      - optimization level (n = 0 to 9)
+#       (NO)PR[OFILE] - generate code suitable for profiling
+#       (NO)PU[RGE]   - delete preprocessed source code after
+#                       successful compilation and delete
+#                       automatically generated log files if all
+#                       goes well
+#       (NO)RE[PLACE] - move object module to proper $LIBR
+#                       subdirectory (procedure LINK does any
+#                       necessary replacements in and randomizations
+#                       of $LIBR/.../SUBLIB's prior to linking)
+#
+#       where
+#          (NO)  = alternate form (e.g., NODEBUG is the opposite of
+#                  DEBUG)
+#          [...] = additional letters of option not required but
+#                  recognized
+#
+#    3) [UNIX-style-options]
+#
+#       UNIX-style options which are passed on to the local
+#       assembler.
+#
+#    4) [file.LOG]
+#
+#       Optional log filename of the form '*.LOG'.  If not given,
+#       log files are automatically generated (or appended to) for
+#       each source being processed.  If purging is enabled either
+#       by default or by specifying PURGE on the command line and
+#       all goes well, these automatic log files as well as
+#       preprocessed forms of the source involved are deleted.  If
+#       the user specifies a '.LOG' file on the command line, it is
+#       either generated or appended to but never deleted.
+#
+# Generic UNIX version.
+#--------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f /tmp/AIAS.$$ /tmp/AIAS$$.LIS /tmp/AT.$$; exit 1' 1 2 3 15
+#                                       Any command line argument(s)?
+if test "$*" = ""
+then
+   echo "Usage: AIAS [directory-path/][@]source[.s]" \
+      "[AIPS-sytle-options] \\"
+   echo "          [UNIX-style-options] [file.LOG]"
+   exit 1
+fi
+#                                       Get host assembler
+#                                       definitions.
+if [ -f $SYSLOCAL/ASOPTS.SH ] ; then
+   . $SYSLOCAL/ASOPTS.SH
+elif [ -f $SYSUNIX/ASOPTS.SH ] ; then
+   . $SYSUNIX/ASOPTS.SH
+else
+   echo "AIAS        : Cannot find ASOPTS.SH in SYSLOCAL or SYSUNIX"
+   echo "AIAS        : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Initialize ASOPTS, OPTS and
+#                                       ULOG.
+ASOPTS=$COMP
+OPTS=""
+ULOG=""
+#                                       Parse arguments.
+for i
+do
+   case $i in
+
+      *.LOG | *.log)
+#                                       User specified log filename.
+         case $i in
+
+            */*)
+#                                       Pathname.
+               ULOG=$i
+            ;;
+
+            *)
+#                                       Simple filename.
+               ULOG=`PWD`/$i
+            ;;
+
+         esac
+
+      ;;
+
+
+      *@*)
+#                                       An '@' file list of pathnames.
+#                                       Form pathname if a $AT is a
+#                                       simple filname.
+         case $AT in
+
+            */*)
+#                                       $AT is already a pathname.
+               AT=`echo $i | sed -e 's/@//'`
+            ;;
+
+            *)
+#                                       $AT is a simple filename.
+#                                       Form a pathname using the
+#                                       current working directory.
+               AT=`echo $i | sed -e 's/@//'`
+               AT=`PWD`/$AT
+            ;;
+
+         esac
+
+         if test -f $AT
+         then
+#                                       Append it to pathname list.
+            sed -n -e 's/^[^-]/&/p' $AT >> /tmp/AIAS.$$
+         else
+            echo "AIAS        : '@' file    $AT"
+            echo "AIAS        : not found!"
+            rm -f /tmp/AIAS.$$
+            echo "AIAS        : Dies of unnatural causes"
+            exit 1
+         fi
+      ;;
+
+      *.S | *.s | *.* | */*)
+#                                       Source module.
+#                                       Pathname or just filename?
+         case $i in
+
+            */*.s | */*.S)
+#                                       Pathname.
+               echo $i >> /tmp/AIAS.$$
+            ;;
+
+            *.s | *.S)
+#                                       Filename only.  Use current
+#                                       working directory.
+               echo `PWD`/$i >> /tmp/AIAS.$$
+            ;;
+
+            *.* | */*.*)
+#                                       Bad extension.  Skip.
+            ;;
+
+            *)
+#                                       Pathname without an assembler
+#                                       extension.  Try one on, test
+#                                       for it and if it exists, add
+#                                       it to the list.
+               if test -f $i.S -o -f $i.s
+               then
+                  NEWEST `PWD`/$i.S `PWD`/$i.s >> /tmp/AIAS.$$
+               else
+                  echo "AIAS        : Neither    $i.S"
+                  echo "AIAS        : nor        $i.s"
+                  echo "AIAS        : found!"
+                  rm -f /tmp/AIAS.$$
+                  echo "AIAS        : Dies of unnatural causes"
+                  exit 1
+               fi
+            ;;
+
+         esac
+
+      ;;
+
+      -*)
+#                                       UNIX-style option.
+         ASOPTS="$ASOPTS $i"
+#                                       Record options.
+         OPTS="$OPTS$i "
+      ;;
+
+      *)
+#                                       To get here, the argument is
+#                                       probably, but not necessarily,
+#                                       an AIPS-style option.  If so,
+#                                       translate it into the host
+#                                       assembler syntax (if
+#                                       any) and adjust ASOPTS.  If
+#                                       not, try it as an object
+#                                       module given without the '.s'
+#                                       extension.
+
+         case $i in
+
+            [Dd][Ee] | [Dd][Ee][Bb] | [Dd][Ee][Bb][Uu] | \
+            [Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'DE(BUG)'.
+#                                       Turn on debug mode.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DEBUG'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Dd][Ee] | [Nn][Oo][Dd][Ee][Bb] | \
+            [Nn][Oo][Dd][Ee][Bb][Uu] | [Nn][Oo][Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'NODE(BUG)'.
+#                                       Turn off debug mode.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DEBUG'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Ll][Ii] | [Ll][Ii][Ss] | [Ll][Ii][Ss][Tt])
+#                                       Some form of 'LI(ST)'
+#                                       Turn on source list
+#                                       generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               LIST=TRUE
+            ;;
+
+            [Nn][Oo][Ll][Ii] | Nn][Oo][Ll][Ii][Ss] | \
+            [Nn][Oo][Ll][Ii][Ss][Tt])
+#                                       Some form of 'NOLI(ST)'
+#                                       Turn off source list
+#                                       generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               LIST=FALSE
+            ;;
+
+            [Mm][Aa] | [Mm][Aa][Pp])
+#                                       Some form of 'MA(P)'
+#                                       Turn on link map generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$MAP'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Mm][Aa] | [Nn][Oo][Mm][Aa][Pp])
+#                                       Some form of 'NOMA(P)'
+#                                       Turn off link map generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$MAP'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Oo][Pp][Tt][0-9])
+#                                       Some form of 'OPT[0-9]'
+#                                       Turn on specified optimization
+#                                       level.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE=\$$i
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Oo][Pp][Tt][0-9])
+#                                       Some form of 'NOOPT[0-9]'
+#                                       Turn off specified
+#                                       optimization level.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE=\$`echo $i | sed -e 's/..//'`
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Dd][Ii] | [Dd][Ii][Rr] | [Dd][Ii][Rr][Tt] | \
+            [Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'DI(RTY)'
+#                                       Turn on default declarations.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DIRTY'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Dd][Ii] | [Nn][Oo][Dd][Ii][Rr] | \
+            [Nn][Oo][Dd][Ii][Rr][Tt] | [Nn][Oo][Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'NODI(RTY)'
+#                                       Turn off default declarations.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DIRTY'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Pp][Uu] | [Pp][Uu][Rr] | [Pp][Uu][Rr][Gg] | \
+            [Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'PU(RGE)'
+#                                       Turn on module purging.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               PURGE=TRUE
+            ;;
+
+            [Nn][Oo][Pp][Uu] | [Nn][Oo][Pp][Uu][Rr] | \
+            [Nn][Oo][Pp][Uu][Rr][Gg] | [Nn][Oo][Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'NOPU(RGE)'
+#                                       Turn off module purging.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               PURGE=FALSE
+            ;;
+
+            [Rr][Ee] | [Rr][Ee][Pp] | [Rr][Ee][Pp][Ll] | \
+            [Rr][Ee][Pp][Ll][Aa] | [Rr][Ee][Pp][Ll][Aa][Cc] | \
+            [Rr][Ee][Pp][Ll][Aa][Cc][Ee])
+#                                       Some form of 'RE(PLACE)'
+#                                       Turn on module replacement in
+#                                       AIPS system libraries.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               REPLACE=TRUE
+            ;;
+
+            [Nn][Oo][Rr][Ee] | [Nn][Oo][Rr][Ee][Pp] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll] | [Nn][Oo][Rr][Ee][Pp][Ll][Aa] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll][Aa][Cc] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll][Aa][Cc][Ee])
+#                                       Some form of 'NORE(PLACE)'
+#                                       Turn off module replacement in
+#                                       AIPS system libraries.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               REPLACE=FALSE
+            ;;
+
+            [Pp][Rr] | [Pp][Rr][Oo] | [Pp][Rr][Oo][Ff] | \
+            [Pp][Rr][Oo][Ff][Ii] | [Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'PR(OFILE)'
+#                                       Turn on execution profiling.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$PROFILE'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Pp][Rr] | [Nn][Oo][Pp][Rr][Oo] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff] | [Nn][Oo][Pp][Rr][Oo][Ff][Ii] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'NOPR(OFILE)'
+#                                       Turn off execution profiling.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$PROFILE'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of ASOPTS.
+               ASOPTS=`echo $ASOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to ASOPTS.
+               ASOPTS="$ASOPTS $OPTION"
+            ;;
+
+            *)
+#                                       Not a recognizable AIPS-style
+#                                       option.  Try some assembler
+#                                       extensions, and if it exists,
+#                                       add it to the list.
+               if test -f $i.S -o -f $i.s
+               then
+                  NEWEST `PWD`/$i.S `PWD`/$i.s >> /tmp/AIAS.$$
+               else
+                  echo "AIAS        : Neither    `PWD`/$i.S"
+                  echo "AIAS        : nor        `PWD`/$i.s"
+                  echo "AIAS        : found!"
+                  rm -f /tmp/AIAS.$$
+                  echo "AIAS        : Dies of unnatural causes"
+                  exit 1
+               fi
+            ;;
+
+         esac
+
+      ;;
+
+      *)
+#                                       User error.
+         echo "Usage: AIAS [directory-path/][@]source[.s]" \
+            "[AIPS-sytle-options] \\"
+         echo "          [UNIX-style-options] [file.LOG]"
+         rm -f /tmp/AIAS.$$
+         echo "AIAS        : Dies of unnatural causes"
+         exit 1
+      ;;
+
+   esac
+
+done
+#                                       Squeeze out extra blanks from
+#                                       ASOPTS.
+ASOPTS=`echo $ASOPTS | sed -e 's/  */ /g'`
+#                                       Any source modules to
+#                                       assemble?
+if test ! -f /tmp/AIAS.$$
+then
+   echo "Usage: AIAS [directory-path/][@]source[.s]" \
+      "[AIPS-sytle-options] \\"
+   echo "          [UNIX-style-options] [file.LOG]"
+   echo "AIAS        : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Compile modules one at a
+#                                       time.
+cat /tmp/AIAS.$$ | \
+{
+   while read PATHNAME
+   do
+#                                       Save $PATHNAME in case we are
+#                                       being '@' file driven.
+      ATNAME=$PATHNAME
+#                                       Make sure the source module
+#                                       actually exists.
+      if test -f $PATHNAME
+      then
+#                                       Separate directory and
+#                                       filename.
+         FILE=`basename $PATHNAME | sed -e 's/\..*//'`
+#                                       but use PREP if normal compile
+         case $PATHNAME in
+            $AIPS_VERSION*)
+               DIR="$PREP"
+            ;;
+            *)
+               DIR=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+            ;;
+         esac
+#                                       If log filename specified,
+#                                       append to it.  If not, form
+#                                       log filename from $DIR and
+#                                       $FILE, then delete any
+#                                       extant version.
+         if test "$ULOG" = ""
+         then
+            LOG=$DIR/$FILE.LOG
+            rm -f $LOG
+         else
+            LOG=$ULOG
+         fi
+#                                       Need to preprocess?
+         case $PATHNAME in
+
+            *.S)
+#                                       Preprocess.  PP returns an
+#                                       easily recognizable pathname
+#                                       of the successfully
+#                                       preprocessed file or an error
+#                                       message.
+               PATHNAME=`PP $PATHNAME 2> /tmp/PP.$$`
+               cat /tmp/PP.$$ | tee -a $LOG
+               rm -f /tmp/PP.$$
+               if test "$PATHNAME" = ""
+               then
+                  echo "AIAS        : Preprocessing fails!" | \
+                     tee -a $LOG
+                  rm -f /tmp/AIAS.$$
+                  break
+               fi
+            ;;
+
+         esac
+#                                       List source code?
+         if test "$LIST" = "TRUE"
+         then
+#                                       'cat -n ...' not available
+#                                       everywhere.
+            grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+               >> /tmp/AIAS$$.LIS
+         else
+#                                       Delete any extant
+#                                       $DIR/$FILE.LIS file.
+            rm -f $DIR/$FILE.LIS
+         fi
+#                                       Delete any extant
+#                                       $DIR/$FILE.o file.
+         rm -f $DIR/$FILE.o
+#                                       Change to $DIR so that
+#                                       object module is created
+#                                       in the same directory as
+#                                       the source code.
+         cd $DIR
+#                                       Record input in $LOG.
+         echo "AIAS        : Date       `date`"                   | \
+            tee -a $LOG
+         echo "AIAS        : Interpret  AIAS $OPTS \\"              | \
+            tee -a $LOG
+         echo "AIAS        :            $PATHNAME"                | \
+            tee -a $LOG
+         echo "AIAS        : as         LIST=$LIST PURGE=$PURGE"  | \
+            tee -a $LOG
+         echo "AIAS        : plus       $ASSEMBLER $ASOPTS \\"    | \
+            tee -a $LOG
+         echo "AIAS        :            $PATHNAME"                | \
+            tee -a $LOG
+#                                       Assemble (can't deal with
+#                                       pathnames).
+         $ASSEMBLER $ASOPTS $FILE.s 2>&1  | \
+            awk -f $SYSUNIX/WIDTH132.AWK  | tee -a $LOG
+#                                       Did it work?
+         if test -f $DIR/$FILE.o
+         then
+#                                       Success!
+#                                       If we are being '@' file
+#                                       driven, auto-edit the '@'
+#                                       file prefixing this
+#                                       $PATHNAME with a '-' to
+#                                       indicate it as done.
+            if test "$AT" != ""
+            then
+               sed -e 's#^'$ATNAME'#-&#' $AT > /tmp/AT.$$
+               cp /tmp/AT.$$ $AT
+               rm /tmp/AT.$$
+               echo "AIAS        : Changed    $ATNAME"  | tee -a $LOG
+               echo "AIAS        : in         $AT"      | tee -a $LOG
+               echo "AIAS        : to         -$ATNAME" | tee -a $LOG
+            fi
+#                                       Good news.
+            echo "AIAS        : Compile of $PATHNAME" | tee -a $LOG
+            echo "AIAS        : ends successfully."   | tee -a $LOG
+            if test "$LIST" = "TRUE"
+            then
+               echo "AIAS        : Generated  $DIR/$FILE.LIS" | \
+                  tee -a $LOG
+               cat $LOG          >  $DIR/$FILE.LIS
+               echo ""           >> $DIR/$FILE.LIS
+               cat /tmp/AIAS$$.LIS >> $DIR/$FILE.LIS
+            fi
+            rm -f /tmp/AIAS$$.LIS
+#                                       Delete $PATHNAME?
+            if test "$PURGE" = "TRUE"
+            then
+               echo "AIAS        : Delete     $PATHNAME" | tee -a $LOG
+               rm -f $PATHNAME
+            fi
+#                                       If non-user-specified log
+#                                       file, delete it.
+            if test "$ULOG" = ""
+            then
+               echo "AIAS        : Delete     $LOG"  | tee -a $LOG
+               rm -f $LOG
+            fi
+            continue
+         else
+#                                       Failure.
+            echo "AIAS        : Compile of $PATHNAME"      | tee -a $LOG
+            echo "AIAS        : ends with fatal error(s)!" | tee -a $LOG
+            if test "$LIST" = "TRUE"
+            then
+#                                       Preprend .LOG files to
+#                                       source listing already
+#                                       created above.
+               echo ""           >> $LOG
+               cat /tmp/AIAS$$.LIS >> $LOG
+               rm -f /tmp/AIAS$$.LIS
+            else
+#                                       Automatically generate a
+#                                       source listing and append it
+#                                       to the .LOG file.
+               echo "" \
+                  >> $LOG
+               grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+                  >> $LOG
+            fi
+            echo "AIAS        : Examine    $LOG"
+            echo "AIAS        : and        $PATHNAME"
+            rm -f /tmp/AIAS.$$
+            break
+         fi
+      else
+#                                       Non-existent source module.
+         echo "AIAS        : File       $PATHNAME"
+         echo "AIAS        : not found!"
+         rm -f /tmp/AIAS.$$
+         break
+      fi
+   done
+}
+if test -f /tmp/AIAS.$$
+then
+   echo "AIAS        : Ends successfully"
+   rm /tmp/AIAS.$$
+   exit 0
+else
+   echo "AIAS        : Dies of unnatural causes"
+   exit 1
+fi

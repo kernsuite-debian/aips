@@ -1,0 +1,194 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Runs POPSGN, makes XAS, AIPS_ROOT, UPDUNIX, SYSLOCAL procs
+## UPDATE UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2004-2006, 2009-2010
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Updates special files:
+#      POPSDAT.HLP changed  - run POPSGN
+#      XAS.SHR              - make process
+#      moves and fixes things in $AIPS_ROOT
+#      what about $UPDUNIX - should think about new routines there
+#-----------------------------------------------------------------------
+#                                               POPSDAT.HLP
+   if grep POPSDAT.HLP PUTBCK.UNQ >/dev/null ; then
+      [ -t 1 ] && echo "UPDUPDATE - running POPSGN for changed POPSDAT"
+      echo "UPDUPDATE - running POPSGN for changed POPSDAT" >>$LogFile
+      ( echo "0 POPSDAT TST" ; echo "inseq=0" ) | RUN POPSGN 2>&1 >>$LogFile
+   fi
+#                                               XAS.SHR
+   if grep XAS.SHR PUTBCK.UNQ >/dev/null ; then
+      if [ $UpdRsync = "YES" ] ; then
+         [ -t 1 ] && echo "UPDUPDATE - make for changed XAS.SHR not needed"
+         echo "UPDUPDATE - make for changed XAS.SHR not needed" >>$LogFile
+      else
+         [ -t 1 ] && echo "UPDUPDATE - running make for changed XAS.SHR"
+         echo "UPDUPDATE - running make for changed XAS.SHR" >>$LogFile
+         cd $YSERV/XAS >/dev/null
+         "rm" *
+         sh ../XAS.SHR
+         make 2>&1 >>$LogFile
+         cd $AIPS_VERSION/$ARCH/UPDATE >/dev/null
+      fi
+   fi
+#                                               AIPS_ROOT files
+#                                               when adding one,
+#                                               put it first in list
+   for i in START_QMNGR PP.FOR F2PS.C F2TEXT.C NEWEST.C REVENV.C  \
+            AIPSASSN.SH AIPSPATH.SH AIPSASSN.CSH AIPSPATH.CSH HOSTS.SH \
+            HOSTS.CSH LOGIN.SH LOGIN.CSH START_AIPS START_TPSERVERS \
+            AIPS.BOOT START_TVSERVERS TVALT SETNAME SETUNAME ZTRLOP.C
+   do
+      ufile="PUTBCK.UNQ"
+      if grep \ $i $ufile >/dev/null
+      then
+         case $i in
+            AIPSASSN.SH|AIPSASSN.CSH|SETNAME|SETUNAME)
+               if [ "$UpdDoCopy" != YES ] ; then
+                  [ -t 1 ] && echo "Move of $i to AIPS_ROOT already done"
+                  echo "Move of $i to AIPS_ROOT already done" >>$LogFile
+               else
+                  [ -t 1 ] && echo "Moving $i from SYSUNIX to AIPS_ROOT"
+                  echo "Moving $i from SYSUNIX to AIPS_ROOT" >>$LogFile
+                  "mv" $AIPS_ROOT/$i $AIPS_ROOT/$i.MNJ.OLD
+                  "cp" $SYSUNIX/$i $AIPS_ROOT
+                  chmod +x $AIPS_ROOT/$i
+               fi
+               ;;
+            AIPSPATH.SH|AIPSPATH.CSH| HOSTS.SH|HOSTS.CSH|LOGIN.SH|\
+            LOGIN.CSH|START_AIPS|START_TPSERVERS|AIPS.BOOT|\
+            START_TVSERVERS|TVALT|START_QMNGR)
+               if [ "$UpdDoCopy" != YES ] ; then
+                  [ -t 1 ] && echo "Move of $i to AIPS_ROOT already done"
+                  echo "Move of $i to AIPS_ROOT already done" >>$LogFile
+               else
+                  [ -t 1 ] && echo "Moving $i from SYSUNIX to AIPS_ROOT"
+                  echo "Moving $i from SYSUNIX to AIPS_ROOT" >>$LogFile
+                  cd $AIPS_ROOT >/dev/null
+                  "mv" $i $i.MNJ.OLD
+                  "cp" $SYSUNIX/$i .
+                  chmod +x $i
+                  [ -t 1 ] && echo "Redefining AIPS_ROOT as $AIPS_ROOT"
+                  echo "Redefining AIPS_ROOT as $AIPS_ROOT" >>$LogFile
+                  chmod +x $SYSUNIX/AIPSROOT.DEFINE
+                  $SYSUNIX/AIPSROOT.DEFINE $AIPS_ROOT >/dev/null
+                  cd $AIPS_VERSION/$ARCH/UPDATE >/dev/null
+               fi
+               ;;
+            *)
+               [ -t 1 ] && echo "The UPDATE job has detected changes to $i"
+               [ -t 1 ] && echo "UPDUPDATE should help you with this"
+               echo "The UPDATE job has detected changes to $i" >>$LogFile
+               echo "UPDUPDATE should help you with this" >>$LogFile
+               ;;
+         esac
+      fi
+   done
+#                                               $UPDUNIX area
+   if grep UPDUNIX PUTBCK.UNQ >/dev/null ; then
+      [ -t 1 ] && echo "UPDUPDATE - there are UPDUNIX changes to process"
+      echo "UPDUPDATE - there are UPDUNIX changes to process" >>$LogFile
+      [ -f UPDUNIX.AT ] && "rm" UPDUNIX.AT
+      grep UPDUNIX PUTBCK.UNQ > UPDUNIX.AT
+#                                       Look at modules one at a time.
+      for LINE in \
+         `awk '{print "$" $5 "/" $6}' UPDUNIX.AT | sed -e 's/\.$//'`
+      do
+         PROPER=""
+         PATHNAME=`eval echo $LINE`
+         basen=`basename $PATHNAME`
+         if [ -f $basen ] ; then
+            [ -t 1 ] && echo "Re-make copy of $basen"
+            echo "Re-make copy of $basen" >>$LogFile
+            "rm" $basen
+            cp $PATHNAME . 2>>$LogFile
+         else
+            [ -t 1 ] && echo "Make new copy of $basen"
+            echo "Make new copy of $basen" >>$LogFile
+            cp $PATHNAME . 2>>$LogFile
+         fi
+      done
+   fi
+#                                               $SYSLOCAL area
+   p=SYS${ARCH}
+   if [ $ARCH = 'MACPPC' ] ; then
+      p=$SYSMACPP
+   fi
+   if [ $ARCH = 'MACINT' ] ; then
+      p=$SYSMACIN
+   fi
+   if [ $ARCH = 'AXLINUX' ] ; then
+      p=$SYSAXLIN
+   fi
+   if [ $ARCH = 'LINUXPPC' ] ; then
+      p=$SYSPPLIN
+   fi
+   if grep $p PUTBCK.UNQ >/dev/null ; then
+      [ -t 1 ] && echo "UPDUPDATE - there are SYSLOCAL changes to process"
+      echo "UPDUPDATE - there are SYSLOCAL changes to process" >>$LogFile
+      [ -f SYSLOCAL.AT ] && "rm" SYSLOCAL.AT
+      grep $p PUTBCK.UNQ > SYSLOCAL.AT
+#                                       Look at modules one at a time.
+      for LINE in \
+         `awk '{print "$" $5 "/" $6}' SYSLOCAL.AT | sed -e 's/\.$//'`
+      do
+         PROPER=""
+         PATHNAME=`eval echo $LINE`
+         basen=`basename $PATHNAME`
+         if [ -f $SYSLOCAL/$basen ] ; then
+            if [ $basen = 'LDOPTS.SH' ] ; then
+               [ -t 1 ] && echo "***** Do not over-write $basen ******"
+               [ -t 1 ] && echo "***** You might want to compare with $p ******"
+               echo "***** Do not over-write $basen ******" >>$LogFile
+               echo "***** You might want to compare with $p ******" >>$LogFile
+            else
+               if [ $basen = 'CCOPTS.SH' ] ; then
+                  [ -t 1 ] && echo "***** Do not over-write $basen ******"
+                  [ -t 1 ] && echo "***** You might want to compare with $p ******"
+                  echo "***** Do not over-write $basen ******" >>$LogFile
+                  echo "***** You might want to compare with $p ******" >>$LogFile
+               else
+                  if [ $basen = 'FDEFAULT.SH' ] ; then
+                     [ -t 1 ] && echo "***** Do not over-write $basen ******"
+                     [ -t 1 ] && echo "***** You might want to compare with $p ******"
+                     echo "***** Do not over-write $basen ******" >>$LogFile
+                     echo "***** You might want to compare with $p ******" >>$LogFile
+                  else
+                     [ -t 1 ] && echo "Re-make copy of $SYSLOCAL/$basen"
+                     echo "Re-make copy of $SYSLOCAL/$basen" >>$LogFile
+                     "rm" $basen
+                     cp $PATHNAME $SYSLOCAL 2>>$LogFile
+                  fi
+               fi
+            fi
+         else
+            [ -t 1 ] && echo "Make new copy of $SYSLOCAL/$basen"
+            echo "Make new copy of $SYSLOCAL$basen" >>$LogFile
+            cp $PATHNAME $SYSLOCAL 2>>$LogFile
+         fi
+      done
+   fi

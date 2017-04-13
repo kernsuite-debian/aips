@@ -1,0 +1,242 @@
+; VLBAPCOR
+;---------------------------------------------------------------
+;! Calculates and applies instrumental phase calibration
+;# PROCEDURE VLBI UTILITY CALIBRATION
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2002, 2006, 2007, 2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+VLBAPCOR  LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VLBAPCOR: Procedure to correct instrumental phases
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+TIMERANG                           Time range of a calibrator
+                                    1-4 = start day,hr,min,sec
+                                    5-8 = end   day,hr,min,sec
+                                   MUST BE SPECIFIED
+REFANT             0.0      20.0   Ref. antenna, 0=>the first
+SUBARRAY           0.0    9999.0   Subarray;  0 => all.
+CALSOUR                            Calibrator source name;
+                                   blank => any
+GAINUSE                            CL table to use; 0=>highest
+                                   ADVERBS FOR ANTENNAS NOT
+                                   CONTAINED IN PC TABLE:
+INVER             -1.0   46655.0   Input  PC table, 0=>last one
+OPCODE                             'CALP' if you are missing PC
+                                   information for any antenna;
+                                   otherwise ' '
+ANTENNAS                           antennas for which manual
+                                   phase corrections should be
+                                   obtained (i.e. they are
+                                   missing from the PC table or
+                                   are the pcals in PC table are
+                                   incorrect).
+
+----------------------------------------------------------------
+VLBAPCOR
+Type: Procedure
+Use:  VLBAPCOR is a procedure that creates a CL table which
+      corrects the instrumental phases and delays using the
+      pulse-calibration information in the PC table and
+      will run FRING for any antennas which are not in
+      the PC table if instructed to do so.  This should
+      be run after VLBACALA (or VLBAPANG for polarization
+      experiments) but before VLBAFRNG/VLBAKRNG.
+      Type RUN VLBAUTIL to make the VLBAPCOR procedure
+      available.
+
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  TIMERANG...Time range of the calibrator to be used. In order:
+             Start day, hour, min. sec,
+             End day, hour, min. sec. Days relative to
+             reference date.
+             MUST BE SPECIFIED.  Pick a scan on a calibrator where
+             all antennas are present and have strong fringes.
+  REFANT.....Reference antenna, 0 => the first in the antenna list
+             Set to a stable antenna that is preferably in the entire
+             experiment
+  SUBARRAY...The subarray to use. 0 => all
+  CALSOUR....Calibrator source name.
+  GAINUSE....Number of CL table with all calibration up to this point.
+             0 => highest
+  OPCODE.....OPCODE in CLCAL; use 'CALP' if you have antennas
+             with no entries in the PC table, otherwise use default.
+             If OPCODE is set to 'CALP' and ANTENNAS are set then
+             additional steps are added to the procedure to find the
+             instrumental phase corrections for antennas that are not
+             in PC table.  If OPCODE='CALP but ANTENNAS are not set
+             then the phase corrections are not solved for and the
+             antennas which are not in the PC table will be uncorrected
+             in the resulting CL table.  See EXPLAIN file for a
+             detailed explanation of how to deal with ANTENNAS which
+             are not in the PC table after VLBAPCOR.
+  ANTENNAS...Antennas that are not in the PC table, a manual
+             instrumental phase correction will be found for these
+             using FRING.  This FRING will be run on the scan that is
+             selected in TIMERANGE, therefore make sure that the
+             segment of data in the TIMERANGE has strong fringes on
+             all antennas that the instrumental phase correction is
+             desired.  OPCODE must be set to 'CALP' for this option.
+             0=> do not find manual phase correction using FRING
+----------------------------------------------------------------
+VLBAPCOR:           Procedure to correct the instrumental phases
+                    using the pulse cals in the PC table.  It can
+                    also finds the instrumental phases for antennas
+                    not in PC table using FRING.
+Documenter:         Amy Mioduszewski
+Related Programs:   VLBAUTIL, PCCOR, CLCAL, PCLOD, FRING, SNCOR
+
+This should be done after sampler corrections (VLBACCOR) and
+before the bandpass (VLBABPSS).  After VLBAMPCL is run it is
+ESSENTIAL to check the solutions in POSSM setting GAINUSE to
+the CL table output by VLBAPCOR.
+
+VLBAPCOR assumes:
+
+1. there is only one FREQID
+
+2. that all IFs should be calibrated
+
+3. that the highest PC table is the one to apply
+
+4. MBDELY is not zero (see EXPLAIN PCCOR).
+
+If you want a manual instrumental phase correction on
+antennas that are not in the PC table (OPCODE='CALP'
+and ANTENNAS <> 0) then there are these additional
+assumptions:
+
+5. that ANTENNAS have strong fringes on the input TIMERANGE
+
+6. that the highest FG table is the one that should be applied
+
+Steps in VLBAPCOR:
+
+ 1. Runs PCCOR, which takes the PC table with the highest #  and
+    calculates the instrumental phases and delays from the pulse-
+    calibration tones.  The TIMERANGE is needed to solve 2pi*N
+    ambiguities but the solutions are calculated using the
+    pulse-cal tones over all times.  PCCOR produces a SN table.
+    Output should be highest SN table.
+
+*2. Runs SNCOR twice, to zero the phases and delays (OPCODE=
+    ZPHS, ZDEL' of the SN table created by PCCOR for the
+    antennas in ANTENNAS if OPCODE='CALP'.
+
+ 3. Runs CLCAL, with input OPCODE; ANTENNAS=0; INTERPOL='';
+    SNVER= SN table out of PCCOR; GAINVER = input GAINUSE;
+    and GAINUSE= highest CL table +1.  Output should be highest
+    CL table.
+
+*4. Runs FRING, using the GAINUSE used in CLCAL in step 2.
+    DPARM(8)=1 to zero rates.  If FRING reports any "failed
+    solutions" you MUST find another scan and run again, after
+    you have deleted the SN and CL tables that VLBAPCOR has
+    created.  Unless there is a good reason for failed solutions,
+    such as an entire IF has been flagged for a certain antenna.
+
+*5. Runs CLCAL with ANTENNAS equal to the input ANTENNAS
+    GAINVER equal to input GAINUSE; SNVER equal to output
+    SN table from FRING; GAINUSE equal to the CL table
+    which is output in step 2; TIMERANGE =0; and
+    CALSOUR = ''.
+
+*NOTE: Steps 2, 4 and 5 only take place if OPCODE='CALP' and
+ ANTENNAS <> 0.
+
+If you want to do manual phase instrumental corrections for
+antennas missing from PC table after VLBAPCOR (there are many
+good reason to want to do this, such as wanting to use a
+different time range or KRING):
+
+1. Make sure that OPCODE='CALP' when you run VLBAPCOR.
+
+2. When you run FRING or KRING be sure:
+       - to pick a TIMERANGE that has strong fringes on the
+         antennas you wish to correct
+       - the REFANT is the same as in VLBAPCOR
+       - GAINUSE is equal to the CL table that is produced
+          by VLBAPCOR, and DOCAL=2
+       - in FRING: DPARM(8)=1
+         in KRING: OPCODE='ZRAT'
+       - ANTENNAS can be either the antennas you want to
+         fit + REFANT or all the antennas
+       - when you run FRING/KRING there are no failed solutions
+         on the antennas you want to correct.
+
+3. When you run CLCAL be sure:
+       - ANTENNAS are ONLY the antennas you want to correct,
+         do NOT put the REFANT in this list
+       - REFANT is the same as in VLBAPCOR
+       - SNVER is SN table out of FRING/KRING
+       - GAINVER is the GAINUSE you used in VLBAPCOR,
+         i.e. the CL table with all the calibration EXCEPT
+         the instrumental phase corrections.
+       - GAINUSE is the CL table output from VLBAPCOR (and
+         that you used are GAINUSE in FRING/KRING).
+       - TIMERANGE = 0
+       - CALSOUR = ''
+       - OPCODE = 'CALI'
+
+For antennas that are present in the PC table but the pulse cals
+do not correct things satisfactorily:
+
+1. Delete the CL table created by VLBAPCOR using EXTD and
+   then do one of 2 things:
+
+2. *EITHER*
+
+   Run SNCOR twice:
+       - set SNVER to the SN table created by VLBAPCOR
+       - set ANTENNAS to the antennas that were not satisfactory
+       - set OPCODE = 'ZPHS'
+       - all other adverbs should be defaults
+       - run SNCOR
+       - set OPCODE = 'ZDEL'
+       - run SNCOR
+   Run CLCAL:
+       - SNVER is SN table out of VLBAPCOR
+       - GAINVER is the GAINUSE you used in VLBAPCOR,
+         i.e. the CL table with all the calibration EXCEPT
+         the instrumental phase corrections.
+       - GAINUSE = highest CL table +1
+       - TIMERANGE = 0
+       - CALSOUR = ''
+       - OPCODE = 'CALP'
+   Then do steps 2 & 3 from the case where there are antennas
+   missing from the PC table.
+
+   *OR*
+
+   Delete the SN table created by VLBAPCOR using EXTD and rerun
+   VLBAPCOR with the 'bad' antennas in the ANTENNAS list.  Then
+   you are done.

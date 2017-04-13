@@ -1,0 +1,214 @@
+#!/bin/sh
+# UPDCVS
+#-------------------------------------------------------------------
+#! Update the distribution using CVS
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2003-2004, 2007, 2011
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Do a cvs update on our source tree; parse output for things
+#   that need removing from the local tree and remove them. Copy
+#   the UPD and UPD.SUM files over from to .
+#
+#   Inputs:
+#      cvscmd                Not defined or path to cvs
+#      cvsroot               Location of the repository
+#      AIPS_ROOT             Where AIPS lives
+#      VerName               AIPS version name
+#      LogFile               Where to write log messages
+#      ErrorFile             Where to put the error messages
+#
+#-----------------------------------------------------------------------
+Status=OK
+SDIR=`pwd`
+
+# Test for AIPS_ROOT/VerName.
+if [ "X$AIPS_ROOT" = "X" ] ; then
+    echo "UPDCVS - \$AIPS_ROOT undefined!" | \
+       tee -a $ErrorFile >> $LogFile
+    [ -t 1 ] && echo "UPDCVS - \$AIPS_ROOT undefined!"
+    Status=FAILED
+else
+    if [ ! -d $AIPS_ROOT/$VerName ] ; then
+       echo "UPDCVS - $AIPS_ROOT/$VerName doesn't exist!" | \
+          tee -a $ErrorFile >> $LogFile
+       [ -t 1 ] && \
+          echo "UPDCVS - $AIPS_ROOT/$VerName doesn't exist!"
+       Status=FAILED
+    fi
+fi
+
+# Test for cvscmd: if it isn't defined, try to find
+# it and define it. If it is defined, make sure the
+# definition isn't bogus.
+if [ "X$cvscmd" = "X" ] ; then
+    cvscmd=`which cvs`
+    if [ "X$cvscmd" = "X" ] ; then
+       echo "UPDCVS - unable to find cvs!" | \
+            tee -a $ErrorFile >> $LogFile
+       [ -t 1 ] && echo "UPDCVS - unable to find cvs!"
+       Status=FAILED
+    fi
+else
+    if [ ! -x $cvscmd ] ; then
+       echo "UPDCVS - cvscmd=$cvscmd defined but can't execute!" | \
+          tee -a $ErrorFile >> $LogFile
+       [ -t 1 ] && echo "UPDCVS - cvscmd=$cvscmd defined but can't execute!"
+       Status=FAILED
+    fi
+fi
+
+# Test for cvsroot.
+if [ "X$cvsroot" = "X" ] ; then
+   echo "UPDCVS - \$cvsroot undefined!" | \
+      tee -a $ErrorFile >> $LogFile
+   [ -t 1 ] && echo "UPDCVS - \$cvsroot undefined!"
+   Status=FAILED
+fi
+
+# One last check: look for $cvsroot in $HOME/.cvspass;
+# if it isn't there then cvs will ask us for a password,
+# which would be tragic in a non-terminal mode.
+FindPass=YES
+if [ $Status = OK -a ! -f $HOME/.cvspass ] ; then
+    echo "UPDCVS - no \$HOME/.cvspass; cvs should be primed with" | \
+       tee -a $ErrorFile >> $LogFile
+    [ -t 1 ] && \
+       echo "UPDCVS - no \$HOME/.cvspass; cvs should be primed with"
+    FindPass=NO
+elif [ $Status = OK ] ; then
+
+    # Needs to be better, .cvspass includes port now.
+#    GRP=`grep $cvsroot $HOME/.cvspass`
+    GRP=`grep :pserver:anoncvs@mnj.aoc.nrao.edu $HOME/.cvspass`
+
+    if [ "X$GRP" = "X" ] ; then
+       echo "UPDCVS - no $cvsroot in \$HOME/.cvspass!" | \
+            tee -a $ErrorFile >> $LogFile
+       [ -t 1 ] && echo "UPDCVS - no $cvsroot in \$HOME/.cvspass!"
+       FindPass=NO
+    fi
+fi
+
+# If we didn't find a functional cvs password for $cvsroot,
+# instruct them how to put one there.
+if [ $FindPass = NO ] ; then
+   echo "UPDCVS - a command like so:" | \
+      tee -a $ErrorFile >> $LogFile
+   echo "UPDCVS - $cvscmd -d $cvsroot login" | \
+      tee -a $ErrorFile >> $LogFile
+   echo "UPDCVS - This should have been done by MAKE.MNJ." | \
+      tee -a $ErrorFile >> $LogFile
+   [ -t 1 ] && \
+      echo "UPDCVS - a command like so:"
+   [ -t 1 ] && \
+      echo "UPDCVS - $cvscmd -d $cvsroot login"
+   [ -t 1 ] && \
+      echo "UPDCVS - This should have been done by MAKE.MNJ."
+   Status=FAILED
+fi
+
+
+# Whoops, we shipped a lame TEXT area. This can go away as soon
+# as everybody who installed between Jan 02 and Mar 02 runs this.
+cd $AIPS_ROOT
+if [ ! -d TEXT/CVS ] ; then
+#   CVSLOG=$SDIR/TEXT.CVS
+
+   echo "UPDCVS - detected broken install of TEXT; blowing old "
+   echo "UPDCVS - away and fetching new..."
+   [ -t 1 ] && \
+      echo "Detected broken install of TEXT; blowing old away and fetching new"
+
+   if [ -d TEXT ] ; then
+      rm -rf TEXT
+   fi
+
+   $cvscmd -z 3 -q -d $cvsroot get TEXT 2>&1 >> $LogFile
+
+   if [ $? = 0 ] ; then
+      echo "UPDCVS - cvs get of TEXT completed" \
+         >> $LogFile
+      [ -t 1 ] && \
+           echo "UPDCVS - cvs get of TEXT completed"
+   else
+      stat=$?
+      echo "UPDCVS - cvs get of TEXT had abnormal completion" | \
+         tee -a $ErrorFile >> $LogFile
+      [ -t 1 ] &&
+         echo "UPDCVS - cvs get of TEXT had abnormal completion"
+      Status=FAILED
+   fi
+fi
+
+echo "UPDCVS - cvs copy of $VerName begun, 1st character means" >> $LogFile
+echo " - U added, P updated, M your file differs from master" >> $LogFile
+echo " - C you have a changed file needing work (error!)" >> $LogFile
+echo " - ? you have a file not on the master (ignore)" >> $LogFile
+
+for f in $VerName TEXT ; do
+   if [ $Status = OK ] ; then
+#     CVSLOG=$SDIR/$f.CVS
+      cd $AIPS_ROOT
+      $cvscmd -z 3 -q -d $cvsroot update -d -I .cvsignore $f \
+         2>&1 >> $LogFile
+
+      if [ $? = 0 ] ; then
+         echo "UPDCVS - cvs update of $f completed" \
+            >> $LogFile
+         [ -t 1 ] && \
+            echo "UPDCVS - cvs update of $f completed"
+      else
+         stat=$?
+         echo "UPDCVS - cvs update of $f had abnormal completion" | \
+            tee -a $ErrorFile >> $LogFile
+	 [ -t 1 ] &&
+            echo "UPDCVS - cvs update of $f had abnormal completion"
+         Status=FAILED
+      fi
+   fi
+done
+
+# Copy .UPD and .SUM files from $VerName/UPDATE to $SYSLOCAL/UPDATE.
+if [ $Status = OK ] ; then
+   cd $SDIR
+   for d in COMRPL.UPD COMLNK.UPD PUTBCK.UPD REASONS.UPD REMOVE.UPD ; do
+      if [ -f $AIPS_ROOT/$VerName/UPDATE/$d ] ; then
+         cp $AIPS_ROOT/$VerName/UPDATE/$d .
+      fi
+      if [ -f $AIPS_ROOT/$VerName/UPDATE/$d.SUM ] ; then
+         cp $AIPS_ROOT/$VerName/UPDATE/$d.SUM .
+      fi
+   done
+fi
+
+if [ $Status = OK ] ; then
+   exit 0;
+else
+   exit 1;
+fi
+
+# Test of Revision control changes.

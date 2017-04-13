@@ -1,0 +1,356 @@
+; BOXES
+;---------------------------------------------------------------
+;! Adds Clean boxes to BOXFILE around sources from a list
+;# Task Imaging Modeling
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2002-2003, 2005, 2008, 2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+BOXES     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+BOXES:  Task to make a BOXFILE for input to IMAGR
+INNAME                             UV dataset name (name)
+INCLASS                            UV dataset name (class)
+INSEQ             0.0    9999.0    UV dataset name (seq. #)
+INDISK            0.0       9.0    Disk drive #
+SOURCES                            Source selected
+BOXFILE
+                                   disk file to read field locs
+                                   and Clean boxes
+OBOXFILE
+                                   output file to incl field
+                                   locs and Clean boxes
+CELLSIZE        0.0                (X,Y) size of grid in asec
+IMSIZE          0.0      16384     field size
+NFIELD          0.0       4096.    Number of facets
+RASHIFT                            RA shift per field (asec)
+DECSHIFT                           DEC shift per field (asec)
+FLUX              0.0              Minimum component flux
+                                   (source * beam)
+BPARM                              (1) Radius of box pixels
+                                   (2) Box scale if width > 0
+                                   (3) Factor to scale NVSS
+                                       fluxes, 0 -> 1
+                                   (4) > 0 -> keep old boxes
+                                   (5) Max field # to use
+PBPARM                             Beam parameters:
+                                   (1) Cutoff 0 -> 0.023
+                                   (2) > 0 -> Use (3)-(7)
+                                   (3)-(7) Beam shape
+INLIST
+                                   NVSS input file name
+                                   ' ' => AIPS provided.
+----------------------------------------------------------------
+BOXES
+Type:  Task
+Use:   BOXES creates Clean boxes containing all NVSS (or WENSS or ??)
+       sources > n milliJy that would fall in the images specified by
+       the input data file and BOXFILE.  The survey flux of each
+       source is multiplied by the single-dish beam pattern out to a
+       specified cutoff.
+Adverbs:
+  INNAME......The UV dataset name (name).    Standard defaults.
+  INCLASS.....The UV dataset name (class).   Standard defaults.
+  INSEQ.......The UV dataset name (seq. #).  0 => highest.
+  INDISK......The disk drive #.         0 => any.
+  SOURCES.....The source to be used from a multi-source file; a single
+              source name is required to get the central pointing
+              position from the source table.  Ignored for single-source
+              files.
+  BOXFILE.....Input text file containing field coordinates.  No real
+              default, ' ' => that there is none.  In that case,
+              NFIELD, RASHIFT, and DECSHIFT specify fully the field
+              locations.  Otherwise, the task starts with these adverb
+              values and overrides them following the information in
+              BOXFILE.
+  OBOXFILE....Output box file contains BOXFILE (with or without the
+              previous Clean boxes) plus Clean boxes around sources.
+              No default and may not pre-exist.
+  CELLSIZE....Pixel size for the fields in IMAGR in arc seconds.
+  IMSIZE......Size of each field.
+  NFIELD......The number of fields to map in the antenna beam. Up to
+              4096 are allowed.   0 -> set by max field in BOXFILE
+              and/or bPARM(5).  Note that only 64 fields may be
+              described in adverbs, but 4096 are allowed.  If you want
+              to set Clean boxes in advance for more than the first
+              field, or wish to specify RASHIFT, DECSHIFT, FLDSIZE, or
+              BCOMP for fields > 64, you must use the BOXFILE option.
+  RASHIFT.....RA shift of the phase center of each field from the
+              tangent point of the uv data in asec.  Map center =
+              tangent point + shift. If X>0 shifts map center to east.
+              NOTE: RASHIFT is a shift in RA scaled by cos (Dec_0) as
+                  Ra_new(i) = RA_0 + RASHIFT(i) / cos (Dec_0)
+              where _0 => the tangent point in the uv data.  This is a
+              change for 15OCT99 from shifts in -SIN projection (which
+              do not work for -NCP data and large angles).  If the UV
+              data have been rotated then RASHIFT and DECSHIFT refer
+              to X and Y in the new coordinate system.
+  DECSHIFT....Declination shift of map center from tangent point of
+              each field in asec.  Map center = tangent point + shift.
+              If Y>0 shifts map center to north.
+  FLUX........Minumum included component "flux" = source flux times
+              the single-dish beam power.  0 => any in INLIST.
+              Fluxes are read from the table, scaled by BPARM(3), and
+              then compared to FLUX.
+  BPARM.......(1) Clean boxes are circles of BPARM(1) pixels radius
+                  when there is no source width parameter given in
+                  INLIST for the particular source.  The NVSS and
+                  WENSS tables provided do not show widths.  <= 1 -> 3
+              (2) When a width parameter is provided (e.g. from MFPRT)
+                  for a source in INLIST, the Clean box is then made a
+                  circle of radius = BPARM(2) times the source FWHM
+                  (converted to pixels).  <= 0 -> 1.5.
+              (3) Factor to scale NVSS fluxes (to account for spectral
+                  index on average).  0 -> 1
+              (4) > 0 => keep all Clean boxes found in the input.
+                  <= 0 => keep only Clean boxes for fields numbered >
+                  BPARM(5)
+              (5) Max field number to consider: 0 -> 4096.  All fields
+                  are copied to OBOXFILE but only those numbered <=
+                  BPARM(5) are altered.
+  PBPARM......Primary beam parameters:
+              (1) Lowest beam value to believe: 0 -> 0.023  Sources
+                  outside this range are ignored.
+              (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+              (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See Explain for details and defaults
+  INLIST......Catalog input file name.  For format see Explain
+              ' ' => AIPS-provided file with 237600 objects, either
+              'AIPSTARS:NV00.0030' for J2000 or 'AIPSTARS:NV50.0030'
+              for B1950.  Other AIPSTARS: files available are
+              Epoch 2000:
+                FLUX >= 1.000  NV00.1000  (  2267 objects)
+                FLUX >= 0.300  NV00.0300  ( 14456 objects)
+                FLUX >= 0.100  NV00.0100  ( 63411 objects)
+                FLUX >= 0.030  NV00.0030  (237600 objects)
+              Epoch 1950:
+                FLUX >= 1.000  NV50.1000  (  2267 objects)
+                FLUX >= 0.300  NV50.0300  ( 14456 objects)
+                FLUX >= 0.100  NV50.0100  ( 63411 objects)
+                FLUX >= 0.030  NV50.0030  (237600 objects)
+              The WENSS/WISH surveys ar also available $AIPSTARS as
+                FLUX >= 0.100  WE00.0100  ( 99709 object 2000)
+                FLUX >= 0.100  WE50.0100  ( 99709 object 1950)
+              Some sites may choose to download really large source
+              lists to deeper flux levels.  These may include from the
+              NVSS survey:
+                FLUX >= 0.003  NV00.0003  (1560007 objects, 2000)
+                FLUX >= 0.003  NV50.0003  (1560007 objects, 1950)
+              and the WENSS/WISH survey:
+                FLUX >~ 0.010  WE00.0000  (319770 objects, 2000)
+                FLUX >~ 0.010  WE50.0000  (319770 objects, 1950)
+              These deep files may be particularly useful for BOXES.
+              Note: the WENSS survey covers +90 to +28 degrees
+              declination and the WISH survey covers -25 to -15 with
+              some sources to -9.
+----------------------------------------------------------------
+BOXES:  Task to make Clean boxes from the NVSS (or WENSS or ??)
+
+                        DESCRIPTION
+
+The task creates Clean boxes for all fields in BOXFILE.  The NVSS or
+other source catalog is then searched for all sources which would fit
+in these images within the primary or single-dish beam.  Those sources
+that fit in one or more of the images are added to those images.
+
+In order to do all this, the position (RA,DEC) of the pointing phase
+center is required.  This is obtained from the input UV data set.  In
+the case of a single-source data set, it is read from the header.  In
+the case of a multi-source data set, the source must be specified in
+the first element of the adverb SOURCES, and the position is read from
+the SU extension.  The selection of sources is by the adverb BPARM(3)
+and FLUX.   The source catalog may be specified in INLIST or you may
+use one of the AIPS-provided versions of the NVSS or WENSS.  The
+format of the file is:
+
+All lines beginning with a semi-colon are ignored.  They are the
+copyleft, a descriptive text in the AIPS files, and other comments.
+Be careful about the epoch of the coordinates.
+
+Remaining give the Right ascension in degrees, Declination in degrees,
+Flux in mJy, and optionally a FWHM in arc seconds using format
+F9.5,1X,F9.5,I7,F10.4.  A sample is given below (a width is shown
+although the actual NVSS files provided by AIPS  have no widths).
+
+;-----------------------------------------------------------------------
+;   Copyright (C) 1999-2000, 2002
+;   Associated Universities, Inc. Washington DC, USA.
+;
+;  This program is free software; you can redistribute it and/or
+;  modify it under the terms of the GNU General Public License as
+;  published by the Free Software Foundation; either version 2 of
+;  the License, or (at your option) any later version.
+;
+;  This program is distributed in the hope that it will be useful,
+;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;  GNU General Public License for more details.
+;
+;  You should have received a copy of the GNU General Public
+;  License along with this program; if not, write to the Free
+;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;  MA 02139, USA.
+;
+;  Correspondence concerning AIPS should be addressed as follows:
+;         Internet email: aipsmail@nrao.edu.
+;         Postal address: AIPS Project Office
+;                         National Radio Astronomy Observatory
+;                         520 Edgemont Road
+;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+; NRAO/VLA Sky Survey (NVSS) from CATALOG39.FIT
+;    2267 sources brighter than 1.0 Jy
+;    Catalog made on 1998-07-10 with 1814748 entries
+;RA(2000) Dec(2000)   Flux    FWHM
+; deg       deg        mJy  arc secs
+  0.08521  55.65239   1518    3.1234
+  0.22108  40.90052   1301
+  0.84166 -17.45316   2415
+  1.23802  12.80524   1071
+  1.37727  69.39949   1105
+  1.55780  -6.39310   2051
+  1.59416  -0.07363   3898
+  2.12217  -5.97935   1323
+;.....
+358.54728  32.91998   1183
+358.59049  45.88455   1873
+358.78961  49.83570   2306
+358.97312  15.69069   1104
+359.25280 -34.75882   1286
+359.32748  14.76875   1020
+359.38022 -11.42748   1814
+359.64781  44.07789   1940
+
+PRIMARY BEAM CORRECTION
+
+     BOXES corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+0.0738          -0.897E-3       2.71 E-7        -0.242E-10
+0.3275          -0.935          3.23            -0.378
+1.285           -1.329          6.445           -1.146      *
+1.465           -1.343          6.579           -1.186
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.

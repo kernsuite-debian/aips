@@ -1,0 +1,120 @@
+        .TITLE ZRM2RL (NWORDS, INBUF, OUTBUF)
+;-----------------------------------------------------------------------
+;! convert Modcomp to local single precision floating point
+;# Z Binary Tape
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Convert Modcomp single precision floating point data into local
+;   single precision floating point.
+;   Inputs:
+;      NWORDS   I      Length of the input buffer in words
+;      INBUF    R(*)   Input buffer containing Modcomp R*4 data
+;   Output:
+;      OUTBUF   R      Output buffer containing local REAL data
+;
+;   Notes:
+;
+;      Before call, input buffer should have its bytes flipped via
+;      ZI32IL which will leave the values in one local 32-bit integer
+;
+;      Expects, after word flip, sign bit in bit 31 (1=>negative),
+;      bits 22:30 are the  exponent biased by 256(?), bits 0:21 are
+;      the normalized fraction.  Negative values are obtained by 2's
+;      complement of the whole word.
+;
+;      Should work inplace.
+;   VAX/VMS version
+;-----------------------------------------------------------------------
+                                        ; define argument list
+NWORDS = 4
+INBUF  = 8
+OUTBUF = 12
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZRM2RL,^M<R2,R3,R4,R5,R6,R7,R8,R9>
+                                        ; Put arguments into registers
+        MOVL    @NWORDS(AP),R2          ; R2 = number of words.
+        MOVL    INBUF(AP),R3            ; R3 = Addr. of input
+        MOVL    OUTBUF(AP),R4           ; R4 = Addr. of output
+        TSTW    R2                      ; Compare number of words to 0
+        BGTR    LOOP
+        JMP     EOB                     ; Return if no work to do.
+                                        ;
+                                        ; loop over data
+LOOP:   MOVL    (R3)+,R5                ; get modcomp value.
+                                        ; R5 = input (Modcomp)
+                                        ; R6 = output (VAX)
+                                        ; R7 = sign
+                                        ; R8 = exponent
+                                        ; R9 = fraction
+; DEC sure is wierd.
+        ROTL    #16,R5,R5               ; Switch words
+        BICL3   #^C^X80000000,R5,R7     ; Extract sign=R5.and.80000000
+        BBC     #31,R7,CMPL             ; If negative negate word
+        MNEGL   R5,R5                   ; Negate word as a long integer
+CMPL:   BICL3   #^C^X7FC00000,R5,R8     ; Extract exponent=R5.and.7FC00000
+        BICL3   #^C^X003FFFFF,R5,R9     ; Extract fraction=R5.and.003FFFFF
+                                        ;
+                                        ; Crunch exponent
+                                        ;
+        ASHL    #-22,R8,R8              ; Convert exp. to integer
+        SUBL2   #128,R8                 ; Correct exp. bias.
+        BICL3   #^C^XFFFFFE00,R8,R5     ; Check for overflow, use R5 as temp.
+        ASHL    #-9,R5,R5               ; Should be zero
+        BGTRU   BUM                     ; If overflow or underflow branch
+        ASHL    #7,R8,R8                ; Move exponent to correct place.
+                                        ;
+                                        ; Crunch fraction
+                                        ;
+        ASHL    #2,R9,R9                ; Shift and zero pad to 24 bits.
+        BICL2   #^C^X007FFFFF,R9        ; delete "hidden" bit
+        ROTL    #16,R9,R9               ; Put bits in correct location
+                                        ;
+                                        ; Put bits back together
+                                        ;
+        ROTL    #-16,R7,R7              ; Move sign bit to bit 15.
+        BISL3   R7,R8,R6                ; OR sign and exponent.
+        BISL2   R9,R6                   ; OR in fraction
+        JMP     STORE                   ; finshed word
+                                        ;
+                                        ; Overflow or underflow
+                                        ;
+                                        ; if underflow replace with 0
+BUM:    BBC     #31,R5,OVFL             ; check for overflow
+        MOVF    #^F0.0,R6               ; Use 0.0 for underflow.
+        JMP     STORE                   ; finished word
+OVFL:   MOVL    #^C^X70000000,R6        ; put bad value in result
+STORE:  MOVL    R6,(R4)+                ; Store new value.
+                                        ;
+                                        ; Check for loop
+                                        ;
+        SOBGTR  R2,SHIT                 ; loop
+                                        ;
+EOB:    RET
+SHIT:   JMP     LOOP                    ; (limited branch range)
+        .END

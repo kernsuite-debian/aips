@@ -1,0 +1,149 @@
+      .TITLE  ZEXIS2 (PNAME, ISIZE, SYSERR, IERR)
+;-----------------------------------------------------------------------
+;! return size of disk file and if it exists
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Determine the existence of a file and its size in AIPS-bytes
+;   (1/2 of a local integer).
+;   Inputs:
+;      PNAME   C*48   Physical file name
+;   Output:
+;      SIZE    I      File size in AIPS-bytes (if file exists, else 0)
+;      SYSERR  I      System error code
+;      IERR    I      Error return code: 0 => file exists
+;                       1 => file does not exist
+;                       2 => inputs error
+;                       3 => other error
+;   VMS version - works on open or closed file.
+;-----------------------------------------------------------------------
+                                        ; System symbol definitions.
+$IODEF
+$FIBDEF
+$RMSDEF
+$ATRDEF
+FAT$L_EFBLK=8                           ; EOF offset in rec. attr. blk.
+FAT$L_HIBLK=4                           ; High block offset in rat.
+                                        ; Argument list offsets.
+PNAME = 4
+ISIZE = 8
+SYSERR = 12
+IERR = 16
+                                        ; Other constants.
+NAMLEN = 48
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZEXIS2,^M<R2,R3,R4,R5,R6,R7>
+                                        ;
+        MOVL    #0,@ISIZE(AP)           ; Zero size.
+        MOVL    #48,DEVDIS              ; Set length for discriptor.
+        MOVL    #0,@SYSERR(AP)          ; Zero error flag.
+        MOVL    #0,@IERR(AP)            ; Zero error flag.
+        MOVL    PNAME(AP),R1            ; R1=address of file name.
+        LOCC    #^A/ /,#NAMLEN,@PNAME(AP) ; Locate 1st blank.
+        BEQL    NOBLNK                  ; branch if no blank.
+        SUBL3   R0,#NAMLEN,R6           ; R6=length of name.
+        BRW     CONT
+NOBLNK: MOVL    #NAMLEN,R6              ; No blanks. Full length.
+CONT:   MOVL    R6,FLEN
+                                        ; Set up FAB for parse.
+        $FAB_STORE      FAB=FABBLK,-
+                        FNA=@PNAME(AP),-
+                        NAM=NAMBLK,-
+                        FNS=FLEN
+        $PARSE  FAB=FABBLK
+        BLBS    R0,SEARCH
+        BRW     OTHER
+                                        ; Search for name in dir.
+SEARCH:
+        $SEARCH FAB=FABBLK
+        BLBS    R0,ACCESS
+        CMPL    R0,#RMS$_FNF
+        BEQL    FNF
+        BRW     OTHER
+                                        ; Set for not found.
+FNF:
+        MOVL    R0,@SYSERR(AP)
+        MOVL    #1,@IERR(AP)
+        BRW     QUIT
+                                        ; Prepare for access.
+ACCESS:
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB ; Zero FIB.
+        LOCC    #^A/:/,#48,EXTNAM       ; Find length of device name
+        SUBL3   R0,#49,DEVDIS           ; set length in descriptor.
+        MOVW    NAMBLK+NAM$W_FID,FIB+FIB$W_FID
+        MOVW    NAMBLK+NAM$W_FID+2,FIB+FIB$W_FID+2
+        MOVW    NAMBLK+NAM$W_FID+4,FIB+FIB$W_FID+4
+                                        ; Assign a channel to the dev.
+        $ASSIGN_S DEVNAM=DEVDIS,-
+                  CHAN=CHANNEL
+        BLBC    R0,OTHER
+                                        ; Try to access file header.
+        MOVAL   ATTCB,R7
+        $QIOW_S CHAN=CHANNEL,-
+                FUNC=#IO$_ACCESS,-
+                IOSB=STATUS,-
+                P1=FIBDSC,-
+                P5=R7
+        BLBC    R0,OTHER
+                                        ; Get inverted format file size
+                                        ; from file attribute block.
+        MOVW    ATBUF+FAT$L_HIBLK,-
+                CALCSIZ+2
+        MOVW    ATBUF+FAT$L_HIBLK+2,-
+                CALCSIZ
+        MULL3   #256,CALCSIZ,@ISIZE(AP)
+        BRW     QUIT
+                                        ; other error.
+OTHER:  MOVL    R0,@SYSERR(AP)
+        MOVL    #3,@IERR(AP)
+;
+QUIT:   $DASSGN_S CHAN=CHANNEL
+        RET
+                                        ;
+        .PSECT  DATA,LONG
+CHANNEL: .LONG  0
+CALCSIZ: .LONG  0
+STATUS: .BLKL   2
+FIBDSC: .LONG   FIB$K_LENGTH
+        .ADDRESS   FIB
+FIB:    .BLKB   FIB$K_LENGTH
+                                        ; attribute control block
+ATTCB:  .WORD   ATR$S_RECATTR           ;record attr. blk. size
+        .WORD   ATR$C_RECATTR           ;record attr. blk. type
+        .ADDRESS   ATBUF                   ;record attr. blk. address
+        .LONG   0                       ;end of list marker
+ATBUF:  .BLKB   ATR$S_RECATTR           ;attribute buffer
+FABBLK: $FAB
+NAMBLK: $NAM    ESA=EXTNAM,-
+                ESS=48
+FLEN:   .LONG   0
+EXTNAM: .BLKB   48
+DEVDIS: .LONG   0                       ;Discriptor for device name.
+        .ADDRESS   EXTNAM
+        .END

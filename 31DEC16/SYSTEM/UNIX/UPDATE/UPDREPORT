@@ -1,0 +1,93 @@
+#!/bin/sh
+# UPDREPORT
+#-----------------------------------------------------------------
+#! Update job report
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1996, 1998, 2001, 2004
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------
+#   Mail an update report the the AIPS managers/programmers and
+#   print it out
+#
+#   Inputs:
+#      LogFile      Update log file name
+#      ClientName   Machine name
+#      RunTime      Date/Time (UT)
+#      VerName      AIPS version
+#      MailList     People who get the report
+#      PrtCommand   Command to print file
+#-----------------------------------------------------------------
+cat > UPD$RunTime.DOC << --EndHeader
+$ClientName update report for $VerName on `date -u` (UT)
+
+Copies and compiles:
+
+--EndHeader
+cat $LogFile REASONS.UNQ >> UPD$RunTime.DOC
+rm $LogFile
+cat >> UPD$RunTime.DOC << --EndChHdr
+
+CHANGE.DOC entries:
+
+--EndChHdr
+diff -b LASTGOOD.DOC $HIST/CHANGE.DOC | sed -n -e 's/> //p' \
+    >> UPD$RunTime.DOC
+cp $HIST/CHANGE.DOC LASTGOOD.DOC
+#                                       Mail file (at least to me)
+[ "$MailList" = "" ] && MailList="$LOGNAME"
+if [ "$MailList" != "" ] ; then
+#                                       Should really use sendmail -t
+#                                       ... if we knew where sendmail
+#                                       was likely to be found!
+   subj="$VerName $ARCH midnite job ($ClientName, $RunTime)"
+   sendmail="/usr/lib/sendmail"
+   [ ! -x $sendmail ] && sendmail="/usr/sbin/sendmail"
+   if [ ! -x $sendmail ] ; then
+     echo "Cannot find sendmail (/usr/sbin or /usr/lib)"
+     echo "so AIPS midnight report is shown here"
+     echo " -------------------------------------------"
+     echo "From: $LOGNAME"
+     echo "To: $MailList"
+     echo "Subject: $subj"
+     echo ""
+     cat UPD$RunTime.DOC
+   else
+     tmpnam=UPDREPORT.$$
+     /bin/rm -f $tmpnam
+     echo "From: $LOGNAME"  >$tmpnam
+     echo "To: $MailList"  >>$tmpnam
+     echo "Subject: $subj" >>$tmpnam
+     echo "X-Mailer: AIPS Midnight Job UPDREPORT" >>$tmpnam
+     echo "" >>$tmpnam
+     cat UPD$RunTime.DOC >>$tmpnam
+     cat $tmpnam | $sendmail -oi -B8BITMIME -t
+     /bin/rm -f $tmpnam
+   fi
+fi
+#                                       Print it
+if [ "$PrtCommand" != "" ] ; then
+  pr -f UPD$RunTime.DOC | $PrtCommand
+fi

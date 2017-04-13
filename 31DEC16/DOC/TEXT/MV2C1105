@@ -1,0 +1,720 @@
+^PY^-
+^IOP^IL0600^IS404^IC1000^IJ00700^IT00700^PN^-
+
+
+E. Z-ROUTINES AND Z-PROGRAMS
+
+
+   The following is a collection of notes regarding Z-routines for UNIX
+AIPS.
+
+ 1. History.
+
+   The original implementation of AIPS under UNIX occurred as a result
+of the pioneering efforts of the Astronomy Department at the University
+of Texas, Austin (David Garrett).  They started with 4.1BSD UNIX on a
+VAX and later upgraded to 4.2BSD UNIX.  The Z-routines found in the
+.../ZSUB/UNIX/BSDn directories come from the University of Texas and
+since NRAO has no machines running Berkeley UNIX, they have not been
+modified.  NRAO will continue to rely on the Texas effort (as well as
+other UNIX AIPS sites that are running flavors of UNIX or implementations
+of UNIX on hardware that we don't have) to contribute Z-routines for these
+systems.  The UT-NRAO connection has already produced a subset of routines
+that may very well prove to be generic for UNIX AIPS, but we need to
+know about variations, improvements and most importantly cases where what
+we believe to be generic is not in fact the case at all.
+
+
+ 2. Standards.
+
+   In general, all is fair in love, war and Z-routines.  However, we
+are struggling to come up with a set of generic Z-routines for UNIX
+and to some extent, the rest of the computing world.  Wherever routines
+can be written in ANSI standard Fortran 77, they should be.  This means
+that they can be used under any system that has a 77 compiler as well.
+When AIPS was first developed, Fortran 77 was not that prevalent and
+you will find the VMS Z-routines heavily laden with VAXisms including
+in line system service calls and VMS extensions to Fortran 77 (WHILE
+statements, etc.).  In addition, just because you can get away with it
+doesn't mean that it's standard.  For example, we have seen many systems
+that will allow you to EQUIVALENCE data items of type CHARACTER with
+data items of other types (an ANSI standard violation).  Making use of
+this would mean that on such systems, many Z-routines could be
+written in Fortran rather than the local assembler language.  DEC has
+provides VAX users a very nice set of Fortran manuals that highlight non-
+standard constructs in blue ink.  Using these in combination with the
+less readable American National Standard Programming Language FORTRAN,
+ANSI X3.9-1978, we should be able to come up with generic Fortran
+Z-routines.  The situation for Z-routines written in C is less clear.
+An ANSI standard for C is in the works, but not yet available.  Until
+then, we will have to rely on most common usage.  At NRAO this is
+achieved by comparing our library of reference manuals for various
+flavors of UNIX.  It is our sincere hope that other UNIX AIPS sites will
+contribute their variations and improvements of Z-routines.  NRAO will
+pass these on to other sites and as time and standards permit, incorporate
+them into the generic set.
+
+ 3. Naming conventions.
+
+   The naming conventions for Z-routines are varied and sometimes
+inconsistent.  In general however, any routine that has a name of the
+form *2.* or ZQ* can be considered as lower level routines called only
+by the routine having a similar name (e.g., ZTACT2 is a lower level
+routine of ZTACTQ, ZQRENA is a lower level routine of ZRENAM, ZQIO is
+a lower level routine of both ZFIO and ZMIO, etc.).  A convention
+of naming routines that are peculiar to UNIX as ZX* was started by
+David Garrett (Univ. of Texas, Austin) and continues today.  You
+can be sure, that all routines with names of the form ZX* are lower
+level Z-routines.  That is, ZX* routines are only called by other
+Z-routines, never by the machine independent routines of AIPS.  Often
+the ZX* routines are called only by Z-routines with similiar names
+(e.g., ZXTSPY is only called by ZTQSPY).  At some point, a cross
+reference listing of subroutine calls and included text may be provided.
+
+
+ 4. Routines sensitive to byte/word flip.
+
+   Byte/word flip is a phenomenon peculiar to VAX-like architectures.
+The order of the bytes in data items is reversed compared to the more
+common order found in the computing industry.  It can be construed as a
+real advantage if you limit yourself to these architectures however, it
+impacts portablity of code.  Since the major development node of AIPS
+is on a VAX under VMS, it has been written such that converts its input
+from the outside world (i.e., tape data) into its peculiar byte order
+and on output, converts it back to the industry compatible order.  This
+means that on most machines, many of these conversion routines do nothing
+to perturb the order of bytes/words, but must be called nevertheless.
+
+   The place where you indicate whether your machine has byte and/or
+word flip is the routine ZDCHIN.  This is done by setting the COMMON
+variable BYTFLP (see $INCS/*DCH.INC) to the appropriate value (i.e.,
+0 ==> neither, 1 ==> byte flip, 2 ==> word flip and 3 ==> both byte
+and word flip).  We have used the value of BYTFLP in the Z-routines that
+care about such things to execute an appropriate set of statements.
+This is more difficult in the case of routines written in C since the
+value of BYTFLP is not readily available.  If we declare the common
+DCHCOM as an external array of type short int, we can extract the value
+of BYTFLP as the 35th element of this array.  DCHCOM is used extensively
+throughout AIPS and is therefore subject to change only when absolutely
+necessary however, whenever it does change, the value of BYTFLP may no
+longer be in the same place and we will have to adjust the routines that
+extract it in this way.  The following routines (all in $APLZ) are
+sensitive to byte/word flip:
+
+   ZBYTFL.c   ZCMPRS.FOR   ZCREAT.FOR   ZEXIST.FOR   ZGETCH.c
+   ZGTBYT.c   ZMATH.FOR    ZPUTCH.c     ZPTBYT.c     ZR8P4.FOR
+
+   In addition, the routine ZP4I4 (found in $SAPZ) is also word flip
+dependent.
+
+ 5. $HOME/xxx/AIPS/ZSUB/UNIX/* Z-routines
+
+   The following routines are believed to be generic and are stored in
+$HOME/xxx/AIPS/ZSUB/UNIX/GEN :
+
+   ZACTV8.FOR .....called by AU2 to shed tasks.  Determines the full
+                   pathname of the executable module for the desired
+                   task and passes it on to ZACTV9.
+
+   ZACTV9.c .......does actual task initiation and opens pipe between
+                   AIPS and task being shed (could be sped up by using
+                   'vfork' if your system has it).  It calls 'execl'
+                   with the full pathname of the executable module
+                   provided by ZACTV8 and gives the process the name
+                   XXXXXn where "XXXXX" is the name of the task and
+                   "n" is the "POPS" number of the AIPS shedding the
+                   task (e.g., AIPS1 sheds UVMAP1).
+
+   ZEXIT.c ........currently only used by ZSTRTA to return "POPS"
+                   number as exit status.
+
+   ZFREE.FOR ......displays free disk space returned by ZXFREE.
+
+   ZKDUMP.FOR .....dumps an array in various forms (I*2, CHARACTER, R*4,
+                   hexadecimal, etc.).
+
+   ZPRMPT.c .......issues terminal prompts.
+
+   ZSUSPN.c .......suspends AIPS until task shed by ZACTV9 writes on
+                   AIPS-task interprocess pipe via ZTRSUM.
+
+   ZTQSPY.FOR .....displays information on active AIPS's and tasks as
+                   returned by ZXTSPY.
+
+   ZWHOMI.FOR .....gets "POPS" number "n" of AIPSn when it starts up
+                   (also where process shell variable values should be
+                   checked for such things as reserved terminals, TV
+                   and graphics display device assignments/priorities,
+                   etc.; see VMS version as an example).
+
+
+   The following Z-routines will probably require some local
+development:
+
+   ZTKILL.c .......given the name of a task, kills it with prejudice.
+                   Using the 'ps' command in a call to 'popen', the
+                   output of 'ps' could be parsed to get the process
+                   id of the given task and kill it.  $AIPBSD2/ZTKILL.c
+                   is an example of this.  The syntax of the 'ps' command
+                   varies from UNIX to UNIX and so does the format of
+                   its output.  Also, unless your system has implemented
+                   'vfork' for forking processes (calls to 'popen' and
+                   'system' fork processes), this technique is very slow.
+                   At NRAO, where we have the source code for UTS, we
+                   hacked the code for 'ps' into a subroutine for this
+                   purpose.  The reason that calls to 'fork' (as opposed
+                   to 'vfork') is so slow is because it makes an exact
+                   copy of the parent process then overlays the new image
+                   with the child process, in this case 'ps'.  ZTKILL is
+                   only called by AIPS itself which is quite large (about
+                   one megabyte on most UNIX systems).
+
+   ZXFREE.c .......lower level routine of ZFREE that examines $DA00,
+                   $DA01, $DA02, ..., $DA0n AIPS disks and reports
+                   free space.  Systems that have the C function
+                   'ustat' should make use of it here (Masscomp has
+                   it but we haven't tried it yet).
+
+   ZXTSPY.c .......feeds ZTQSPY with information on AIPS related
+                   processes.  The same technique described in ZTKILL
+                   above could be used to get this information via the
+                   'ps' command.  At NRAO under UTS, we could only get
+                   the "IO COUNT" for processes by hacking the source
+                   code of 'ps' however, nothing in AIPS depends on this
+                   count.  Again, $AIPBSD2/ZXTSPY.c provides an example
+                   of how this routine can be written using the 'ps'
+                   command.
+
+
+ 6. $HOME/xxx/APL/ZSUB/UNIX/* Z-routines
+
+   The following routines are believed to be generic and are stored in
+$HOME/xxx/APL/ZSUB/UNIX/GEN :
+
+   DARCOS.FOR ......only necessary because VAX/VMS has a non-standard
+                    name for the intrinsic function DACOS.  We could
+                    add a transformtion to the preprocessor to eliminate
+                    the overhead of this subroutine call.
+
+   DARSIN.FOR ......only necessary because VAX/VMS has a non-standard
+                    name for the intrinsic function DASIN.  We could
+                    add a transformtion to the preprocessor to eliminate
+                    the overhead of this subroutine call.
+
+   IAND.c ..........performs bitwise logical AND (this is an intrinsic
+                    function under VMS).
+
+   IEOR.c ..........performs bitwise exclusive OR (this is an intrinsic
+                    function under VMS).
+
+   IOR.c ...........performs bitwise inclusive OR (this is an intrinsic
+                    function under VMS).
+
+   ZB2ASC.c ........converts binary integer to ASCII an places right
+                    justified in a string of specified length padded
+                    with zeroes.
+
+   ZBYTFL.c ........interchanges all lower ordered and higher ordered
+                    bytes in the words of an input buffer and places
+                    the results in an output buffer (no interchange is
+                    done for machines with no byte flip).
+
+   ZC8CL.FOR .......extracts 8-bit ASCII standard characters and stores
+                    them in a buffer in local form (opposite of ZCLC8).
+
+   ZCH2R4.FOR ......copies specified number of characters from a
+                    CHARACTER array to a REAL (or otherwise numeric)
+                    array and performs alternate RETURN if necessary
+                    (used in transformation of ENCODE statements into
+                    internal WRITEs by preprocessor).
+
+   ZCLC8.FOR .......converts local characters in a buffer to standard
+                    8-bit ASCII (opposite of ZC8CL).
+
+   ZCLOSE.FOR ......closes files associated with logical unit numbers
+                    (LUN), removes exclusive use (not developed for UNIX)
+                    and clears file table (FTAB) array entries (calls
+                    ZXLPRT for line printer files, ZQDASS for other
+                    non-disk files and ZQCLOS for disk files).
+
+   ZCMPRS.FOR ......releases unused disk space in files (calls ZQTRUN
+                    to perform the actual "truncation").
+
+   ZCREAT.FOR ......creates all AIPS files read/written by ZQIO (calls
+                    ZEXIST to check for pre-existence, then ZQCREA to
+                    perform the actual creation).
+
+   ZDEACL.FOR ......special close for DeAnza type TV device (null op).
+
+   ZDEAMC.FOR ......issues master clear to DeAnza type TV device.
+
+   ZDEAOP.FOR ......special open for DeAnza type TV device (null op).
+
+   ZDEAXF.FOR ......queues an I/O operation to a DeAnza type TV device
+                    (null op).
+
+   ZDELA2.c ........called by ZDELAY to issue actual delay.
+
+   ZDELAY.FOR ......causes delay of specified time (calls ZDELA2 to
+                    perform actual delay; we could probably rewrite
+                    this in C and eliminate ZDELA2 except some C compilers
+                    may not accept floating point literals).
+
+   ZDESTR.c ........destroys (unlinks) disk files.
+
+   ZDIR.FOR ........given a file type known to AIPS, a version and a
+                    filename, builds the full pathname to the file.
+
+   ZDOPR2.c ........lower level routine called only by ZDOPRT.  A null
+                    operation under UNIX as it stands now.
+
+   ZDOPR3.FOR ......lower level routine called only by ZDOPRT.  A null
+                    operation under UNIX as it stands now.
+
+   ZDOPR4.FOR ......lower level routine called only by ZDOPRT.  A null
+                    operation under UNIX as it stands now.
+
+   ZDOPRT.FOR ......reads a bit map and coverts it to a form that can
+                    be sent to a Versatec printer/plotter spooled under
+                    VMS.  A null operation under UNIX as it stands now.
+
+   ZENDPG.FOR ......advances the line printer to avoid "burn-out" on
+                    electrostatic type line printers (null op).
+
+   ZEXIST.FOR ......determines if a given file exists (calls ZXXIST to
+                    actually determine the files existence and its size).
+
+   ZEXPND.FOR ......increases the size of a non-map file (calls ZQEXP to
+                    perform the actual expansion).
+
+   ZFIO.FOR ........performs non-map (i.e., single buffered) i/o (calls
+                    ZQIO for disk devices, ZXTPIO for tape devices and
+                    ZTKQIO for graphics devices to perform actual data
+                    transfer).
+
+   ZGETCH.c ........extracts a single character from a word and places
+                    it in the least significant bits of an otherwise
+                    zero integer (byte/word flip dependent).
+
+   ZGNAME.FOR ......gets the name of the calling process (i.e., arg0).
+
+   ZGTBIT.c ........gets N bits from a word starting at a given address
+                    and returns each bit in a different element of an
+                    array.
+
+   ZGTBYT.c ........gets the specified byte of an integer and puts it
+                    in the lower ordered byte of another otherwise zero
+                    integer (byte flip dependent);
+
+   ZGTDIR.FOR ......gets an alphabetized list of files in a given
+                    directory (calls ZDIR to build the full pathname
+                    of the directory and ZPARS to actually get the
+                    alphabetized list of files).
+
+   ZI16IL.FOR ......extracts 16-bit 2's complement integers from a buffer
+                    and puts them into the local small integer form
+                    (calls ZBYTFL to insure the proper byte order).
+
+   ZI32IL.FOR ......extracts 32-bit, 2's complement integers from a buffer
+                    an puts them into the local small integer form (calls
+                    ZBYTFL to insure the proper byte order).
+
+   ZI8L8.FOR .......converts 8-bit unsigned binary numbers to "bytes"
+                    (1/2 of a local small integer).
+
+   ZILI16.FOR ......converts a buffer of local small integers to a buffer
+                    standard 16-bit, 2's complement integers (calls
+                    ZBYTFL to insure proper byte order).
+
+   ZITOCH.c ........copies characters in an INTEGER array to a CHARACTER
+                    array.
+
+   ZLDFIL.FOR ......old version of ZPHFIL designed solely for public
+                    data files (defunct).
+
+   ZM70CL.FOR ......special close for IIS model 70 type TV device.
+
+   ZM70MC.FOR ......issues master clear to IIS model 70 type TV device.
+
+   ZM70OP.FOR ......special open for IIS model 70 type TV device.
+
+   ZM70XF.FOR ......queues an I/O operation to a IIS model 70 type TV
+                    device.
+
+   ZMATH4.FOR ......does I*4 arithmetic on pseudo I*4 arguments (byte
+                    flip dependent).
+
+   ZMIO.FOR ........performs random access, large record, map (i.e.,
+                    double buffered) i/o (calls ZQIO for disk devices,
+                    ZXTPIO for tape devices and ZTKQIO for graphics
+                    devices to perform actual data transfers).
+
+   ZMOUNT.FOR ......lower level routine of ZTAPE that in turn calls
+                    ZXMOUN to perform software mounting of tapes.
+
+   ZMOVE.c .........general purpose character string moving routine.
+
+   ZMSGCL.FOR ......special close for message files.
+
+   ZMSGDK.FOR ......special i/o routine for message files.
+
+   ZMSGOP.FOR ......special open for message files.
+
+   ZOPEN.FOR .......upper level routine called when opening most files
+                    (calls ZQOPEN to perform actual opens).
+
+   ZPARS.c .........returns a alphabetized list of files found in a
+                    given directory matching a given specification (e.g.,
+                    UV*.HLP).
+
+   ZPHFIL.FOR ......builds full pathnames of files given type, disk,
+                    version, etc. for both private and public systems
+                    (replaces ZLDFIL).
+
+   ZPHOLD.FOR ......old version of ZPHFIL (defunct).
+
+   ZPTBIT.c ........gets N bits from different elements of an array
+                    containing the bit pattern starting at a given
+                    array index and puts the bits in word (the opposite
+                    of ZGTBIT).
+
+   ZPTBYT.c ........gets the lower ordered byte of an integer an puts
+                    it in the specified byte of another integer (byte
+                    flip dependent; the opposite of ZGTBYT).
+
+   ZPUTCH.c ........puts the least significant bits (one character worth)
+                    of a given word into the specified byte of another
+                    word (the opposite of ZGETCH).
+
+   ZQCLOS.c ........performs actual close of disk files (lower level
+                    routine called only by ZCLOSE).
+
+   ZQCREA.c ........performs actual creation of files (lower level
+                    routine called only by ZCREAT).
+
+   ZQDASS.c ........performs closes on tape, graphics, etc. devices.
+
+   ZQDEVN.c ........returns name of file/device associated with a file
+                    descriptor.
+
+   ZQEXP.c .........performs actual file expansion (lower level routine
+                    called only by ZEXPND).
+
+   ZQIO.c ..........performs actual i/o (lower level routine called by
+                    ZFIO, ZMIO and Z*XF).
+
+   ZQIOV.c .........performs actual i/o for Versatec printer/plotter.
+                    A null operation as it stands now (called only by
+                    ZDOPR* routines).
+
+   ZQMSG.c .........concatenates given routine name with system error
+                    message and calls ZQDEVN to get file/device
+                    involved.
+
+   ZQOPEN.c ........performs actual disk file opens (lower level routine
+                    called only by ZOPEN).
+
+   ZQRENA.c ........performs actual renaming of disk files (lower level
+                    routine called only by ZRENAM).
+
+   ZQTRUN.c ........performs actual disk file truncation (lower level
+                    routine called only by ZCMPRS).
+
+   ZQWIO.c .........returns the error status of a an i/o operation not
+                    waited for by either ZQIO or ZXTPIO (lower level
+                    routine called only by ZWAIT).
+
+   ZR42CH.c ........copies a specified number of characters from a REAL
+                    or otherwise numeric array to a CHARACTER array (used
+                    mostly if not exclusively in the transformation of
+                    DECODE statements into internal READ constructs by
+                    the preprpcessor).
+
+   ZR8P4.FOR .......general conversion routine for pseudo I*4 to/from
+                    REAL*8 based on opcodes (word flip dependent).
+
+   ZRENAM.FOR ......renames disk files (calls ZQRENA to perform actual
+                    rename).
+
+   ZTACTQ.FOR ......determines if a given AIPS task is currently running
+                    (calls ZTACT2 to perform actual determination).
+
+   ZTAPE.FOR .......general tape manipulation (calls ZQTAPE to perform
+                    actual manipulation).
+
+   ZTCLOS.FOR ......closes text files.
+
+   ZTFILL.FOR ......fills intial values in file table (i.e., FTAB).
+
+   ZTKBUF.FOR ......puts lower ordered byte of integer in a specified
+                    element of the graphics device output buffer.
+
+   ZTKCLS.FOR ......close for graphics device provided for any special
+                    actions required.
+
+   ZTKOPN.FOR ......open for graphics device provided for any special
+                    actions required.
+
+   ZTKQIO.c ........performs actual i/o to graphics device (lower level
+                    routine called only by ZFIO and ZMIO).
+
+   ZTOPEN.FOR ......opens text files.
+
+   ZTREAD.FOR ......reads text files.
+
+   ZTRIM.c .........null operation under UNIX (required by VMS only).
+
+   ZTRSUM.c ........resumes AIPS after task initiation.  Writes on
+                    interprocess channel (pipe) opened between AIPS and
+                    task being shed to indicate successful startup
+                    (counterpart to ZSUSPN).
+
+   ZTXMAT.FOR ......builds list of files in a specified directory that
+                    that match a given file specification (e.g., UV*.HLP).
+
+   ZWAIT.FOR .......waits until an i/o operation is complete (since event
+                    wait i/o under UNIX is not available, this routine
+                    doesn't really do anything except call ZQWIO and if
+                    indicated, ZQMSG).
+
+   ZXHEX.c .........converts decimal value to hexadecimal representation.
+
+   ZXLOC.c .........determines if the address of two arguments is the
+                    same.
+
+   ZXMKTM.c ........makes unique temporary file names.
+
+   ZXMSGS.c ........reassigns task standard out to message terminals as
+                    determined in ZDCHIN.
+
+   ZXTLOG.c ........gets the value of shell variables from the
+                    environment (i.e., translates logical names to
+                    full pathnames).
+
+   ZXTPIO.c ........performs actual tape i/o (lower level routine called
+                    by ZFIO and ZMIO).
+
+   ZXXIST.c ........performs actual test of file existence (lower level
+                    routine called only by ZEXIST).
+
+
+   The following routines will probably require some local development:
+
+   ZCPU.c ..........returns CPU time of calling process (should return
+                    the i/o count as well, but this information is not
+                    readily available under UNIX).  The means of getting
+                    of getting this information seems to differ from
+                    UNIX to UNIX.  Before you invent yet another way,
+                    check the various ways of doing this developed for
+                    the flavors of UNIX with which we have had experience.
+                    One of these may work for you.
+
+   ZDATE.c .........returns local date.  Another example of a simple
+                    idea different from UNIX to UNIX.  You may find that
+                    one of the forms that we have sent will work for you
+                    as well.
+
+   ZDCHIN.FOR ......called near the beginning of every main program,
+                    this routine initializes the disk characteristics
+                    common (DCHCOM). Some of these are hard coded, others
+                    are read by the system parameter (SP) file.  Check
+                    the hard coded values in this routine for
+                    compatibility with your system.  They should be
+                    okay for almost all minis and supermicros.  The
+                    most important one is BYTFLP.  This should be "3"
+                    for VAXes and "0" for almost everything else.
+
+   ZESTEX.c ........exit handling routine to clean up for AIPS and tasks
+                    in the event of an ABORTTASK or otherwise fatal
+                    signal.  Specifies function (ZXSIGC) to which
+                    programs should branch when catchable signals are
+                    received (Hangup, interrupt and quit are ignored).
+
+   ZQASSN.c ........performs opens on tape, graphics, etc. devices.  The
+                    reason that this routine is not generic is because
+                    when tapes are opened, they are opened for
+
+   ZQTAPE.c ........performs actual tape manipulation (lower level
+                    routine called only by ZTAPE). Tape manipulation
+                    is highly system dependent.  Even the UNIX manuals
+                    tell you this.  A good example to copy is the
+                    version of ZQTAPE found in $APLBSD2.
+
+   ZTACT2.c ........determines if a given AIPS task is currently running
+                    (lower level routine called only by ZTACTQ).  This
+                    routine, like ZXTSPY and ZTKILL, can be written to
+                    parse the output of the 'ps' command to get the
+                    required information.  However, the syntax and output
+                    of the 'ps' command varies from UNIX to UNIX.  The
+                    version of ZTACT2 found in $APLBSD2 is an example of
+                    how this might be done.  Doing this will fork a new
+                    process and unless your UNIX has 'vfork', this method
+                    is potentially very slow.  At NRAO under UTS, we
+                    hacked the source code of 'ps' to serve this purpose.
+
+   ZTIME.c .........returns local time.  Again, different from UNIX to
+                    to UNIX.  See comments of ZCPU and ZDATE.
+
+   ZTTYIO.FOR ......performs all terminal I/O.  It's such a simple
+                    routine that you'd think it would be easy to make
+                    it generic, but each system at NRAO has its own
+                    peculiar quirks.  The version found in $APLGEN
+                    should work everywhere, but it doesn't.
+
+   ZXLPRT.c ........spools file to the line printer.  This routine should
+                    be very simple.  Whenever AIPS writes to the line
+                    printer, we direct the output to a disk file and
+                    when AIPS closes the line printer, we simply print
+                    this disk file via a system call invoking the system
+                    dependent shell script $UNIX/ZXLPRT.  You may want to
+                    rework both ZOPEN and ZCLOSE and write directly to
+                    your line printer instead (if this is possible on
+                    your system) but you will probably find that there
+                    is no real advantage to this.
+
+   ZXMOUN.c ........performs software mount/dismount of tapes (lower
+                    level routine called only by ZTAPE).  As in
+                    the case of tape manipulation, the way tapes are
+                    mounted varies from UNIX to UNIX.  Sometimes they
+                    are devices that are always on-line (i.e., mounted)
+                    and in other systems, a special mount request or
+                    device assignment must be made.  At NRAO under UTS,
+                    ZXMOUN prompts the user for information peculiar to
+                    the UTS tape mount request, issues it, waits for it to
+                    be satisfied, then sets the value of the appropriate
+                    shell variable (MT00 for drive #1, MT01 for drive #2,
+                    etc.).  The $APLBSD2 version (from David Garrett at
+                    the Univ. of Texas, Austin) takes a different
+                    approach where ZXMOUN does not exist and ZMOUNT is
+                    a C routine where all the shell variable setting is
+                    done.  The UTS approach uses 'putenv' to set the
+                    MT* shell variables and $APLBSD2/ZMOUNT.c manipulates
+                    the 'environ' variable directly.  Some of the
+                    intrinsic functions called by $APLUTS/ZXMOUN.c are
+                    not available everywhere including 'putenv' and
+                    'strncmp'.
+
+   ZXSIGC.c ........this is the routine to which programs branch upon
+                    receiving a caught signal (as specified by ZESTEX).
+
+
+ 7. $HOME/xxx/NOTST/ZSUB/UNIX/* Z-routines
+
+   The following routines are believed to be generic and are stored in
+$HOME/xxx/NOTST/ZSUB/UNIX/GEN :
+
+   ZCRDIR.c ........given the name of a directory, creates it (called
+                    only by the program IMPFIT).
+
+   ZTAPIO.c ........opens, reads and closes a tape (called only by the
+                    program IMPFIT).
+
+   ZUNADD.FOR ......adds an unsigned INTEGER to a signed INTEGER and
+                    returns an unsigned INTEGER result.
+
+   ZUNSGN.FOR ......converts a 4-byte REAL to an unsigned 2-byte INTEGER.
+
+
+ 8. $HOME/xxx/PSAP/ZSUB/UNIX/* Z-routines
+
+   The following routines are believed to be generic and are stored in
+$HOME/xxx/PSAP/ZSUB/UNIX/GEN :
+
+   ZP4I4.FOR .......despite what the name of this routine suggests, it
+                    doesn't actually convert a pair of 2-byte integers
+                    (i.e., pseudo I*4 integer) into a real 4-byte integer.
+                    Instead, it copies the lower ordered unsigned 2-byte
+                    element of the pseudo I*4 input to the lower ordered
+                    bytes of a I*4 variable.  The higher ordered 2 bytes
+                    of this 4-byte variable are forced to be zero.  This
+                    is necessary because sloppy AIPS programmers will
+                    sometimes pass scalar 2-byte arguments or integer
+                    constants to this routine (word flip dependent).
+                    ZP4I4 should disappear from AIPS as of the 15JAN85
+                    release.
+
+   ZUNSGN.FOR ......same as NOTST routine of the same name.
+
+
+ 9. Problems in search of a solution
+
+   There are several requirements of AIPS that are not well suited to
+the capabilites of most UNIX systems.  These include file locking,
+asynchronous i/o, reserving disk space and file truncation.
+
+   ZLOCKF.c ........a routine that has yet to be developed.  For those
+                    systems that have 'lockf', the solution may be
+                    trivial, however this C function is not wide spread.
+                    A possible solution is to create AIPSn directories
+                    on each AIPS disk as part of the AIPSn startup
+                    procedure where lock files can be created with
+                    identical names.  If we want exclusive use, we write
+                    protect the lock file.  On closing the file, the lock
+                    file can be destroyed.  If prior to opening a given
+                    file, the existence of a lock file can be tested.  If
+                    so, and it's write protected, defer the open until
+                    the lock file disappears then create another lock file
+                    with appropriate exclusivity protection.
+
+   ZQIO.c,
+   ZXTPIO.c,
+   ZTKQIO.c,
+   etc. ............ZMIO.FOR makes calls to these routines trying to do
+                    double bufferred asynchronus i/o which doesn't exist
+                    under most UNIX systems (it's rumored to exist under
+                    4.2bsd UNIX).  Too bad.
+
+   ZQCREA.c ........creates disk files of a given size, but has to write
+                    out the file in order to reserve the space.  Seeking
+                    beyond the end of a file creates a hole and 'stat'
+                    will say that it is the size specified, but it doesn't
+                    really take up any physical space until written in.
+
+   ZQTRUN.c ........the opposite problem of ZQCREA.  Once the disk space
+                    is reserved and the file written, we want to release
+                    any over estimation of space required to the system
+                    (i.e., unreserve it).  Currently, ZQTRUN copies the
+                    file into a temporary version up to the last known
+                    valid block, deletes the original and renames the
+                    temporary version to the original's name.  This is
+                    fine for files smaller than or equal to half the
+                    available space (i.e., you need twice as much space
+                    to create a file of the specified size).  For very
+                    large files, you can waste a lot of time creating
+                    the original only to find that you don't have enough
+                    space to truncate it (does the original get destroyed
+                    if ZQTRUN returns a non-zero error code?).
+
+   ZQDEVN.c ........this routine tries to determine the name of the file/
+                    device associated with a file descriptor (called only
+                    by ZQMSG).  'Fstat' gives you everything but the file/
+                    device name.  As currently written, ZQDEVN tries
+                    several directories trying to match the device code
+                    with the directory/file system, then tries to match
+                    the inode.  The only directories searched are the
+                    data directories and text file directories normally
+                    accessed in the execution of AIPS or its tasks.
+                    Perhaps a clever programmer can come up with a more
+                    elegant solution.
+
+
+10. Z-programs
+
+   The only Z-programs developed for UNIX/AIPS at NRAO are ZSTRTA and
+ZSTOPA.  They are used in the startup procedure for an AIPS session called
+$UNIX/AIPSTR which is a shell script that sandwiches the execution of AIPS
+between these two stand alone programs.  The purpose of ZSTRTA is to
+determine the lowest available/appropriate "POPS" number "n" based on the
+existence of processes with names of the form AIPSn where "n" ranges from
+1 to the maximum number of interactive AIPS's allowed as specified in the
+system parameter file ($DA00/SP* file).  This value is set via the stand
+alone utility program SETPAR.  ZSTRTA could, and probably should, do more
+to establish the environment for the AIPS session (set process shell
+variables, create lock file directories) and even 'execl' AIPSn.  The
+purpose of ZSTOPA is to terminate an AIPS session and perform any cleaning
+up that might be required.  Much of what ZSTRTA and ZSTOPA should do is
+currently done in AIPSTR instead.  For this reason, you will want to
+examine $UNIX/AIPSTR carefully and make any modifications required for
+your installation.  Generic, simple minded versions of ZSTRTA and ZSTOPA
+can be found in $POPS/ZPGM/UNIX/GEN.
+

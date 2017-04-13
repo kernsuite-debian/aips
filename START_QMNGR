@@ -1,0 +1,181 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2010
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: START_QMNGR [OLD, NEW, or TST]
+#                   [DA=host,host,...] [DA=default]
+#-----------------------------------------------------------------------
+# This script defines AIPS system variables and starts AIPS.
+#
+# Options:
+#          OLD       for the OLD version of AIPS, passed to AIPSEXEC
+#          NEW       for the NEW version of AIPS, passed to AIPSEXEC
+#          TST       for the TST version of AIPS, passed to AIPSEXEC
+#          CVX       for the CVX version of AIPS, passed to AIPSEXEC
+#          DA=xxx    Use disks from machine xxx in addition to local
+#                    and required ones.  See DADEVS.SH/PL for more...
+#          NOTE: As of March 28, 2001 this script ONLY supports the
+#          secure shell.  To override this (with, e.g. rsh, if you
+#           must, and you shouldn't), use the AIPSREMOTE variable.
+#
+#-----------------------------------------------------------------------
+#                                       Set the AIPS root directory.
+AIPS_ROOT=/opt/aips
+#                                       Set what it should be remotely
+#                                       CHANGE THIS if necessary.
+if [ "$REMOTE_ROOT" = "" ] ; then
+   REMOTE_ROOT=$AIPS_ROOT
+fi
+#                                       Specify command used for remote
+#                                       shell (TV startup, TPMON).
+#                                       Only use secure shell!!!
+REMOTE_CMD=ssh
+if [ "$AIPSREMOTE" != "" ] ; then
+   REMOTE_CMD=$AIPSREMOTE
+   case $REMOTE_CMD in
+      *ssh*) ;;
+      *) echo "WARNING: overriding the remote shell command 'ssh'"
+         echo "         with $REMOTE_CMD."
+         echo "         This may raise security concerns." ;;
+   esac
+fi
+case $SITE in
+  NRAO*|*OARN) umask 002;;   # NRAO policy
+  * ) ;;                     # other sites set your own policy here
+esac
+#
+# --------------- do not change anything below this line ---------------
+#
+export AIPS_ROOT REMOTE_ROOT
+#                                       Shortcuts for output text.
+ei1 () {
+  echo "START_QMNGR: $*"
+}
+#                                       Posix: echo behaves differently
+#                                       Following trick from Martin
+#                                       Shepherd (mcs@astro.caltech.edu)
+#                                       and Will Deich.
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "START_QMNGR: $*"
+  else
+    echo "START_QMNGR: $*\c"
+  fi
+}
+spc() {
+  echo " "
+}
+if [ ! -d $AIPS_ROOT ] ; then
+  ei1 "AIPS_ROOT is not a directory; cannot start AIPS."
+  exit 2
+fi
+#                                       Who am I?
+. $AIPS_ROOT/HOSTS.SH
+#
+if [ "$ARCH" = UNKNOWN -o "$ARCH" = "" ] ; then
+  ei1 "$HOST is not defined in HOSTS.LIST; cannot start AIPS."
+  exit 2
+fi
+if grep "^+  $HOST" $AIPS_ROOT/HOSTS.LIST >/dev/null 2>/dev/null ; then
+  : proceed
+else
+  ei1 "$HOST is not a valid AIPS host and cannot run AIPS."
+  exit 1
+fi
+#                                       BROWZ and aipsXtra, add-ons to
+#                                       AIPS from Chris Flatters
+aipsXtra="$AIPS_ROOT/bin/aipsXtra-setup"
+if [ -f $aipsXtra ] ; then
+  . $aipsXtra
+fi
+#                                       Initial selection is no TV.
+OPTIONS=""; export OPTIONS
+LPOPT=0
+for option in $* ; do
+  opt=`echo $option | tr '[A-Z]' '[a-z]'`
+  arg=`echo $option | sed -e 's/^...//'`
+#                                       Which version of AIPS to run.
+  case $opt in
+    old)      VERSION=OLD; export VERSION;;
+    new)      VERSION=NEW; export VERSION;;
+    tst|test) VERSION=TST; export VERSION;;
+#                                       CVX became TST in 15APR98...
+    cvx)      VERSION=CVX; export VERSION;;
+#                                       Data areas.
+    da=*) DAOPT=$arg; export DAOPT;;
+    *) OPTIONS="$OPTIONS $option"; export OPTIONS;;
+  esac
+done
+#                                       Default version of AIPS to run.
+#                                       15JAN95 and later releases need
+#                                       to have TVDEVS.KLUDGE copied to
+#                                       $AIPS_ROOT/TVDEVS.SH if they are
+#                                       to co-exist with older versions.
+[ "$VERSION" = "" ] && VERSION=TST
+export VERSION
+#                                       Define AIPS user environment.
+. $AIPS_ROOT/AIPSPATH.SH
+. $AIPS_ROOT/AIPSASSN.SH
+#                                       Allocate data disks.
+spc
+ei1 "User data area assignments:"
+if [ -f "$HOME/.dadevs.$SITE" ] ; then
+   DADEVS_FILE="$HOME/.dadevs.$SITE"
+elif [ -f "$HOME/.dadevs" ] ; then
+   DADEVS_FILE="$HOME/.dadevs"
+elif [ -f "$DA00/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$DA00/DADEVS.LIST"
+elif [ -f "$NET0/DADEVS.LIST.$SITE" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST.$SITE"
+elif [ -f "$NET0/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST"
+else
+   DADEVS_FILE=""
+fi
+export DADEVS_FILE
+#                                       If have perl, do it the fast way
+pid=$$
+if [ "$AIPSTMP" = "" ] ; then
+   tmpfil=/tmp/DADEVS.$pid
+else
+   tmpfil=$AIPSTMP/DADEVS.$pid
+fi
+[ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+if [ -f $tmpfil ] ; then
+  . $tmpfil
+  rm -f $tmpfil
+else
+#                                       If not or if it broke, fall back
+  . $SYSUNIX/DADEVS.SH
+fi
+if [ "$NVOL" = "0" -o "$DA01" = "" ] ; then
+  ei1 "Cannot start AIPS because there are no defined data areas!"
+  ei1 "(check DADEVS.LIST or .dadevs files, or AIPSASSN.\*)"
+  exit 1
+fi
+#                                       Finally, start AIPS.
+TVALT=TVALT03; export TVALT
+exec QMNGREXEC $OPTIONS

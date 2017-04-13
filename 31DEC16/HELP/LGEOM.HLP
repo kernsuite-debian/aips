@@ -1,0 +1,464 @@
+; LGEOM
+;---------------------------------------------------------------
+;! regrids images with rotation, shift using interpolation
+;# Task Catalog Analysis
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1996, 2003, 2005, 2009-2010
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+LGEOM     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+LGEOM    Task to rotate, stretch, and shift an N-dim image
+INNAME                             Input image (name)
+INCLASS                                        (class)
+INSEQ           0.0      9999.0                (seq. #)
+INDISK          0.0         9.0                (disk unit #)
+OUTNAME                            Output image (name)
+OUTCLASS                                       (class)
+OUTSEQ         -1.0      9999.0                (seq #)
+OUTDISK         0.0         9.0                (disk unit #)
+BLC             0.0      4096.0    Bottom left corner of image
+                                     0=>entire image
+TRC             0.0      4096.0    Top right corner of image
+                                     0=>entire image
+IMSIZE          0.0      2048.0    Output image size in pixels
+APARM                              (1)=del-x (pix),(2)=del-y,
+                                   (3)=rotate(deg),(4)=scale,
+                                   (5)=diff.scale, (6)=terp.ord,
+                                   (7)=invert.flg, (8)=axes.flg,
+                                   (9)=zero.flag
+----------------------------------------------------------------
+LGEOM
+Type: Task
+Use:  LGEOM will compute a linear geometric transformation (translate,
+      scale, & rotate) of an input image using Everett interpolation
+      (bilinear, bicubic, or biquintic).  LGEOM uses the 'scrolling
+      buffer' concept of how to do geometric transformations and now
+      sizes that buffer via dynamic memory.  LGEOM uses Everett
+      interpolation which cannot handle blanked pixels or pixels off
+      the edge.  As a consequence, even with the dynamic memory, the
+      fraction of blanked pixels will grow in the output.
+   =====================================================================
+      We recommend use of OGEOM instead of LGEOM.  LGEOM propogates
+      blanks and edges onto good areas by the width of the
+      interpolation function, while OGEOM can even fill in small
+      blanked regions and extrapolate a little.
+   =====================================================================
+Adverbs:
+  INNAME.......Input map name.            Standard defaults.
+  INCLASS......Input map class.           Standard defaults.
+  INSEQ........First input map seq no.    0 => highest.
+  INDISK.......Input map disk:            0 = any.
+  OUTNAME......Output map name.           Standard defaults.
+  OUTCLASS.....Output map class.          Standard defaults.
+  OUTSEQ.......Output map seq no.       0 => highest unique.
+  OUTDISK......Output map disk.      0 => highest with room.
+  BLC..........The bottom left-hand pixel of the input image
+               which becomes the bottom left corner of the
+               input subimage.  The value (0,0) means (1,1).
+  TRC..........The top right-hand pixel of the input image
+               which becomes the top right corner of the
+               subimage.  The value (0,0) means take the top
+               right hand corner of the image.
+  IMSIZE.......Output image size in pixels [1=columns, 2=rows]
+               Default is input subimage size. Except for this
+               default the output size is independent of both
+               the input size and the commanded scale factor.
+  APARM........Transformation parameters:
+               1 & 2 = shift of image, expressed in pixels, for x & y.
+                  Positive moves objects to right and up relative to
+                  reference mark as they map from input image to
+                  output image.
+                  ** The shift applies to the scaled image; ie. if you
+                  ** ask for a 4 pixel shift, they will be 4 pixels in
+                  ** the output map.
+               3 = rotation in degrees (positive moves objects
+                  counterclockwise relative to reference mark as they
+                  map from input image to output image).
+               4 = scale factor (greater than one moves objects
+                  outward from reference mark as they map from input
+                  to output).
+                  ** The scale factor is applied first. The map is
+                  ** expanded about the map center (N/2+1, N/2+1).
+               5 = 'differential scale'; this is an extra scale factor
+                  applied to the y-axis AFTER the main transformation
+                  has been done. This is useful to make spiral
+                  galaxies appear face-on. Also, if it is negated the
+                  result is a mirror-reflection in the y-axis.
+               6 = Order of Everett interpolation formula [range 1-7:
+                   1=bilinear, 3=bicubic, 5=biquintic, 7=biseptic]
+                   0 => 3.
+                   Higher orders will produce more accurate
+                   interpolations although oddities may appear when
+                   the output cell size is significantly smaller than
+                   the input cell size.  See extensive discussion in
+                   EXPLAIN file.
+               7 = inversion flag. Causes the inverse of the specified
+                  transformation to be performed.  Useful to undo
+                  previous operation.
+               8 = axes-only flag. Legal only if APARM(3)=0.0,
+                  APARM(4)=1.0, and APARM(5)=1.0 (i.e., pure shift).
+                  Transformation is applied but header axis
+                  descriptions are not changed. Useful to align two or
+                  more maps which have been created by a
+                  Self-Calibration.
+               9 = zero-flag. If > 0.0, then zeroes are used wherever
+                  blanks would normally be created in the output
+                  image.
+----------------------------------------------------------------
+Explanation of various details of LGEOM
+(DCW, 11 October 1984)
+
+On the Interpretation of the "Shift Factors":
+
+First we need to describe how LGEOM maps the input image onto
+the output with the shifts set to zero. LGEOM defines the
+transformation so that the center of the input window maps onto
+the center of the output image. The input center is computed as
+(0.5*(BLC(1)+TRC(1)),0.5*(BLC(2)+TRC(2)). The output center is
+considered to be (0.5*(1+IMSIZE(1)),0.5*(1+IMSIZE(2)). Please
+note that if IMSIZE is given as (0,0) it defaults to
+((TRC(1)-BLC(1)+1),(TRC(2)-BLC(2)+1)). These computations are
+done in floating point in units of pixels. So, for example, if
+we have 1) input image 800-square, 2) BLC and TRC both zeroes,
+3) IMSIZE set to 1000-square, 4) the shifts and rotate all
+zero, and 5) the scale set to unity, then the pixel coordinate
+(400.5,400.5) in the input will map to (500.5,500.5) in the
+output. It follows that pixel (400,400) will map to (500,500),
+and there will be a blank or zero border area in the outer part
+of the output image. But if the scale is set to 2 only the
+inner 500-square region of the input will appear in the output
+(see the discussion in the next section) and pixel (400,400)
+will actually be at (499.5,499.5) in the output (because
+500.5+2.0*(400.0-400.5) is 499.5).
+
+Now we can discuss the effect of the shift factors. In the
+example of the previous paragraph (400.5,400.5) mapped to
+(500.5,500.5) in the output image with shifts set to zero. In
+fact, the shifts are added to the output center position. So if
+we have shifts APARM(1) and APARM(2) equal to (0.15,-1.2), then
+(400.5,400.5) in the input will map to (500.65,499.3) in the
+output. Scale and rotate occur relative to this "reference
+mark" in the output image as implied by the formula shown at
+the end of the previous paragraph.
+
+
+More about the concept of the "Reference Mark":
+
+In the previous section we explained that the image value at
+the center of the input window maps to the center of the output
+window plus the offsets. This point in the image we call the
+reference mark. Scale and rotation occur about it. The terms
+"to the right relative to the reference mark",
+"counterclockwise relative...", and "outward from reference
+mark", all refer to the appearance of the image on a standard
+AIPS television display in which location (1,1) of the display
+is in the lower left corner.
+
+
+On the Relation of Input Image Size to Output Image Size:
+
+The adverb IMSIZE specifies the dimensions of the output image.
+If it is set to zero then the default applies and the output
+image is the same size as the input. But if it is nonzero it
+means EXACTLY what it says: the output will have dimensions
+specified by IMSIZE regardless of what the dimensions of the
+input image or the geometric transformation parameters happen
+to be. Suppose the input image is 800-square and BLC and TRC
+are zero (i.e., all of the image). If IMSIZE is 100-square then
+the output is 100-square. This is true no matter what the scale
+factor APARM(4) happens to be. So, if APARM(4)=2 the output
+will be a 100-square blown-up image of a 50-square region from
+somewhere (controlled by APARM(1) and APARM(2)) in the input
+image. If APARM(4)=0.5 the output (100-square) will be a
+decimated image of a 200-square region in the input. On the
+other hand, if IMSIZE is bigger than the input, say
+1000-square, the result is that the input maps to the output
+controlled by the APARMs and regions which are outside the
+input image will be blank in the output. E.g., rotate the
+800-square by 10 degrees into a 1000-square output or blow it
+up with scale factor of 2 into a 1600-square output. Note that
+the portion of the input which is used is delimited by BLC and
+TRC completely independently of IMSIZE and the APARMs (see the
+discussion of the shift factors above).
+
+
+LGEOM and N-dimensional Cubes:
+
+LGEOM does geometric transformations on the first two axes of
+the input image (i.e., on two dimensional images, simple
+matricies). If the input image has dimensionality greater than
+two, LGEOM will perform its operations on the successive planes
+of the "cube" one by one, as selected by BLC and TRC. For
+example, if the input is a cube of 32 channel maps which are
+512-square (512x512x32), and BLC and TRC are zeroes, then the
+whole cube will be transformed by doing the geometric operation
+32 times: once for each separate 512-square plane. A subset of
+the planes can be processed by setting BLC(3) and TRC(3)
+appropriately. If the cube were transposed to, for example,
+32x512x512, then LGEOM would operate on 512 planes which are
+32x512. This would be a rotation of inhomogenous coordinates
+(such as velocity and RA), a poorly defined operation, but
+LGEOM will cheerfully perform it anyway. A rotation about more
+than one axis could be performed by the sequence of tasks
+LGEOM, TRANS, and LGEOM, possibly followed by another TRANS to
+bring the desired axes back to the front of the cube. The
+resulting cube would have rotation angles specified for more
+than one axis. NOTE: rotation is really only defined well for
+angular axis combinations like RA and Dec. AIPS generally
+expects to find only ONE rotation angle in a header, and to
+find that rotation angle attached to the "Dec-like" axis. The
+moral is: if you want cursor settings and contour map axis
+labels to come out right  in AIPS, it will probably be best to
+stick to fairly sensible things like rotating spiral galaxies
+so that their major axes are parallel with the first axis of
+the cube. Transposing the resulting velocity cube and rotating
+the major-axis/velocity plane so that the gradient of velocity
+along the major axis is mostly cancelled will be computed by
+LGEOM, but AIPS will probably be totally confused by the
+presence of TWO rotation angles in the header.
+
+
+A Discussion of Blanking in LGEOM:
+
+Output pixels are computed as a weighted sum of the input
+pixels in the neighborhood of the computed location in the
+input (the interpolation weights depend on the fraction of the
+pixel spacing). If one of the input pixel values in the sum is
+blanked, i.e., indefinite in value, then the whole sum, i.e.
+the output pixel, is blanked. If APARM(9) is true, then instead
+of blank a zero is delivered as the output pixel value. As a
+result, if an isolated pixel in the input is blank it will
+produce blanks (or zeroes) in a region in the output image the
+same size as the interpolating kernel (4x4 pixels for bicubic,
+8x8 for biseptic). This is not nice, but all suggested cures
+considered so far have other difficulties.
+
+There is a special case implemented for the edges of the input
+image. Here LGEOM "reflects" the pixels near the boundary out
+into the terra incognita and uses them for interpolation. This
+means that pixel 1 is copied into the pixel 0 position, pixel 2
+is copied into pixel -1, etc. The effect of this algorithm,
+implemented on all four edges, is that first derivatives of the
+interpolant are zero at all boundaries. NOTE: "Boundary" in
+this case also means the window defined by BLC and TRC.
+
+If the output image is larger than the transformation of the
+input window then the extra area will be blanked (or zeroed).
+
+
+Regarding the Everett Interpolation Formula:
+
+This program computes where in the input image each output
+pixel appears. This location is generally at some arbitrary
+fractional pixel position in x and y, surrounded by four input
+pixels. The program then interpolates in the pixel values
+surrounding the position. For APARM(6)=1  it uses linear
+interpolation, first in in x (twice) and then in y. This is
+called "bilinear" interpolation, and is the default choice.
+
+If APARM(6)=3 two pixels on each side in x and y are used,
+sixteen pixels total. A cubic polynomial is fitted through the
+four pixels in each of the four rows in x, and evaluated at the
+computed x-position. Then a cubic is put through those four
+values (in y) and evaluated. This is "bicubic" interpolation.
+For APARM(6)=5 we use a 6x6 array, 36 pixels total; this is
+"biquintic" interpolation. For APARM(6)=7, we have 8x8, 64 pixels,
+"biseptic" interpolation.
+
+
+Regarding the Numerical Accuracy of Interpolation:
+
+The accuracy of interpolation increases with the order of the
+polynomial, but of course so does the cost of computation. As
+the polynomial order increases the interpolating function
+approaches ever more closely to the sinc function, the perfect
+bandlimited interpolator, as a limit. Bicubic is good enough
+for many ordinary purposes. Biquintic will probably be good
+enough even for high dynamic range data like optical CCD
+imagery and self-calibrated VLA maps. The point is, if we want
+very accurate results we want the "noise" of interpolation
+errors to be less than the observational noise in the data at
+all spatial frequencies of interest.
+
+The interpolation is done by computing a set of interpolating
+weights which are a function of the fractional pixel position
+where the answer is desired. The answer is then computed by
+multiplying the weights by the data. This is a convolution. It
+follows that an interpolator of a given order has a
+corresponding transfer function. I.e., in the terminology of
+aperture synthesis, it acts somewhat like a peculiar, probably
+"bumpy" taper function in the u-v plane. This function is
+always going to be less than unity in the neighborhood of the
+Nyquist frequency of the map. The size of this "neighborhood"
+where the transfer function is significantly different from
+unity is smaller for higher order polynomials. It follows that
+maps which are well sampled, say three or four pixels per beam,
+are easier to interpolate accurately.
+
+
+How to Evaluate the Numerical Errors of Interpolation:
+
+DCW is not aware of any proper quantitative treatment of the
+interpolation accuracy issues anywhere in the literature of
+image processing. This situation is not as bad as it seems
+because for critical work there are two simple tests which can
+be used to estimate the interpolation error:
+
+Test1: compute a small change, reverse it, then difference input
+and output. E.g., rotate the input image by 1 degree, then
+rotate the output image back by 1 degree. Use COMB to subtract
+the second output from the input. The difference is all
+interpolation noise. If that noise level (due to TWO
+interpolations) is small enough to suit you then you know that
+the noise of the first answer, the rotated image, is even lower
+(only one interpolation). Actually, this test is excessively
+conservative because the transfer function of interpolation is
+SQUARED by the double calculation (NOTE: any multiple
+application of interpolation to data will square, cube, etc.,
+the transfer function of data. Mostly one loses high spatial
+frequencies in the data, but errors creep into the lower
+spatial frequencies, too.)
+
+Test2: compute a small change with one order of interpolation,
+compute again with increased order, then difference the two
+results. E.g., rotate the input image by 1 degree using
+APARM(6)=3 (bicubic), then perform the operation again with
+APARM(6)=5 (biquintic). Use COMB to subtract the the first
+answer from the second. The difference is an estimate of the
+error of bicubic interpolation for your image. An even more
+accurate estimate of the error would be obtained by using
+APARM(6)=7 (biseptic) for the second computation. Although this
+test does not inspire the degree of conviction which Test1 can
+by reproducing the input image, it more than makes up for this
+by giving an estimate of the interpolation error of a SINGLE
+operation.
+
+NOTE: in performing tests such as are suggested above it will
+make sense to use BLC and TRC to select a small region of the
+input image (say, 100-square) which contains interesting
+structure whose details need to be preserved. This will save
+time and make it reasonable to perform both Test1 and Test2,
+and to use biseptic interpolation for Test2. For example, one
+could perform Test1 using biseptic interpolation in order to be
+convinced that it's results are accurate. Then perform Test2
+for bicubic and/or biquintic and compare them to the biseptic
+computation.
+
+
+Regarding Timing:
+
+In a trial on a completely unloaded 4Mb VAX780, LGEOM needed
+3.38 minutes real time to rotate a 512-square integer image by
+43 degrees using bilinear interpolation, producing a 750-square
+integer output image.
+
+Another trial computed a 500-square image scaled up by 1.5 and
+rotated by -65 degrees out of the middle of an 816-by-800 input
+image using biquintic interpolation (APARM(6)=5). The trial ran
+in a moderately loaded VAX which had 3.75 MB at the time. The
+peak virtual space used by LGEOM was about 8000 pages (4 MB),
+and the peak working set was 1024 pages (0.5 MB), which are the
+values to be expected for this problem. The typical page fault
+rate was 5-20 per second depending on the fraction of the CPU
+which LGEOM was receiving. Total CPU time was about 10.5
+minutes and real time was about 33 minutes.
+
+
+Relation to other Tasks:
+
+LGEOM is a upgraded version of the old program GEOM, which
+remains in 15OCT84 release purely for compatibility reasons.
+
+Program PGEOM is a clone of LGEOM and uses its technology to
+produce a "rho-theta" transformation of an image, i.e., a
+transformation from rectangular to polar geometry. This is a
+useful tool for analyzing or filtering images of circularly
+symmetric objects. see HELP PGEOM.
+
+
+Comments on the use of Virtual Memory in LGEOM:
+
+LGEOM is notable in the AIPS project as being the first program
+developed in Charlottesville and officially sanctioned which
+makes explicit use of virtual memory. It was released for
+15JAN84 after an extensive review and performance trials which
+demonstrated that it is unlikely to cause "thrashing" in NRAO's
+VAXes. So far the Charlottesville programmers have received no
+reports of such trouble with LGEOM. Probably this is because,
+in practice, LGEOM really uses virtual memory only for worst
+case problems (for small images or small rotation angles LGEOM
+utilizes ONLY the amount of space which it really needs).
+
+The operation of virtual memory is complicated. The following
+discussion gives DCW's theory of its operation under VMS on
+VAXes (behavior of other operating systems and CPUs is likely
+to differ in various ways): LGEOM has a working array
+dimensioned as R4(700000). This is 2.8 megabytes. VMS will
+create a scratch file of about this size to hold an image of
+the job. The space is divided into "pages" (512 bytes in VMS).
+If there is not enough PHYSICAL memory to hold the array and
+the rest of the program and data, pieces of it (i.e., pages)
+will be in the scratch file. As the DO-loops of LGEOM cycle
+over the array VMS may be obliged to swap some portions between
+memory and disk. If this page cycling and the resulting disk
+I/O traffic occur repetitively and excessively we say that the
+job (and the VAX) are "thrashing", a very unpleasant state of
+affairs which tends to drag down the whole system.
+
+At any one moment LGEOM is accessing some trajectory in the
+matrix. It can be shown that in the worst cases LGEOM needs a
+physical memory of about NROWS pages. For an 800-square image
+this will be about 800 pages, or 800*512 bytes (410 KB). With
+various overheads we can say that LGEOM will need to have about
+0.5 megabyte of physical memory to run properly. Obviously not
+all VAXes will be able to give LGEOM this much memory at all
+times, and so we should not be surprised if LGEOM displays some
+thrashing behavior in some environments at some times. In
+practice VMS often has some extra memory and pages which are to
+be swapped to disk in fact stay in memory somewhere (not in
+LGEOM's space) and the actual flush to disk is delayed. If
+LGEOM asks for the page to come back VMS just fiddles with the
+page tables and doesn't have to wait for the disk to come
+around. But this page table fiddling does cost some CPU time.
+The availability of this extra memory will depend on loading
+and on the total physical memory of a particular VAX.  If the
+pages are actually flushed to disk, CPU times for LGEOM will be
+about the same but the wall-clock times can change
+dramatically!  The fact that execution timing for LGEOM may
+vary from site to site and from day to day is a major criticism
+of the virtual memory technique.
+
+Of all computing problems known to DCW, LGEOM and its clones
+(e.g., PGEOM) are the ones for which the case for virtual
+memory is strongest, because virtual memory vastly simplifies
+the logic of the implementation. The position taken by DCW on
+this situation is: virtual memory in LGEOM is a temporary
+expedient which allows us to have a working program while
+putting off having to design a software emulation of the effect
+of virtual memory in the program. Ultimately we will be obliged
+to do the design job because not all computers will have the
+appropriate virtual memory facilities (and sufficient PHYSICAL
+memory), and because we want LGEOM and friends to be portable
+to all machines that the rest of AIPS can run on.

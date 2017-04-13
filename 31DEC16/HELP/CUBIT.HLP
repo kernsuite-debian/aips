@@ -1,0 +1,890 @@
+; CUBIT
+;---------------------------------------------------------------
+;! Model a galaxy's density and velocity distribution from full cube
+;# TASK MODELING ANALYSIS SPECTRAL
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2007, 2014
+;;  Associated Universities, Inc. Washington DC, USA.
+;;  Developed by Judith Irwin, University of Toronto  1989-2000
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+CUBIT     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+CUBIT     Task to model a galaxy's density & velocity dist'ns
+INNAME                             Input image name (name)
+INCLASS                            Input image name (class)
+INSEQ             0.0     9999.0   Input image name (seq. #)
+INDISK            0.0        9.0   Input image disk unit #
+OUTNAME                            Output image name (name)
+OUTCLASS                           Output image name (class)
+OUTSEQ            0.0     9999.0   Output image name (seq. #)
+OUTDISK           0.0        9.0   Output image disk unit #.
+BLC               0.0     4096.0   Bottom left corner of input
+TRC               0.0     4096.0   Top right corner of input
+FACTOR            0.0        1.0   Convergence criterion
+                                   (0 => .001)
+VCODE                              Velocity code. Allowed forms:
+                                   'CV','SB','BR','RC'.  Any-
+                                   thing else  => 'CV'
+DCODE                              Dens. code in plane.Allowed:
+                                   'CD','EX',GS','RG'. Anything
+                                   else  => 'CD'
+FPARM             0.0              Initial guesses of parameters
+                                   1,2. X,Y pixel position of
+                                   center in RA, DEC plane res-
+                                   pectively (specify)
+                                   3. position angle of receding
+                                      major axis (degrees)
+                                   4. inclination (1 - 89 deg)
+                                   5. systemic velocity (km/s)
+                                      (should be positive)
+                                   6. Vmax - max rotation vel
+                                      (km/s)(OR-scaling for RC
+                                      0=>1)
+                                   7. Rmax -radius at which Vmax
+                                       occurs (") 0 => DPARM(2)
+                                   8. m - Brandt index 0=>1
+                                   9. max in-plane density,
+                                       n0 (cm**-3)
+                                  10. radial density scale lngth
+                                      (outer) (")
+                                  11. perp EX dens scale length
+                                      (") 0 => DPARM(7) if
+                                      cparm(4)=2
+                                  12. radial inner scale length
+                                      (")RG only 0=>FPARM(10)
+                                  13. perp GS dens scale length
+                                      (") 0 => DPARM(7) if
+                                      cparm(4)=3
+                                  14. nf1 - fractional EX perp
+                                     dens (0=>1 if cparm(4)=1,2)
+                                      (0=>0.5 if cparm(4)=4)
+                                  15. nf2 - fractional GS perp
+                                      dens (0=>1 if cparm(4)=3)
+                                      (0=>0.5 if cparm(4)=4)
+CPARM             0.0    65534.0   1. 0 => write residuals
+                                      1 => write model
+                                   2. Distance to galaxy (Mpc)
+                                      (specify)
+                                   3. Parameters to be held
+                                      fixed (see HELP CUBIT)
+                                      0 => all parms free
+                                   4. perp density dist'n #
+                                      (1,2,3,4) see explain
+                                      anything else =>1
+                                   5. R0 -- center of ring dens
+                                      dist'n (RG only)
+                                   6. FWHM (km/s) of gaussian
+                                      for velocity smoothing
+                                      (see EXPLAIN CUBIT)
+                                   7. For RG only: 2=exp
+                                      3=gaus, 0==>3
+DPARM            -1.0     8000.0   1. min lim to radius (")
+                                   2. max limit to radius
+                                        in plane of galaxy
+                                   3,4: min/max limits to
+                                        cos(psi)
+                                   5,6: min/max limits to
+                                        sin(psi)
+                                      psi measured from receding
+                                      major axis in RA,DEC plane
+                                   7. upper limit to 1/2 disk
+                                      thickness. (specify)
+VPARM             0.0     1000.0   User specified rotation curve
+                                   (km/s) for VCODE='RC'
+RPARM             0.0     5000.0   User specified radii (")
+                                   corresponding to VPARMS
+ICUT                               Use only data > in abs value
+PIXSTD            0.0      100.0   Estimated rms uncertainty in
+                                      input map pixels (Jy/ba)
+                                      0 => .001
+----------------------------------------------------------------
+CUBIT
+Type:  Task
+Use:   CUBIT models the HI density and velocity distributions of a
+       galaxy simultaneously.  The model assumes that the galaxy is a
+       disk of finite thickness in circular rotation.  Several density
+       distributions and rotation curves are allowed (see EXPLAIN
+       CUBIT) and spatial smoothing is performed.  A non-linear least
+       squares fit solves for up to 15 parameters and either the final
+       model or residuals can be written to the output cube.  CUBIT
+       expects as input, a cube of data with VELOCITY in M/S as the
+       FIRST AXIS, RA and DEC as the 2nd and 3rd axes respectively,
+       and pixel values in JY/BEAM.  Blanking is supported.  The
+       output cube size and resolution are specified by BLC, TRC and
+       the resolution of the input cube, respectively.
+
+       If you use this task to analyze your data cube and make
+       reference to the results in a paper, you should reference the
+       original paper describing this task:
+       Irwin, Judith A. 1994, "Arcs and bridges in the interacting
+       Galaxies NGC 5775/NGC 5774", ApJ, 429, 618-633.
+Adverbs:
+  INNAME.....Input image name (name).       Standard defaults.
+  INCLASS....Input image name (class).      Standard defaults.
+  INSEQ......Input image name (seq. #).     0 => highest.
+  INDISK.....Disk drive # of input image.   0 => any.
+  OUTNAME....Output image name (name).      Standard defaults.
+  OUTCLASS...Output image name (class).     Standard defaults.
+  OUTSEQ.....Output image name (seq. #).    0 => highest unique.
+  OUTDISK....Disk drive # of output image.  0 => highest disk
+             number with sufficient space.
+  BLC........Bottom left corner in input image of desired
+             subimage.  0,0,0 => 1,1,1
+  TRC........Top right corner in input image of desired
+             subimage.  Default is entire image.
+  VCODE......Code specifying form of rotation curve.  'CV' (constant
+             velocity), 'SB' (solid body), 'BR' (Brandt), and 'RC'
+             (user-specified curve) are recognized.  Anything else =>
+             'CV'.
+  DCODE......Code specifying form of density distribution in plane.
+             'CD' (constant), 'EX' (exponential), 'GS' (Gaussian), and
+             'RG' (offset asymmetric ring) distributions are
+             recognized.  Anything else => 'CD'
+  FPARM......First guesses to parameters to be fitted.
+             1. X pixel position of center (RA). (input map)
+             2. Y pixel position of center (DEC).
+             3. Position angle of receding major axis (deg)
+             4. Inclination of galaxy plane (1 - 89 degrees)
+             5. Systemic velocity (km/s)
+             6. Vmax - Maximum rotation velocity (km/s).
+                If VCODE=RC, FPARM(6) = scaling factor of VPARMS
+                where 0=>1.
+             7. Rmax - Radius at which Vmax occurs (")
+                  0 => DPARM(2) (ignored for CV,RC)
+             8. m - Brandt rotation curve index - 0=>1 (BR only)
+             9. n0 - density from in-plane distn(cm**-3)
+            10. Density scale length in plane of galaxy (").
+                Ignored for CD.
+            11. Density scale length perpendicular to plane for
+                exponential (").  (ignored if CPARM(4)=1)
+            12. Radial density scale length for R<R0 (RG only)
+            13. Density scale length perpendicular to plane for
+                Gaussian (") (ignored if CPARM(4)=1)
+            14. nf1 - fraction of n0 belonging to h distn 1
+                0 => 1
+            15. nf2 - fraction of n0 belonging to h distn 2
+  CPARM......1. 0 => write residuals. ie. model - data
+                1 => write model
+             2. Distance to galaxy (Mpc) - (Specify)
+             3. Parameters to be held fixed. Sum of 2**i, where
+                i is the parameter number.  eg. parameters 1,2
+                and 5 fixed => CPARM(3)=2**1 + 2**2 + 2**5=38.
+                N.B.***Different from GAL***
+             4. Vertical density distribution code - 1,2,3,4 for
+                'CD','EX','GS','EG'; anything else => 1
+             5. R0 - radial location of gaussian center (RG only)
+                arcsec
+             6. FWHM of gaussian for velocity smoothing km/s (see
+                explain CUBIT)
+             7. For RG only:  Specifies form of density distribution
+                in disk, 2=Exp, 3=Gaus, 0==> 3
+  DPARM......1. Lower limit to radius in galaxy plane (").
+             2. Upper limit to radius ...
+             3. Min limit to cos(psi). Angle in plane of sky
+                measured from receding major axis.
+             4. Max limit to cos(psi)
+             5. Min limit to sin(psi)
+             6. Max limit to sin(psi)
+                DPARM(3 to 6)=0 => all quadrants modelled.
+             7. Max limit to 1/2 disk thickness measured from
+                center of plane ("). Specify.
+             All points outside of limits DPARM(1->7) are zeroed
+  VPARM......Array of up to 30 velocities (km/s) specifying a rotation
+             curve (RC only)
+  RPARM......Radii in plane of galaxy from center (") corresponding to
+             each VPARM (need not be uniformly spaced).
+  ICUT.......A flux cuttof (Jy/beam).  If abs(data) < abs(icut) then
+             the residuals are set to zero in the least-squares fit
+  PIXSTD.....Estimated rms uncertainty associated with input image
+             pixels (Jy/beam)  0=>.001
+----------------------------------------------------------------
+CUBIT:  Task which models the HI density and velocity distributionns
+        of a galaxy disk.
+DOCUMENTOR: J. A. Irwin, U. of Toronto for CUBIT
+RELATED PROGRAMS: GAL, AIPS tasks which apply to cubes of data.
+
+                        DESCRIPTION
+
+     CUBIT uses input parameters to calculate intensities (Jy/beam)
+for each non-blanked pixel position (V, RA, DEC) from a cube of data.
+The model assumes a smooth density distribution in a circular disk of
+finite thickness, and circular velocities.  Presently, the allowed
+density distributions are constant, exponential, gaussian, and offset
+asymmetric ring (exp or gauss) distributions.  The allowed velocity
+distributions are constant, solid body and Brandt curves.  The user
+also has the option of specifying a rotation curve numerically, which
+is allowed to vary in magnitude (but not shape).  Segments of the sky
+plane or rings in the galaxy plane can also be isolated for separate
+modelling (through the DPARMS).   The model intensities are calculated
+for each pixel and then smoothed spatially to the resolution of the
+input map beam.  To solve for 'best fit' parameters, the input data
+are subtracted from the model and, given the partial derivatives of
+the intensity with respect to each free parameter, a non-linear least
+squares fit is performed using the Levenberg-Marquardt algorithm
+(modeled on subroutines LMSTR, LMSTR1). Any number of parameters may
+be held fixed.  The solution (with internal errors) is then printed
+and an output cube containing either the final model or residuals is
+written.  Velocity smoothing is supported; see CPARM(6) for details.
+The vertical column density (integrated over the distribution in z
+specified by the model and fit parameters) is displayed at the end.
+
+(Skip to the bottom for Quick Start Examples)
+
+
+                     CALCULATION OF THE MODEL
+
+     For each input pixel, its position in the sky plane (x,y) is
+calculated with respect to the current x(0), y(0) position of the
+galaxy centre, using the receding major axis as the positive X axis.
+The radial velocity at the pixel relative to the current systemic
+velocity (Vr) is also determined.  The fundamental equation:
+
+                    I(x,y,Vr) = K n(R,h) dl/dVr
+
+is then used to calculate the intensity, I (Jy/ba) where:
+
+dl/dVr (arcsec/(km/s))
+       is the change in LINE OF SIGHT distance, l, (measured +ve or
+       -ve from the center of the galaxy's disk) for a given channel
+       separation, dVr (from header).  dl is calculated from l3 - l1
+       where li is the line of sight distance corresponding to Vi, Vi
+       being the velocity at the channel center (i=2) or at either
+       'edge' (1,3).  Given Vi, the position, x,y, and the assumed
+       rotation curve, li can be calculated.  The intensity is zeroed
+       if all li (i = 1 => 3) lie outside the galaxy disk as specified
+       by Dparm 1, 2 and 7.  The intensity is calculated according to
+       the above equation if any or all li occur within the disk, with
+       li adjusted to the boundary value if it exceeds the boundary
+       value.  Note that two values each of li (i=1,2,3) may result
+       for a given x,y,Vr if the disk is sufficiently edge-on and/or
+       thick.  In such cases the computed intensity is the sum of the
+       intensities contributed from each l position (optically thin
+       conditions are assumed).
+
+       For the 'solid body' rotation curve, l cannot be determined
+       from the given Vr and rotation curve since l is independent of
+       V.  Instead, all gas along the line of sight occurs at a single
+       velocity (ie. within a single channel).  In this case, the
+       model velocity is calculated from the pixel position of
+       interest, Vmax and Rmax.  Then, if the model velocity falls
+       within the velocity channel of the pixel, dl is set to the the
+       entire line of sight disk width, with the intensity calculated
+       as before.  If the model velocity falls outside of the channel,
+       the intensity is set to zero.
+
+       Along the minor axis, l cannot be determined from Vr, either.
+       Here all the gas should be within one channel at Vsys.  If the
+       y pixel position lies within 1/20 of a HPBW from the current
+       minor axis, then the calculated intensity is non-zero only if
+       the pixel velocity is within a half channel width from Vsys.
+       The intensity is calculated as before with dl set to the total
+       line of sight disk width.
+
+       If VCODE=RC, l cannot be analytically determined from x, y, and
+       Vr, so the radius of the point in the galaxy plane, R, is not
+       known.  Therefore R must be determined iteratively with l
+       initially assumed to be zero until a value of R and l are found
+       which agrees with the specified rotation curve, Vr and the
+       position x,y.  The iterations stop when (the change in V
+       (circular) is less than half the channel separation AND the
+       change in R is less than half the average beam size (for less
+       than 50 iterations)) OR (the change in V (circular) is less
+       than the channel separation AND the change in R is less than
+       the average beam size (for more than 50 iterations)).  If
+       greater than 200 iterations are required to find R (and
+       therefore l) the last two values of R are simply averaged and
+       that value is used.  The routine prints a message indicating
+       how many points converged and how many were approximated (some
+       of these points are later zeroed for other reasons -- e.g.
+       because they physically fall outside of the galaxy disk -- so
+       the total number of points listed will be more than the number
+       of non-zero points printed in a later message).  Once R has
+       been found, l is calculated, then dl, and the intensity is
+       computed as before.
+
+n(R,h) (cm**-3)
+       is the density at the position R (in arcsec, the distance from
+       the center of the galaxy along the plane) and h (the distance
+       perpendicular to the center of the plane) with R and h found
+       from x, y and l.  Within a single velocity channel, however,
+       there may be a range of densities, since the line of sight
+       distance, l, may vary considerably from one edge of the channel
+       to the other.  Consequently, the calculated model density for a
+       given channel is the (integral of the densities from l1 to l3)
+       divided by (l1 - l3). The integration is computed numerically
+       in adjustable steps (in l) with a calculated value being
+       accepted if it meets one of two criteria: either a) the change
+       in the function is less than or equal to 5% or b) the change in
+       the function is less than 0.01 X PIXSTD (see below).  In cases
+       where the numerical computation could be compared with an exact
+       analytical solution, the rms difference between results was
+       better than 1%.  Note that by including PIXSTD as one
+       acceptance criterion, the user can speed up the algorithm by
+       increasing PIXSTD and accepting cruder density calculations; of
+       course the final listed errors will then be incorrect.
+
+K
+       is a constant which converts from cm**-3 arcsec/(km/s) to
+       Jy/beam.  Folded into 'K' is a conversion from arcsec to cm
+       (through CPARM(2)), a conversion from cm**-2 to degrees K
+       (through the well-known equation relating the integral of
+       brightness temperature over velocity to column density), and a
+       conversion from degrees K to Jy/beam (through the beam size and
+       velocity (=>frequency) in the header).  It is assumed that the
+       beam size specified in the header corresponds to the reference
+       velocity in the header.  Calculations are done in km/s for
+       header velocities in m/s.
+
+
+                   DESCRIPTION OF ADVERBS
+
+
+BLC,TRC
+          These are the usual bottom left and top right corner pixel
+          positions.  The 31DEC07 version of CUBIT can handle any size
+          of image if the computer has enough memory.  Of course,
+          larger images are slower.
+
+FACTOR
+          Determines when the iterations should stop.  A smaller value
+          of FACTOR results in increasingly finer adjustments to the
+          parameters but more computing time.  The quality of the fit
+          is indicated by the 'INFORMATION PARAMETER' which is printed
+          in the message file.  The codes are:
+
+          INFORMATION PARAMETER =
+              0    Improper input parameters
+              1    Algorithm estimates that the relative error in
+                   the sum of the squares is at most, FACTOR (ie.
+                   change in sum of squares of residuals from the
+                   last iteration to the current one, divided by
+                   sum of squares of residuals from last iteration
+                   is less than or equal to FACTOR)
+              2    Algorithm estimates that the relative error in
+                   the approximate solution is at most, FACTOR
+              3    Conditions for INFO=1 and INFO=2 both hold
+              4    The vector containing the residuals is orthogonal
+                   to the columns of the Jacobian, to machine precision.
+              5    Number of iterations has reached 100*(N+1), where N
+                   is the number of free parameters.
+              6    FACTOR is too small.  No further reduction in
+                   the sum of squares is possible.
+              7    FACTOR is too small.  No further improvement in
+                   the approximate solution is possible.
+
+VCODE
+          Form of the rotation curve.  It is assumed that V(R,h) = V(R,0)
+               where R is the radial coordinate measured from the center of
+               the galaxy outwards along the galaxy's plane
+                     h is the coordinate measured from the center of the
+               plane in a direction perpendicular to the plane.
+
+          'CV' - constant velocity
+                 V(R) = V(max)         where V(max) = FPARM(6)
+
+          'SB' - solid body
+                 V(R) = (V(max)/R(max)) R
+                                       where R(max) = FPARM(7)
+          'BR' - Brandt curve
+                           V(max) R / R(max)
+                 V(R) =  -----------------------
+                                               m   3/(2m)
+                         ( 1/3 +2/3 (R/(R(max))  )
+
+                                       where m = FPARM(8)
+
+          'RC' - User specified rotation curve
+                 V(Ri) = f (Vi)
+                                       where Vi are specified through
+                                             VPARM's
+                                             Ri are specified through
+                                             RPARM's
+                                             f = FPARM(6)
+
+DCODE
+          Form of the density distribution in the plane of the galaxy
+          n(R,h) where h=0.
+
+          'CD' - constant density
+
+                 n(R,0) = n0
+                                       where n0 = FPARM(9)
+
+          'EX' - exponential density
+
+                 n(R,0) = n0 exp(-R/a)
+                                              n0 = FPARM(9)
+                                              a = FPARM(10)
+
+          'GS' - gaussian density
+                                   2  2
+                 n(R,0) = n0 exp(-R /a )
+                                              n0 = FPARM(9)
+                                              a = FPARM(10)
+
+          'RG' - offset asymmetric ring
+
+                 If cparm(7)=2, then
+
+                     n(R,0) = n0 exp(-(R-R0)/a)
+
+                 If cparm(7)=3, then
+
+                                        2  2
+                 n(R,0) = n0 exp(-(R-R0) /a )
+
+                                       n0 = FPARM(9)
+                                       a = FPARM(10) (R >= R0)
+                                       a = FPARM(12) (R < R0)
+
+                                       R0 = Cparm(5)
+
+FPARM
+   1,2    x,y pixel positions of galaxy's center in RA, DEC plane
+          respectively of input map.  If outside of BLC, TRC window,
+          an error message is printed and the program terminates.
+
+     3    Position angle of receding major axis measured from N
+          through E from 0 to 360 degrees.
+
+     4    Inclination of galaxy to line of sight from 1 to 89 degrees.
+          If outside of this range, an error message is printed and
+          the program terminates.  The optically thin model is
+          independent of which 'edge' of the galaxy is the near
+          side.
+
+     5    Systemic velocity - km/s.
+
+     6    Rmax (as explained under VCODE)  arc seconds
+     7    Vmax (as explained under VCODE)  km/s
+     8    m    (as explained under VCODE)  Brandt exponent
+
+     9    n0   (as explained under DCODE)  1/cm^3
+    10    a    (as explained under DCODE)  arc seconds
+
+    11    Perpendicular EX density distribution scale height, b1 (see
+          CPARM(4) below)  arc seconds
+
+    12    a for R < R0 (RG density code only)  arc seconds
+
+    13    Perpendicular GS density distribution scale height, b2 (see
+          CPARM(4) below)  arc seconds
+
+    14    nf1 -- fraction of n0 needed for perpendicular EX distn
+          (see CPARM(4) below)
+
+    15    nf2 -- fraction of n0 needed for perpendicular GS distn
+          (see CPARM(4) below)
+
+
+
+CPARM
+     1    1 => write the final model in the output cube
+          anything else => write the residuals in the output cube
+
+     2    Distance to the galaxy (Mpc) (needed to calculate the con-
+          version constant, K).  If not specified, an error message
+          is printed and the program terminates.  Note that an increase
+          in D gives *higher* values of model intensity, I.  This is
+          because, for a specified density distribution, n(R,h), at a
+          position, R, h, (in arcsec), the line of sight coordinate
+          dl contains more cm/arcsec.
+
+     3    Code for fixing parameters.
+          Sum of 2**i, where i is the parameter number.  eg.
+          if the 1st, 6th, and 9th parameters are to be fixed, then
+          CPARM(3) = 2**1 + 2**6 + 2**9 = 2 + 64 + 512 = 578.  If
+          CPARM(3)=65534, then all parameters are fixed and no
+          least squares solution is found - either the residuals
+          or model specified by the input parameters are written.
+
+     4    Density distribution number to specify perpendicular density
+          distribution, where 1 => 'CD' (constant density), 2 => 'EX'
+          (exponential distribution), 3 => 'GS' (Gaussian
+          distribution), and 4 => 'EG' (sum of an exponential and
+          Gaussian).      0 => 1
+
+          The density distribution at galactocentric radius, R, and
+          perpendicular height, h, is specified by:
+
+          n(R,h) = n(R,0) x n(h)
+
+            where  n(h) = 1 if CPARM(4)=1 and if CPARM(4) > 1
+
+                   n(h) = fn1 exp(-h/b1)+ fn2 exp(-h^2/b2^2)
+
+                          where b1  = FPARM(11)
+                                b2  = FPARM(13)
+                                fn1 = FPARM(14)
+                                fn2 = FPARM(15)
+
+          If CPARM(4)=2, then fn1, b1 are required and 2nd part of
+                         equation is ignored (not added)
+                         if fn1, b1 are zero, they are set to 1 and
+                         DPARM(7), respectively
+                         If fn1 is greater than 1.0, it is set to 1.0
+          If CPARM(4)=3, then fn2, b2 are required and 1st part of
+                         equation is ignored (not added)
+                         if fn2, b2 are zero, they are set to 1 and
+                         DPARM(7), respectively
+                         If fn1 is greater than 1.0, it is set to 1.0
+          If CPARM(4)=4, then both fn1 and fn2 are required,  fn1+fn2 must
+                         equal 1.  If these 2 values are zero, then
+                         fn1 is set to 0.5 and fn2 is set to 0.5
+                         also b1 and b2 are required.  If b1,b2 are
+                         zero, then they are set to DPARM(7)
+                         If fn1 or fn2 > 1.0, they are set to 1.0
+                         A warning is issued if fn1+fn2 .ne. 1.0
+                         If only one of these parameters is fixed,
+                         the routine will automatically fix the other
+
+     5    Center of offset gaussian when Dcode = RG, arcsec
+
+     6    FWHM of gaussian smoothing fcn in velocity space (km/s).
+          This applies velocity smoothing to the model in the
+          line-of-sight only.  It is left to the observer to translate
+          this into a dispersion in or perpendicular to the plane of
+          the galaxy.  If CPARM(6)=0, no velocity smoothing is done.
+          Note that velocity smoothing should, in principle, not
+          affect the determination of the density, n.  Since Integral
+          of I dVr = Integral of n dl, when dVr increases, I decreases,
+          and n dl is not affected, i.e. the disk is "heating up" but
+          not "expanding".  If you try to fit a smoothed distribution
+          with an unsmoothed model, however, n will be in error by
+          an amount which is not a simple scale of velocity widths
+          because CUBIT is attempting to minimize residuals.
+
+          **NB>  The current version of CUBIT does not apply velocity
+          smoothing in the least squares subroutine (whereas spatial
+          smoothing *is* included there).  This means that a non-zero
+          CPARM(6) will velocity smooth the model to give a correct
+          output model or residual cube, *but* will not search
+          correctly through parameter space to find the best-fit
+          solution.** If velocity smoothing is required, it is
+          necessary to run several trials of CUBIT with no velocity
+          smoothing first to get a general idea what the parameters
+          are.  After that, turn CPARM(6) on, fixing all parameters,
+          and start systematically working through parameter space
+          to see if the addition of velocity smoothing can improve
+          the model (i.e. check the residuals for the smallest rms).
+
+          The velocity smoothing subroutine is taken from the aips
+          task XSMTH, and has been checked against XSMTH for correct
+          output.  The smoothing here corresponds to DPARM(1)=1,
+          DPARM(3)=6, and DPARM(4)=0.01 in XSMTH, i.e. a gaussian
+          smoothing function, with a support radius of 3 times the
+          HWHM, with smoothing over blanks allowed.
+
+     7    Switch to determine whether the ring density distribution
+          will fall off as an exponential or as a gaussian from its
+          center at R0=cparm(5).  Must be exponential both inside
+          and outside of R0 or gaussian both inside and outside of
+          R0 (i.e. can't mix a gaussian with an exponential).
+
+
+DPARM     Sets limits to the size of the disk or sections of it for
+          the least squares fit.  All unblanked points outside of
+          these limits are zeroed.
+
+   1,2    Angular extent of the inner and outer disk radius in the plane
+          of the galaxy.
+
+3,4,5,6   Permits isolation of sections of the galaxy in the plane of
+          the sky.
+          Eg. DPARM(3) ~ -1, 0, -1, 0 implies that fitting is done for
+          the third quadrant only (receding major axis is the positive
+          X axis).    All zero => keep all quadrants
+
+      7  1/2 thickness of the disk as measured from the center of the
+         galaxy plane 'above' or 'below' it.
+
+
+VPARM    Array of up to 30 user specified velocities defining a rotation
+         curve.  All values should be positive, and a Vparm should be
+         specified for each non-zero rparm.  CUBIT does a LINEAR inter-
+         polation between specified VPARMS to calculate intermediate
+         velocities.  If the radius of the pixel considered is less than
+         the first Rparm specified,then the the rotation curve velocity
+         is set to the interpolated value between 0 and Vparm(1).  If
+         the radius is greater than the last Rparm specified, then the
+         velocity is set to Vparm(last non-zero value).
+
+RPARM    Array of up to 30 user specified radii corresponding to the
+         velocities specified by VPARM.  All values should be positive
+         and increasing in magnitude with array subscript.  The inter-
+         vals need not be evenly spaced.
+
+ICUT     If abs(data) < abs(icut) (Jy/beam), then the residuals are
+         set to zero during the least squares search through parameter
+         space, i.e. these points are not included in the search for
+         the best fit.  However, during the final pass through,
+         (final computation of residual or model cube), all these data are
+         retained (provided they are in bounds as specified by the dparms)
+         so that the final model appears continuous or so that the user
+         can retain all low level emission in the residual cube for study.
+         Use of ICUT does not speed up the algorithm.
+
+PIXSTD   The estimated rms error in the input map pixels (Jy/ba).  The
+         errors listed for the solution depend upon the error associated
+         with each pixel.  Note that the error calculation assumes that
+         every pixel constitutes an independent data point.  Usually,
+         this will not be the case, so the real errors will be somewhat
+         higher than those calculated.  CUBIT should be run several
+         times with initial input parameters both higher and lower than
+         the 'true' values; variation in the final iterated value may
+         be a better representation of the real errors than the calculated
+         values.  Otherwise, it is left to the user to determine the
+         relationship between the error per pixel (computed by CUBIT)
+         and the error per independent data point.
+
+
+
+
+                         GETTING STARTED
+
+The input cube requires beam dimensions and position angle in the
+header.  If the cube has not been cleaned, these quantities must be
+inserted with PUTHEAD.
+
+The 31DEC07 version of CUBIT has no limits on the V, X, or Y axes'
+number of pixels.  The speed of the program will be more or less
+proportional to the total number of non-blanked pixels.  You could
+consider using SUBIM or LGEOM to reduce the number of pixels during
+the early exploratory executions of CUBIT.  When good estimates of the
+parameters are found, then apply them to the full data cube.
+
+**CUBIT does not recognize a "rotation" in the header**  If you line
+up your galaxy with the major axis along the 'x' axis to reduce the
+total number of pixels, for example, the position angle of the
+receding major axis (FPARM3) will be either 90 or 180 degrees.  For
+faster execution, reduce the cube size and BLANK all regions with no
+emission (STRONGLY RECOMMENDED but leave a few pixels around real
+emission, both in RA, DEC, and VEL).  Also, several (ie. 3-4) pixels
+per beam are required for the smoothing algorithm to function
+accurately.
+
+
+                             HINTS
+
+
+Try blanking regions of no emission to make the routine run faster.
+Do a first trial, putting in realistic values for the input
+parameters from other knowledge, e.g. center and vsys from the
+1st moment, etc.  Once you are satisfied with a model for the
+whole galaxy, try each side (advancing and receding) separately,
+but keep X_0, Y_0 and V_sys fixed when operating on each side
+separately.  The best 1st rotation curve to use is the Brandt curve,
+which can be made to look similar to a solid body curve by specifying
+a large enough R_max, V_max and truncating the distribution if
+necessary, before that maximum is reached.  If it looks like you
+need a ring/torus, rather than a disk (i.e. RG), you will have to
+systematically set the ring center in trial after trial until
+you're satisfied that the residuals are minimized.  The best thing
+to do is set up a batch job.
+
+If a user specified rotation curve is desired, this can only be
+run on each side separately, so it's best to start with a Brandt
+curve anyway so that at least you can find X_0, Y_0, and V_sys
+in order to keep them fixed when this is attempted.
+
+Dparm(7) (the thickness of the disk) and Dparm(2) (the maximum
+radius) should be large enough that all emission will be contained
+within these boundaries.  Specifying them too large is still okay
+when using the exponential or gaussian distributions because the
+scale lengths of these distributions will automatically reduce the
+emission to zero at the appropriate places within these limits.
+
+The last thing you should do when satisfied with all parameters is
+to include a velocity dispersion (if the line widths are still too
+narrow).  A velocity dispersion is again set by hand and must be
+varied systematically through different trials until the residuals
+are minimized.  Ensure that the other parameters are allowed to
+vary freely when doing this and don't just fix the parameters to
+values modelled previously when a velocity dispersion wasn't used
+because there will be new best fit parameters.
+
+
+
+                      APPLICABILITY TO CO DATA
+
+
+There is no reason why this routine cannot be used for modelling
+CO data, provided you believe the N_H_2 to CO conversion.  The
+input cube should be in the same format, i.e. Vel, RA, DEC, with
+pixels in Jy/beam.  Then the only output which will be in error
+will be the calculated value of n_max.  To correct this value, do
+the following:
+
+             n_H_2 =     X           nu(HI)^2
+                    -------------    --------     n_HI
+                    1.823 x 10^18    nu(CO)^2
+
+
+where n_H_2 is the molecular hydrogen density desired from the CO
+intensity,  X is the CO to H_2 conversion factor (e.g. 3 x 10^20),
+nu(HI) is the frequency of emission at the band
+center if it were emitting in HI (e.g. 1416.5 x 10^6 Hz for a
+recessional velocity of 820 km/s), nu(CO)^2 is the frequency that
+the emission of emission at the band center for CO (e.g. 114.96
+x 10^9 Hz for V = 820 km/s) and n_HI is the value of n returned
+by the model (i.e. n_max).  Using the rest frequency for HI and
+CO in the above is probably okay for most circumstances.
+
+The other requirement for the code to work for CO data is that the
+molecular clouds do not shadow each other in position velocity space.
+
+
+
+
+                     RUN TIME AND SPACE REQUIREMENTS
+
+
+     The run time depends upon the size of the input cube and the
+number of unblanked pixels it contains, how close the input trial
+parameters are to the solution, and the number of free parameters.
+A model (all parameters fixed) can be generated in a few minutes for
+a 60,000 data point cube on a SUN 3/180.  The same conditions,
+but with all parameters free, may require 5 or 6 hours of cpu time.
+The routine is both "cpu hungry" and "memory hungry" -- not ideal,
+since data cubes can be very large.  However, modern computers are
+very much larger and faster than the aforementioned SUN 3/180.
+
+
+                       QUICK START EXAMPLES
+
+
+1) I want to create a model galaxy that is inclined to the line of
+sight and then determine its 0th moment. The galaxy should
+have a density distribution that declines as a gaussian in the plane
+of the galaxy and declines as an exponential perpendicular to the
+plane. The rotation curve should be smooth -- a Brandt curve
+is sufficient.  Let the galaxy be centered in the cube, and have
+parameters as indicated by the sample parameters, below.
+
+DO THE FOLLOWING:
+
+a) TASK 'CUBIT'; GETN n (Specify the task and the cube that you
+already have as the input  so that the model cube can get and
+set the header info.  *NB* input cube must be in VRD format --
+if not, use TRANS and, if needed, ALTSW to switch from frequency
+to velocity)
+b) OUTNA 'outputcub'; OUTCL 'VRD' (give a name for the output cube)
+c) CPARM(3)=65534  (fix all parameters -- no iterating)
+d) CPARM(1)=1      (model output, rather than residuals)
+e) CPARM(2)=12     (specify the distance of the galaxy in Mpc)
+f) CPARM(4)=2      (exponential vertical z distribution)
+g) VPARM 'BR'      (use the Brandt rotation curve)
+h) DCODE 'GS'      (Gaussian density distribution in plane of galaxy)
+i) FPARM(1)=57; FPARM(2)=39  (set the RA, DEC, pixel positions of
+center of galaxy in the cube)
+j) FPARM(3)=45; FPARM(4)=30 (set the position angle and inclination
+-- note, need to avoid exactly edge-on or face-on orientations but
+can get within a few degrees)
+k) FPARM(5)=695; FPARM(6)=220 (set systemic velocity -- see your
+input cube -- want to ensure that the systemic velocity is actually
+in the cube, and the maximum of the rotation curve, in km/s)
+l) FPARM(7)=200; FPARM(8)=0.1 (set the radius (arcsec) at which the
+rotation curve will peak and how 'curvy' the rotation
+curve is, e.g. m=0 for a flattish rotation curve, larger values
+for one that tend to turn over)
+m) FPARM(9)=0.1; FPARM(10)=150 (set the maximum density (cm^-3)
+corresponding, in this case, to the peak of the gaussian at the
+galaxy center as well as the corresponding radial scale length
+(arcsec))
+n) FPARM(11)=15; DPARM(7)=1000 (set the vertical (z) scale height
+and set an upper limit to the region over which the vertical height
+values are calculated -- dparm(7) should be any value much greater
+than fparm(11), except for the case of a constant vertical density
+distribution which isn't very physical.)
+o)  GO
+
+A model cube is then created.  You can then treat this cube like any
+other cube of data in aips, finding the 0th or 1st moments (MOMNT),
+etc.
+
+
+2)  I want to see how well the model galaxy that I just created
+compares to the galaxy in the input cube.
+
+DO THE FOLLOWING:
+
+Repeat #1 but now set the switch, CPARM(1)=0 which will compute
+the residuals, rather than the model.
+
+
+3)  I want to find the best fit parameters that suit the galaxy I
+have in the input cube.  What's the best way to proceed?
+
+DO THE FOLLOWING:
+
+a) (Optional) Start by rotating the galaxy to align it with the major
+axis (LGEOM) and trimming regions (BLANK) that clearly have no
+emission. The program will run faster.  Leave several cells around
+the emission (in v-r-d space) so that smoothing algorithms don't
+have trouble.
+b) Assign trial values of FPARMs as described in #1.  We recommend
+fixing FPARM(1) and FPARM(2) (the x, y position of the center), as
+well as  FPARM(5) (Vsys) at first since these are fairly easy to
+determine without running CUBIT and help the algorithm along
+i.e. set CPARM(3) = 2**1+2**2+2**5 = 38.
+Don't forget that the FPARM(3) refers to the position angle of
+the *receding* major axis.  If this is wrong, the program won't
+iterate.  If IFLAG = 1 warnings are generated, it means that
+the search through parameter space is approaching some limits, such
+as the center of the galaxy, and the program is adjusting those
+limits to keep parameters in the right range.  This is not fatal
+but the result will be best if the *last* iteration does not have
+any warnings.
+c) Once a good solution is found, repeat using CPARM(3)=0 so that
+fine adjustments in central position and Vsys can be found.
+Set CPARM(1)=0 to create a residual cube.
+d) Measure the rms of the residual cube (IMEAN).
+e) Repeat steps b through d for different density distributions
+and/or including a velocity smoothing.  The Brandt curve is the
+most well-tested and we recommend it over the other velocity
+distributions.  We have also found it useful to try a variety
+of initial inputs just in case the program is iterating to a
+local minimum in parameter space, rather than the best
+global minimum.  The best fit result is considered to be
+the one that gives the lowest rms in the residual cube.
+f)  Once the best parameters and distribution become more certain,
+do a run of CUBIT for which PIXSTD is specified, so that the formal
+error bars on the final parameters have their proper meanings.
+g) (Optional) We have found that, after a few trials with CUBIT,
+the above process can be batched.  Overnight, a number of
+residual cubes are generated and the rms of each can be measured in
+the morning to see what the best solution is.
+h) (Optional) Adjusting FACTOR to a smaller value will fine-tune
+the results but take longer to iterate to a solution.  In
+practice, we have found that the result is not significantly
+better than leaving FACTOR at the default, but there could be
+some improvement depending on the galaxy being modeled.
+i) (Optional) You might want to experiment with each side of
+the galaxy, separately or with rings that isolate certain parts
+of the galaxy, if this is scientifically desirable.
+
+***********THE 31DEC07 VERSION OF CUBIT IS COMPATIBLE WITH***********
+****************AIPS VERSIONS 31DEC04 AND LATER**************
+
+

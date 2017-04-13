@@ -1,0 +1,132 @@
+          DEFINE UVINT(UV,VIS,WORK,L,M,LROW,NS,INCS,NF,INCF,CNT,FLAG)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Interpolate model uv data from grid.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+          LOCAL UV1,UV2,IWORK1,IWORK2,VVIS,VVIS1,WORK1,CORR,FT,FV
+"     UVINTP interpolates model visibility values from a grid,
+"     corrects the model for the phase of the z*w term and
+"     ADDS the model to the data.  Will loop over several frequency
+"     channels.
+"   Inputs:
+"       UV = Base address of U,V vector
+"       VIS = Base address of visibility
+"       WORK = Base address of work vector length CNT*4 words
+"       L  = Length of visibility record
+"       M = Width of interpolation fn support size,  also
+"           the number of rows kept in AP (must be odd)
+"       LROW = length of a row (V)
+"       NS  =  Number of correlators (Stokes' parm.) to process.
+"       INCS = Increment between correlators.
+"       NF  =  Number of frequencies to process.
+"       INCF = Increment between frequencies.
+"       CNT =  Number of visibility points.
+"       FLAG = 1 => add model, -1 => add i (SQRT(-1)) times
+"              model.
+"
+"     Expects necessary constants in following AP locations:
+"
+"          0 = U SCALING TO CELLS
+"          1 = V SCALING TO CELLS
+"          2 = DXC = -2 * PI * delta RA (in cells)
+"          3 = DYC = -2 * PI * delta DEC (cells)
+"          4 = DZC = -2 * PI * delta Z (in radians) for 1st
+"              frequency channel.
+"          5 = Used as work space.
+"          6 = Used as work space.
+"          7 = ROW = lowest central row of the interpolation.
+"          8 = G = Address of base address of grid (floating)
+"          9 = CX = Address of base address of row interpolation
+"              function (floating)
+"          10 = Used as work space.
+"          11 = Used as work space.
+"          16...16+NS = an array of correlator factors.
+"              To subtract the model these should be negative.
+"          20...20+NF-2 = differential frequency scaling table
+"               for channels after the first one.
+"               FREQ(n) = (1+MD(19+n-1)) * FREQ(n-1) for n>1
+"
+         IF CNT=0 GOTO S999
+"                                       Setup addresses.
+         SP09 = WORK
+         WORK1 = SP09 + 1
+         IWORK1 = SP09 + 2
+         IWORK2 = SP09 + 3
+         FV = VIS
+         SP09 = UV
+         UV1 = SP09 + 1
+         UV2 = SP09 + 2
+"                                       Save W scaling factor in 10
+         CALL CVMOV (4, 2, 10, 2, 1)
+"                                       Save u,v
+         CALL CVMOV (UV, L, WORK, 4, CNT)
+"                                       Scale u,v to cells.
+         CALL VSMUL (UV, L, 0, UV, L, CNT)
+         CALL VSMUL (UV1, L, 1, UV1, L, CNT)
+"   BEGIN FREQUENCY LOOP
+         FT = 19
+         GOTO INLOOP
+FLOOP:   FT = FT+1
+"                                       Scale u and v
+            CALL VSMA (UV, L, FT, UV, L, UV, L, CNT)
+            CALL VSMA (UV1, L, FT, UV1, L, UV1, L, CNT)
+            CALL VSMA (10, 1, FT, 10, 1, 10, 1, 1)
+INLOOP:  CORR = 16
+         SP09 = FV
+         VVIS = SP09
+         VVIS1 = SP09 + 1
+"                                       Shift position (z*w term).
+         CALL VSMUL (UV2, L, 10, IWORK1, 4, CNT)
+         CALL VSMA (UV, L, 2, IWORK1, 4, IWORK1, 4, CNT)
+         CALL VSMA (UV1, L, 3, IWORK1, 4, IWORK1, 4, CNT)
+         CALL VSIN (IWORK1, 4, IWORK2, 4, CNT)
+         CALL VCOS (IWORK1, 4, IWORK1, 4, CNT)
+"                                       Interpolate from grid
+         CALL APINT (UV, IWORK1, IWORK1, 8, 9, M, LROW, L, CNT, 7)
+"                                       Model values left in IWORK1
+"                                       Add model to data.
+"                                       Conjugate if necessary.
+         IF FLAG>=0 GOTO LOOP
+            CALL CVCONJ (IWORK1, 4, IWORK1, 4, CNT)
+"                                       Loop over correlators.
+"                                       Add component parts.
+LOOP:       CALL VSMA (IWORK1, 4, CORR, VVIS, L, VVIS, L, CNT)
+            CALL VSMA (IWORK2, 4, CORR, VVIS1, L, VVIS1, L, CNT)
+"                                       Update pointers.
+            CORR = CORR + 1
+            VVIS = VVIS + INCS
+            VVIS1 = VVIS + 1
+            NS = NS - 1
+            IF NS>0 GOTO LOOP
+         FV = FV + INCF
+         NF = NF - 1
+         IF NF>0 GOTO FLOOP
+"                                       Restore u,v
+         CALL CVMOV (WORK, 4, UV, L, CNT)
+S999:    END

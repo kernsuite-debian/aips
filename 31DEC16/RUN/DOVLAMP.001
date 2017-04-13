@@ -1,0 +1,285 @@
+$ DOVLAMP - Amy Mioduszewski, NRAO - Feb 23 2015
+$===============================================
+$! Produces amp calibration file for phased-VLA VLBI data
+$# RUN POPS VLBI VLA UTILITY CALIBRATION
+$---------------------------------------------------------------
+$;  Copyright (C) 2015-2016
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$---------------------------------------------------------------
+$===============================================================
+$ DOVLAMP
+procedure  dov_vars
+  scalar dov_wait,dov_j,dov_i,dov_numvis,dov_found,dov_nrow,dov_snum
+  string*2 dov_type
+  string*8 dov_ttsk, dov_task
+  string*16 lsobj, dov_ampcal(20), ldcal
+  string*48 dov_outtxt
+RETURN; FINISH
+PROCEDURE RUNWAIT (dov_task)
+*-----------------------------------------------------------------------
+*       stolen from VLBAUTIL
+*-----------------------------------------------------------------------
+    dov_wait = dowait; dowait = true; dov_ttsk = task; task = dov_task
+    go
+    dowait = dov_wait; task = dov_ttsk
+RETURN; FINISH
+procedure checkbnd
+*stolen from DOOSRO
+  band='';dov_j=1
+  while (dov_j<9)
+    keyword='ctype'!!char(dov_j); gethead;keyword='crval'!!char(dov_j)
+    if (keystrng='FREQ') then;gethead;dov_j=9;else;dov_j=dov_j+1;end;end
+  keyvalue(1)=keyvalue(1)/1e9
+  if ( (keyvalue(1)>40)    & (keyvalue(1)<51) )    then; band='q';end
+  if ( (keyvalue(1)>26.5)  & (keyvalue(1)<40.0) )  then; band='a';end
+  if ( (keyvalue(1)>20.4)  & (keyvalue(1)<25.5) )  then; band='k';end
+  if ( (keyvalue(1)>13.5)  & (keyvalue(1)<16.3) )  then; band='u';end
+  if ( (keyvalue(1)> 8.0)  & (keyvalue(1)< 8.8) )  then; band='x';end
+  if ( (keyvalue(1)> 4.0)  & (keyvalue(1)< 8.0) )  then; band='c';end
+  if ( (keyvalue(1)> 2.0)  & (keyvalue(1)< 4.0) )  then; band='s';end
+*have to fix s band
+  if ( (keyvalue(1)> 1.15) & (keyvalue(1)< 1.75) ) then; band='l';end
+  if ( (keyvalue(1)>0.298) & (keyvalue(1)<0.345) ) then; band='p';end
+  if ( (keyvalue(1)>0.072) & (keyvalue(1)<0.076) ) then; band='4';end;clrtemp
+  return
+finish
+procedure chkobjct
+*stolen from DOOSRO and slightly modified
+  if (substr(lsobj,9,11) = '=3C') then; object = substr(lsobj,10,14); end
+  if (((lsobj='3c286')!(lsobj='3c48'))!((lsobj='3c138')!(lsobj='3c147')))
+    then; ldcal=lsobj;end
+  if (( (lsobj='1331+305') ! (lsobj='1328+307') ) ! (lsobj='j1331+3030') )
+    then; ldcal='3c286';end
+  if (( (lsobj='0137+331') ! (lsobj='0134+329') ) ! (lsobj='J0137+3309') )
+    then; ldcal='3c48';end
+  if (( (lsobj='0521+166') ! (lsobj='0518+165') ) ! (lsobj='J0521+1638') )
+    then; ldcal='3c138';end
+  if (( (lsobj='0542+498') ! (lsobj='0538+498') ) ! (lsobj='J0542+4951') )
+    then; ldcal='3c147';end
+  if (( (lsobj='1411+522') ! (lsobj='1409+524') ) ! (lsobj='J1411+5212') )
+    then; ldcal='3c295';end;clrtemp;return
+finish
+procedure fampcal
+  dov_ampcal     '3C48', '0134+329','0137+331','J0137+3309'
+  dov_ampcal(5)~ '3C138','0518+165','0521+166','J0521+1638'
+  dov_ampcal(9)~ '3C147','0538+498','0542+498','J0542+4951'
+  dov_ampcal(13)~'3C286','1328+307','1331+305','J1331+3030'
+  dov_ampcal(17)~'3C295','1409+524','1411+522','J1411+5212'
+  keyword 'num row';inext 'su';invers 0;getthead;dov_nrow=keyvalue(1)
+  keyword '';keyvalue 1; lsobj '';dov_found=-1
+  for i=1 to dov_nrow
+    pixxy=i,2,1;tabget;lsobj=keystrng
+    for dov_j=1 to 20
+      if(lsobj=dov_ampcal(dov_j))then;
+        dov_found=dov_j;  pixxy i, 1, 1; tabget; dov_snum=keyval(1)
+      end
+    end
+  end
+  lsobj=''
+  if(dov_found>0) then;lsobj=dov_ampcal(dov_found);end
+finish
+procedure sourvis
+* procecure to return number of visibities for a source
+  scalar dov_svis, dov_evis
+  keywo 'num row'; inext 'nx'; invers 0; getthead;
+  dov_nrow=keyval(1)+keyval(2); dov_numvis=0
+  for dov_j=1 to dov_nrow
+    pixxy dov_j, 3, 1; tabget
+    if(keyval(1)=dov_snum)then
+      pixxy dov_j,5; tabget; dov_svis=keyval(1)+keyval(2)
+      pixxy dov_j,6; tabget; dov_evis=keyval(1)+keyval(2)
+      dov_numvis=dov_numvis+dov_evis-dov_svis
+    end
+  end
+finish
+PROCEDURE MAXTAB (DOV_TYPE)
+* stolen from VLBAUTIL
+*-----------------------------------------------------------------------
+*   Return the highest version number of a table of type DOV_TYPE
+*   attached to the specified file.
+*
+*   Stolen from VLBAUTIL
+*
+*   Inputs:
+*       DOV_TYPE    Table type
+*
+*   Adverbs:
+*       USERID      User ID
+*       INNAME      File name
+*       INCLASS     File class
+*       INSEQ       File sequence number
+*       INDISK      File disk number
+*-----------------------------------------------------------------------
+    SCALAR DOV_SLOT, DOV_VERS
+    ARRAY DOV_KEYV(2)
+    STRING*8 DOV_KEYW
+    STRING*16 DOV_KEYS
+*Save adverb values
+    DOV_KEYW = KEYWORD
+    DOV_KEYV = KEYVALUE
+    DOV_KEYS = KEYSTRNG
+    DOV_SLOT = 0
+    KEYSTRNG = '  '
+*  Invariant: KEYSTRNG <> DOV_TYPE implies that no of the first
+*             DOV_SLOT tables has type DOV_TYPE
+*  Bound: 50 - DOV_SLOT
+    WHILE DOV_SLOT <> 50 & KEYSTRNG <> DOV_TYPE
+        DOV_SLOT = DOV_SLOT + 1; KEYWORD = 'EXTYPE' !! CHAR(DOV_SLOT)
+        GETHEAD
+    END
+*  If KEYSTRNG = DOV_TYPE then DOV_SLOT is the index for table type
+*  DOV_TYPE in the file header otherwise there are no tables of type
+*  DOV_TYPE.
+    IF KEYSTRNG = DOV_TYPE THEN
+        KEYWORD = 'EXTVER' !! CHAR(DOV_SLOT); GETHEAD
+    ELSE
+        KEYVALUE(1) = 0
+    END
+    DOV_VER = KEYVALUE(1)
+*  Restore saved adverbs
+    KEYWORD  = DOV_KEYW; KEYVALUE = DOV_KEYV; KEYSTRNG = DOV_KEYS
+RETURN DOV_VER
+FINISH
+procedure dovlamp
+*-----------------------------------------------------------------------
+*   Make phase VLA amplitude date.
+*
+*   Input adverbs:
+*       INNAME      file name
+*       INCLASS     file class
+*       INSEQ       file sequence number
+*       INDISK      disk number
+*       CALSOUR     flux calibrator
+*       REFANT      refernce antenna
+*       OUTTEXT     output name for antab file
+*-----------------------------------------------------------------------
+tput dovlamp
+scalar dov_load, dov_error, dov_calok, dov_docal
+dov_load=-1; dov_error=-1; dov_calok=-1; dov_docal=1
+dov_outtxt=outtext
+*  Check inputs
+if(length(asdmfile(1))>0 & inclass<>'tyapl') then; dov_load=1; end
+if(length(inname)<1) then; dov_error=2;end
+if(length(inclass)<1) then; dov_error=2;end
+if(inseq=0) then; dov_error=2;end
+if(indisk=0) then; dov_error=2;end
+if(calsour(1)='nocal') then;
+  dov_docal=-1; calsour(1)='';tput dovlamp
+end
+if(substr(dov_outtxt,1,1)='/') then
+  if(substr(dov_outtxt,length(dov_outtxt),length(dov_outtxt))<>'/')then
+    substr(dov_outtxt,length(dov_outtxt)+1,length(dov_outtxt)+1)='/'
+  end
+else
+  if(substr(dov_outtxt,length(dov_outtxt),length(dov_outtxt))<>':')then
+    substr(dov_outtxt,length(dov_outtxt+1),length(dov_outtxt+1))=':'
+  end
+end
+if(length(dov_outtxt)>27)then; dov_error=3;end
+if(dov_error<0)then
+  if(dov_load>0) then
+    default bdf2aips; tget dovlamp; outname=inname; outclass=inclass
+    outseq=inseq; outdisk=indisk; dowait 1; bdf2aips;
+  end
+  if((bif>0) ! (eif>0)) then
+    default uvcop; tget dovlamp; outname=inname; outclass=inclass
+    outseq=inseq+1; outdi=indisk;runwait('uvcop');
+    inseq=outseq; tput dovlamp
+  end
+  if(inclass<>'tyapl') then
+    default tysmo;tget dovlamp
+      inext 'sy'; dobtween=0; aparm(8)= 200.;
+    runwait('tysmo')
+    default tyapl;tget dovlamp;
+      freqid 0; inext 'sy';in2vers=maxtab('sy'); doweight 1
+      outdisk indisk; subarray 0;
+    runwait('tyapl')
+  end
+  if(inclass='tyapl')then
+     while(maxtab('cl')>1)
+       inext 'cl'; invers=maxtab('cl'); doconfrm -1; extd
+     end
+     while(maxtab('sn')>0)
+       inext 'sn'; invers=maxtab('sn'); doconfrm -1; extd
+     end
+  end
+  lsobj=calsour(1)
+*  if no amplitude calibrator is set, look in SU table for one
+  if(length(lsobj)<1 & dov_docal>0) then
+    fampcal
+  end
+  if(length(lsobj)>1 & dov_docal>0) then
+    chkobjct
+    sourvis
+    if(dov_numvis>10)then; dov_calok=1;end
+  end
+  if(dov_calok>0) then
+    if(ldcal<>'3c295') then
+      default 'calrd'; tget dovlamp;object=ldcal
+        incl 'tyapl';inseq 1;checkbnd;outdi indi;
+      runwait('calrd')
+    end
+    default setjy; tget dovlamp
+      incl 'tyapl';sources(1)=lsobj; opty 'calc'; inseq 1
+      if(lsobj='3c295') then; aparm(2)=1; end
+    runwait('setjy')
+    default calib; tget dovlamp
+      solty 'l1r'; solmo 'A&P'; docal=1
+      incl 'tyapl'; inseq 1; gainuse=maxtab('cl');
+      calsour(1)=lsobj
+      if(ldcal<>'3c295') then
+        in2di indi; in2cl 'model'
+        in2na=substr(ldcal,1,length(ldcal))!!'_'!!substr(band,1,1)
+      end
+    runwait ('calib')
+    default sncor; tget dovlamp
+      incl 'tyapl'; opco 'zphs'; inseq 1; snver=maxtab('sn');
+    runwait ('sncor')
+    default clcal; tget dovlamp
+      interpol '2pt'; incl 'tyapl'; inseq 1; snver=maxtab('sn');
+      calsour(1)=lsobj; gainver=maxtab('cl'); gainuse=gainver+1
+    runwait ('clcal')
+  end
+  if(dov_load>0) then
+    dov_outtxt=dov_outtxt!!inname!!'.'!!char(config)!!'.cal.y
+  else
+    dov_outtxt=dov_outtxt!!inname!!'.cal.y
+  end
+  default vlamp;tget dovlamp;
+  incl 'tyapl';freqid 0; inseq 1; invers=maxtab('sy')
+  gainver=maxtab('cl'); in2vers=maxtab('gc'); outtext=dov_outtxt
+  runwait ('vlamp')
+else
+  if (dov_error=2) then
+    type 'INNAME, INCLASS, INSEQ and INDISK must be set.'
+  end
+  if (dov_error=3) then
+    type 'OUTPUT DIRECTORY LIMITED TO 27 CHARACTERS (including final /)'
+    type 'HINT: IF DESIRED OUTPUT DIRECTORY PATH LONGER THAN 27 CHAR'
+    type 'USE AN ENVIRONMENTALL VARIABLE'
+  end
+end
+tget dovlamp
+return;finish

@@ -1,0 +1,347 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Start AIPS session with process name AIPSx (via exec w/o fork)
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997, 1999, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: AIPSEXEC [REMOTE] [DEBUG[=prog][:aips]] [LOCAL] [NOEX]
+#
+#  Starts up an AIPS session with process name AIPSx, then disappear
+#  (i.e., exec without fork).  Option NOEX will set all logicals but
+#  defer execution.
+#
+#  Inputs:
+#     REMOTE to indicate a remote terminal (i.e., no TV access and the
+#            user's control terminal is presumed to be a Tektronix 4010/
+#            4012 compatible device for TEKPL, etc).
+#     DEBUG  to run under the control of a debugger.  If the form used
+#            includes the debugger name, the user will not be queried
+#            for this.  If the string ":aips" is appended to the DEBUG
+#            option (with or without a debugger name), AIPS itself will
+#            be run under the debugger; otherwise the user is queried
+#            for this option too.
+#     LOCAL  to run a local version of AIPS (assumes AIPS.EXE is in
+#            current working directory)
+#     NOEX   Defer AIPS execution; save logicals to check-point file.
+#
+# This version accomodates a multi-host environment and should only
+# be called from the START_AIPS script.
+#--------------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Check if AIPS_ROOT is defined
+if [ "$AIPS_ROOT" = "" ] ; then
+  echo "AIPS_ROOT not defined.  Use 'aips' or 'AIPS' or to start aips."
+  echo "(If you did, something is wrong; contact the AIPS manager)"
+  exit 2
+fi
+#                                       Set default file creation
+#                                       mask.  000 => owner, group and
+#                                       world readable and writable.
+#                                       002 => same but no world write.
+umask 002
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "$*"
+  else
+    echo "$*\c"
+  fi
+}
+#                                       Print out any AIPS system
+#                                       message.
+[ -s $AIPS_ROOT/AIPS.MSG ] && cat $AIPS_ROOT/AIPS.MSG
+#                                       Default name of AIPS startup
+#                                       program and priority.
+ZSTARTUP="ZSTRTA"; export ZSTARTUP
+PRIORITY="normal"; export PRIORITY
+PRIO=0; export PRIO
+#                                       Reserved terminal code preserved
+#                                       for nostalgia, hardly ever used.
+case $TASKTT0 in
+  $RESSTT1)
+#                                       AIPS1 terminal; elevate priority
+#                                       (inoperative here).
+#   ZSTARTUP="ZZZZZZ"; export ZSTARTUP
+#   PRIORITY="elevated"; export PRIORITY
+#                                       Not used at the moment; could
+#                                       set priority increment for ZXUID
+    PRIO=?; export PRIO
+    ;;
+
+  $RESSTT2)
+#                                       AIPS2 terminal.
+#   ZSTARTUP="ZZZZZZ"; export ZSTARTUP
+#   PRIORITY="elevated"; export PRIORITY
+    PRIO=?; export PRIO
+    ;;
+  $RESSTT3)
+    ;;
+#                                       Etc.
+esac
+#                                       Parse command line arguments.
+NOEX="";
+for i
+do
+  j=`echo $i | tr '[a-z]' '[A-Z]'`
+  case $j in
+    NOEX)
+#                                       Set flag to defer execution
+      NOEX="YES";
+      ;;
+    LOCAL)
+#                                       Use AIPS.EXE in current dir.
+      AIPSLOCAL=`$LPWD`; export AIPSLOCAL
+      ;;
+    REMOTE)
+#                                       Running from graphics terminal.
+#                                       Allow up to 35 of these right
+#                                       after all the TV hosts/servers.
+#                                       and guest TVs See ZTKOPN.
+      TKDEV="REMOTE"; export TKDEV
+      k=37
+      while [ $k -le 71 ] ; do
+	tk=`expr $AIPSTVS + $k`
+	k=`expr $k + 1`
+	tk=`EHEX $tk`
+	case $tk in
+	  [1-9A-Z]) tk="0$tk";;
+	esac
+	tek=TKDEV$tk
+	eval "$tek=/dev/tty"; eval "export $tek"
+      done
+      ;;
+    DEBUG*)
+#                                       Run under control of debugger.
+      case $i in
+        *=*) DBUGR=`echo $i | awk -F= '{print $2}'`; export DBUGR
+             ANSWER="NO"; export ANSWER
+             msg="Using debugger $DBUGR from command line"
+             j=`echo $j | awk -F= '{print $1}'`
+             case $DBUGR in
+               *:aips|*:AIPS) DBUGR=`echo $DBUGR | awk -F: '{print $1}'`
+                              AIPSDBUGR=$DBUGR; export AIPSDBUGR
+                              ANSWER="YES"; export ANSWER
+                              msg="$msg (with AIPS itself too)"
+                              ;;
+             esac
+             ;;
+      esac
+      case $j in
+        *:aips|*:AIPS) ANSWER="YES"; export ANSWER
+                       AIPSDBUGR=$DBUGR; export AIPSDBUGR
+                       msg="Using debugger on AIPS itself (cmdline)"
+                       ;;
+      esac
+      if [ "$msg" != "" ] ; then
+         echo $msg
+      fi
+      SEARCH=`echo $PATH | sed -e 's/:/ /g'`
+      found=false
+      while [ "$found" = "false" ] ; do
+	if [ "$DBUGR" = "" ] ; then
+	  ni1 'Enter name of debugger or QUIT (e.g., dbx): '
+	  read DBUGR
+	  [ DBUGR = "QUIT" ] && exit 2
+	fi
+	if [ -f $DBUGR ] ; then
+	  found=true; echo "Found debugger $DEBUGGER; good."
+          break
+	else
+#                                       Look in path for the debugger.
+	  for DIR in $SEARCH ; do
+	    if [ -f $DIR/$DBUGR ] ; then
+              echo "Found $DBUGR in $DIR; proceeding."
+	      DBUGR=$DIR/$DBUGR; found=true
+              if [ "$AIPSDBUGR" != "" ] ; then
+                 AIPSDBUGR=$DBUGR
+                 break
+              fi
+	    fi
+	  done
+	fi
+	if [ "$found" = "false" ] ; then
+	  echo "AIPSEXEC: No $DBUGR found in $SEARCH"
+	  echo "AIPSEXEC: cancelling DEBUG mode"
+	  DBUGR=""; ANSWER="NO"
+          break
+	else
+	  export DBUGR
+	fi
+      done
+#                                       Run AIPS itself under the
+#                                       control of $DBUGR?
+      while [ "$ANSWER" = "" ] ; do
+	ni1 "Run AIPS itself under $DBUGR (y/n): "; read ANSWER
+	case $ANSWER in
+	  Y*|y*) AIPSDBUGR=$DBUGR; export AIPSDBUGR ;;
+	  N*|n*) ;;
+	  *)     ANSWER="" ;;
+	esac
+      done
+      ;;
+    *)
+#                                       Argument not recognized.
+      echo "Usage: AIPSEXEC [REMOTE] [DEBUG] [LOCAL] [NOEX]"
+      exit 1
+      ;;
+  esac
+done
+#                                       Reset TVLOAD if hardware TV is
+#                                       chosen.  Watch for DEBUG...
+case $TVALT in
+  TVALT?4)
+    NTV=`echo $TVALT | awk '{print substr($1, 6, 1)}'`
+    case $NTV in
+      [2-4])
+#                                       Redefine TV load library for
+#                                       this AIPSx if TV device is
+#                                       other than #1.  TVLOAD is only
+#                                       used by the start up program
+#                                       to get the proper AIPS.EXE.
+#                                       The proper load library for TV
+#                                       oriented tasks is determined
+#                                       from NTVDEV in ZACTV8.
+#                                       Use alternate load library
+#                                       based on value of NTV.
+#                                       Does $TVLOAD/AIPS.EXE exist?
+#                                       Is this test backwards??????
+	if [ ! -f $TVLOAD/AIPS.EXE -a "$AIPSLOCAL" = "" ] ; then
+	  echo "Can't find $TVLOAD/AIPS.EXE"
+	  NTV=0
+	else
+	  TVLOAD=$AIPS_VERSION/$ARCH/LOAD/ALT$NTV
+	  if [ "$DBUGR" != "" ] ; then
+	    TVTEMP=`echo $TVLOD | sed -e 's#/LOAD/#/LOADDBG/'`
+	    [ ! -d $TVTEMP ] && TVTEMP=$TVLOAD
+	    if [ ! -f $TVTEMP/AIPS.EXE -a "$AIPSLOCAL" = "" ] ; then
+	      echo "Cannot find $TVTEMP/AIPS.EXE"
+	      NTV=0
+	    else
+	      TVLOAD=$TVTEMP
+	    fi
+	  fi
+	  export TVLOAD
+	fi
+	;;
+    esac
+    ;;
+esac
+#                                       Start AIPS unless execution
+#                                       deferred
+if [ "$NOEX" != "YES" ] ; then
+  case $AIPSDBUGR in
+
+     */*)
+#                                       Debug mode.
+        case $AIPSLOCAL in
+
+           */*)
+#                                       Local AIPS.EXE in debug mode.
+              if test -f $AIPSLOCAL/AIPS.EXE
+              then
+                 echo "Starting up $AIPSLOCAL/AIPS.EXE"
+                 echo "under the control of debugger $DBUGR"
+                 echo "with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+              else
+                 echo "Can't find $AIPSLOCAL/AIPS.EXE"
+                 exit 1
+              fi
+           ;;
+
+           *)
+#                                       System AIPS.EXE in debug mode.
+              if test -f $LOAD/$ZSTARTUP.EXE
+              then
+                  echo "Starting up `echo $AIPS_VERSION | \
+                     sed -e 's/.*\///g'` AIPS"
+                  echo "under the control of debugger $DBUGR"
+                  echo "with $PRIORITY priority"
+                  exec $LOAD/$ZSTARTUP.EXE
+              else
+                  echo "Can't find $LOAD/$ZSTARTUP.EXE"
+                  exit 1
+              fi
+           ;;
+
+        esac
+
+     ;;
+
+     *)
+#                                       Non-debug mode.
+        case $AIPSLOCAL in
+
+           */*)
+#                                       Local AIPS.EXE in non-debug
+#                                       mode.
+              if test -f $AIPSLOCAL/AIPS.EXE
+              then
+                 echo "Starting up $AIPSLOCAL/AIPS.EXE" \
+                    "with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+              else
+                 echo "Can't find $AIPSLOCAL/AIPS.EXE"
+                 exit 1
+              fi
+           ;;
+
+           *)
+#                                       System AIPS.EXE in non-debug
+#                                       mode.
+              if test -f $LOAD/$ZSTARTUP.EXE
+              then
+                 echo "Starting up `echo $AIPS_VERSION | \
+                    sed -e 's/.*\///g'` AIPS with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+                 exec $ZSTARTUP.EXE
+              else
+                 echo "Can't find $LOAD/$ZSTARTUP.EXE"
+                 exit 1
+              fi
+           ;;
+
+        esac
+
+     ;;
+
+  esac
+else
+#                                       Defer execution. Save AIPS
+#                                       logicals to temporary
+#                                       check-point file; need to
+#                                       incorporate parent PID as
+#                                       identifier in later revision.
+  printenv > /tmp/.aips_chk_pnt
+fi
+#
+
+

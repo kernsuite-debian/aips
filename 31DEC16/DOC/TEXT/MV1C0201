@@ -1,0 +1,403 @@
+@@
+Chapter II.   User-to-Program Communication
+
+
+A. Introduction
+
+     AIPS employs a computer language called POPS ("People-Oriented
+Parsing Service") to perform the user-to-program communication.  POPS
+was originally developed by Jerry Hudson and has been used widely for
+the reduction of single-dish radio spectra.  The version of POPS
+documented here contains a number of improvements over the older,
+widely distributed versions.  As a result, this chapter must not be
+regarded as a manual for any other version of the POPS language.
+
+
+B. Basics
+
+     A POPS-based program, such as AIPS, consists of three main
+parts: a symbol table, language routines, and application routines.
+The symbol table is a list of keywords which the program will
+recognize together with subsidiary pointer and value information.
+The language routines are FORTRAN subroutines which interpret the
+input from the user and then cause the appropriate application
+routines to be executed.  The application routines, which are almost
+all of the program package, are FORTRAN subroutines and whole
+programs which perform various operations on the users' data.
+
+     Interactive POPS programs normally receive their input from the
+users' terminal.  However, input may also come, temporarily, from text
+files on disk in a special "RUN" area.  Batch POPS programs receive
+their input only from disk files.  When interactive POPS is ready to
+read a new line of input from the user terminal, it writes a "prompt"
+symbol on the screen and then issues a read to the terminal.  The input
+is handled by the language routines in four different ways.  In "normal"
+mode (prompt symbol '>' ), each line is parsed, compiled, and executed
+before the next line is read.  In "compile" mode (prompt symbols ':'
+and ';' ), each line is compiled, but the compiled code is stored
+(in the symbol table) for later execution.  In "batch preparation"
+mode (prompt symbol '<' ), each line is simply stored in a disk file
+for later submission to a batch POPS program.  In "read" mode (prompt
+symbol '#' ), each line is parsed as a set of constants to be stored
+in a list of adverbs.
+
+     Symbols understood by POPS programs come in six varieties:
+constants, adverbs, verbs, pseudoverbs, tasks, and procedures.
+
+   (1) Constants are not part of the symbol table, but are just values
+   given to the program.  There are two kinds of constants: "real"
+   (numeric) and "string" (character).  Real constants are typed in
+   floating point notation (e.g. 18.47 or 6) or in exponential
+   notation (e.g. 0.77E 2 or 0.77E+2 or 7700E-2).  String constants
+   must be surrounded by single quotation marks (e.g. '3C454.3' or
+   'A STRING').  The requirement for quotation marks is a nuisance,
+   but they must be used in order to differentiate between string
+   constants and other kinds of symbols and in order to allow string
+   constants to contain leading and embedded blanks and other special
+   characters and character combinations.
+
+   (2) Adverbs are keywords in the symbol table used to hold the
+   values of the constants entered by the user.  They can also hold
+   the results of computations done in the POPS language itself or
+   done by application verbs.  Adverbs are normally used to pass
+   parameter values to verbs, tasks, and procedures.  As such, most
+   adverbs are defined and exist when the POPS program begins
+   execution.  However, the user may create new adverbs when running
+   the POPS program in compile mode.  Adverbs may be defined to
+   contain numbers (always kept as single-precision floating point)
+   or character strings.  They may be scalars (single values) or
+   they may be subscripted arrays.
+
+
+   (3) Verbs are the keywords in the symbol table which cause some
+   actual operation to take place.  These operations may be as simple
+   and fundamental as + which adds two numbers or as complicated as
+   SUBMIT which causes an entire file of POPS commands to be
+   checked for errors and then executed as a batch job.  Most verbs
+   use the values stored in adverbs as parameters to control their
+   operation (e.g. the value stored in the adverb INDISK controls which
+   disk is listed by the verb CATALOG).  Some verbs require input
+   arguments (e.g. GETNAME(4) gets the names of the fourth entry in
+   the catalog).  Some verbs act as functions which leave their
+   results on a value stack for operation by other verbs (e.g. in
+   the statement R=SIN(X) the verb SIN puts its result on the stack
+   to be stored in the adverb R by the verb = ).  All verbs are
+   created by the programming staff and may not be created at run time.
+
+
+   (4) Pseudoverbs are those few verbs which require special processing
+   of the input line.  As a result, any POPS statements which are
+   typed on the same line as a pseudoverb probably will be ignored and
+   may even cause an error condition to arise.  Pseudoverbs normally
+   require one or more arguments and a unique grammar for expressing
+   those arguments.  Most of the pseudoverbs will be discused in detail
+   later in this chapter.
+
+
+   (5) Tasks are similar to verbs in that they cause some actual
+   operation to take place.  However, verbs are executed by FORTRAN
+   subroutines within the POPS program while tasks are executed by
+   separate FORTRAN programs.  Thus, an interactive user must wait
+   for the verbs in the current input line to be executed before he
+   can enter a new input line, but does not have to wait for tasks
+   to finish.  Verbs are keywords in the symbol table and are
+   executed simply by entering the keywords.  Tasks, however, are
+   not in the symbol table.  They are executed by setting the task
+   name in the adverb TASK and entering the pseudoverb GO (e.g.
+   TASK = 'CNTR' ; GO  ).  Verbs may alter the values stored in
+   adverbs, but tasks may not.  Batch and interactive POPS programs
+   handle constants, adverbs, verbs, pseudoverbs, and procedures in
+   essentially identical ways.  However, waiting for a task to
+   finish is required in batch and is optional in interactive
+   programs.
+
+
+   (6) Procedures are POPS language subroutines which may be used to
+   avoid repeated typing of frequently used sequences of POPS state-
+   ments.  The names and compiled code of procedures are stored in
+   the symbol table.  They are normally entered and compiled at run
+   time and may be executed simply by entering their names.  Like
+   verbs, procedures may use and set adverb values, may require input
+   arguments, and may act as functions.  Unlike verbs, procedures may
+   also have output arguments.  There are several important language
+   elements (e.g. loops, if-then-else) which may be used safely only
+   within procedures.  POPS is a powerful language for interactive
+   data processing solely because of the procedure and asynchronous
+   task concepts.
+@@
+C. Writing POPS Statements
+
+
+     A POPS statement is a logically complete sequence of POPS
+symbols.  The following are valid POPS statements:
+
+      STRING*12 ASTR(-1 TO 3, 5), BSTR(6), CSTR
+      PRTMSG
+      HELP IMLOD
+      A = 4
+      X = FUNC(TRC(1)+7*Y-SIN(X)/TRC(2) , 3) + ( A > B )
+      B = C = D
+
+while the following are incomplete and, hence, invalid:
+
+      A =
+      SIN(X)
+      B = C = D &                                               .
+
+With the exception of statements containing some of the pseudoverbs,
+more than one statement may be typed on a line of input.  Such
+statements are separated by semicolons (e.g.  A = 4 ; B = 6 ).
+Statements must be complete on a single line of input.  Continuation
+lines are not allowed.  Comment lines are allowed and are indicated
+by an asterisk in the first column.
+
+     In typing a sequence of POPS symbols, the user must indicate to
+the compiler where one symbol stops and the next begins.  The simplest
+method of doing this is to type one or more blanks between symbols.
+However, under many circumstances the blanks may be omitted.  To
+understand these circumstances, the user must understand how POPS
+recognizes a symbol.  A string constant begins with a single quote
+and continues until another single quote is encountered.  A numeric
+constant begins with a numeric character or period and continues until
+a character other than a numeric character, period, or the letter E is
+encountered.  A symbolic field begins with an alphabetic character
+(A - Z) and continues until a character other than A through Z, 0
+through 9, and underline (_) is encountered.  Thus, a lengthy
+sequence, such as
+
+         FOR I = 1 TO 4 BY 0.3
+            J = J + 1
+            X ( J ) = I * 27.2 / J
+            END
+
+may be written correctly as
+
+        FOR I=1TO 4BY 0.3;J=J+1;X(J)=I*27.2/J;END
+
+This compact line will save core in procedures and will be interpreted
+correctly.  However, if any of the blanks above were omitted, then
+the line would not be interpreted correctly.
+
+     Except for most pseudoverbs, one may type a POPS expression in
+place of a single POPS symbol.  Thus, A = SIN(1.0) and A = SIN(0.1+0.9)
+are equivalent.  POPS expressions are of two types: arithmetic and
+logical.  (POPS does not, at this time, offer very much in the way of
+character string expressions and manipulations.)  Arithmetic
+expressions make use of the arithmetic operators (function verbs):
+
+            +    -        *    /        **
+
+where ** is exponentiation.  In the absence of parentheses, the **
+is done first, the * and / are done second, and the + and - are done
+last.  Thus
+
+            A  +  B  *  C  /  D  **  E  +  F
+
+is equivalent to
+
+            A  +  ( (B * C)  /  ( D ** E) )  +  F                    .
+
+Logical expressions make use of the logical operators:
+
+       !   &   ^      >   <   =   >=   <=   <>
+
+where the first three represent logical OR, AND, and NOT and the last
+represents not equal.  The first 3 operators have the lowest
+precedence, while the other 6 have a somewhat higher precedence (but
+less than that of + and - ).  Thus, in a mixed mode expression, all
+arithmetic operations are performed before any logical operations
+(barring overriding parentheses of course).  The result of a logical
+operator is either 1.0 (true) or -1.0 (false).  A numeric value is
+treated as "true" if it is >= 0.0, otherwise it is "false".  The
+adverb keywords TRUE and FALSE are recognized and are equivalent to
+numeric constants of 1.0 and -1.0, respectively.  The open parenthesis
+operator raises the precedence of following operands and operators,
+while the close parenthesis operator lowers the precedence of following
+symbols.  Thus, function calls and subscript evaluation are of high
+(and equal) precedence since they are enclosed in parentheses.
+Furthermore, the order of computation in numeric and logical
+expressions may be controlled by the judicious use of parentheses.
+Examples:
+
+               6 - 7 > 2 - 1
+               6 - ( 7 > 2 ) - 1
+               ((6 - 7) > 2 ) - 1
+
+will produce -1.0 , 4.0 , and -2.0, respectively.
+
+     The verb = deserves special attention.  It is used as a "store"
+operator when it appears for the first time in a POPS statement,
+except when that statement begins with an IF or WHILE keyword.
+Subsequent instances of = in a statement (or any instance within an IF
+or WHILE statement) are taken to be logical comparison operations.
+Arithmetic and logical operators on entire (unsubscripted) arrays or
+on character string constants and adverbs are not defined.  However,
+the = (store) operator may be used to set single elements of an array by
+
+              < array-name > ( subscripts )  =  < exp >
+
+
+and to set all elements of an array to a single value by
+
+              < array-name >  =  < exp >
+
+where < exp > may be a constant, scalar adverb, or an expression.
+Sequential elements of an array may be set by
+
+              < array-name >  =  < exp1 > , < exp2 > , < exp3 > ...
+
+where < expn > may be a constant, an expression, an adverb, or even an
+entire array name.  Multiply-dimensioned arrays are stored and, in
+the above forms, evaluated in the order in which the first subscript
+varies fastest, etc..  Thus, if
+
+              ARRAY  AR1 ( -1 TO 1, 2), AR2 (2)
+then
+              AR1  =  6.7 , 1.6*2  ,  AR2 , 5
+sets
+              AR1 ( -1, 1) = 6.7
+              AR1 (  0, 1) = 3.2
+              AR1 (  1, 1) = AR2 (1)
+              AR1 ( -1, 2) = AR2 (2)
+              AR1 (  0, 2) = 5
+              AR1 (  1, 2) = 0
+
+Note that the third form above zero fills (blank fills for character
+arrays) any unused array elements.  As a general rule, the left hand
+side of an = must be greater than or equal in size to the right hand
+side.  After all, there must be enough room (on the left) to store
+the contents on the right of the = (store).  For example, if the
+definition above and
+
+              STRING * 12   CAR3 (6)
+              STRING * 8    CAR2 (2)
+hold, then
+              CAR3 (4) = CAR2 (1)
+              AR1 = AR2
+              CAR3 = CAR2
+              CAR2 = 'ABCD'
+are legal, but
+              CAR2 (2) = CAR3 (1)
+              AR2 = AR1
+              CAR2 = CAR3
+              CAR2 (1) = '123456789'
+are not.
+
+     In order to construct a useful computer language, it is necessary
+to provide conditional execution and looping capabilities or to provide
+a "GO TO" capability.  POPS provides the former and strictly avoids the
+iniquitous "GO TO".  Since looping and conditional execution normally
+require forward references and more code than can be typed on one line,
+POPS normally requires that such statements be used within procedures.
+However, FOR loops which are typed fully on one line in normal mode
+will work.  The two forms for conditional execution statements are
+
+
+     IF < logical exp >  THEN  < then-part >  END
+
+     IF < logical exp >  THEN  < then part >  ELSE  < else-part >  END
+
+The < then-part > is executed if the < logical exp > is true.  Other-
+wise the < else-part >, if present, is executed.  The then and else
+parts may consist of zero or more executable POPS statements
+including other IF statements.  As an example, consider
+
+    IF X > Y THEN X = X+1  ELSE IF X = Y THEN Y = Y+1  ELSE
+    X=X-1; Y=Y-1; END END
+
+or, more clearly,
+
+        IF X > Y
+           THEN X = X + 1
+           ELSE
+              IF X = Y
+                 THEN Y = Y + 1
+                 ELSE X = X - 1
+                      Y = Y - 1
+                 END
+           END
+
+     A repetition sequence is acomplished either with the statements
+
+        FOR <variable>  =  <alpha>  TO  <beta>  BY  <gamma>
+            < statements to repeat >
+            END
+
+or with the statements
+
+        WHILE  < test-condition >
+            < statements to repeat >
+            END
+
+where <alpha>, <beta>, and <gamma> are any arithmetic expressions,
+<variable> is a arithmetic scalar or single element of an arithmetic
+array, and < test-condition > is any logical expression.  The "BY
+<gamma>" part is optional and, if omitted, a <gamma> = 1.0 is assumed.
+A colon is equivalent to the keyword TO.  In the first form, the
+<statements to repeat> are executed a number of times (at least once)
+with different values of <variable>.  For the first, guaranteed,
+execution <variable> is assigned the value of <alpha>.  For repeated
+executions, it is incremented by the value of <gamma>.  The iteration
+is terminated when (<value>-<beta>)/<gamma> is greater than zero.  Note
+that the values of <alpha>, <beta>, and <gamma> are fixed during the
+execution of a FOR loop.  Thus,
+
+           FOR I = 1:30 BY 3; J=J+1; .... END
+and
+           J=3; FOR I = 1:30 BY J; J=J+1; .... END
+
+will produce the same results.  In the second form, the <test condition>
+is evaluated at each repetition and, if it is true (>= 0.0), then the
+<statements to repeat> are executed.  If the <test condition> is false,
+then POPS goes on to the statements following the END statement.  Thus,
+
+      I = 0
+      WHILE I<4 ; I=I+1; TYPE I END TYPE 'DONE'
+
+will "print"
+
+      1.0000
+      2.0000
+      3.0000
+      4.0000
+      DONE
+
+on the terminal.  FOR and WHILE loops may be nested and arranged on one
+or (in procedures) more lines.
+
+     Up to this point in this chapter, we have presented the formal
+rules for typing POPS statements correctly.  However, in many cases,
+it is possible to reduce the amount of typing and still obtain correct
+results.  In order of usefulness,  the three techniques are:
+
+(1) "Minimum match":  The user actually needs to type only as many
+    characters of a POPS symbol as are needed to identify the symbol
+    uniquely.  An exact match is always regarded as unique.  At the
+    present time, the user rarely has to type more than 4 characters
+    of any symbol.  As an example:
+    (a) If the user types  CATA  , the verb CATALOG is executed.
+    (b) If the user types  CAT   , the verb CAT is executed.
+    (c) If the user types  CA    , the user is told that the symbol is
+        not unique and could have been CAT or CATALOG.  The
+        compilation of the input line is terminated and none of the
+        line is executed.
+
+(2) Omit = sign: In simple scalar and array statements of the forms
+             < adverb >   =   < value >
+             < adverb >   =   < value1 >  ,  < value2 >  ,  ...
+    the = sign may be omitted.  The compiler will insert the = sign
+    for the user.  However, if < value > involves an expression
+    which includes application verbs or procedures, then the
+    compiler does not insert an = sign.  Also, if the <adverb> is
+    subscripted and <value> is negative, the = sign is required.
+
+(3) Omit commas: In the assignment operation
+             < array >  =  < value1 > , < value2 > , < value3 > , ...
+    the commas may often be omitted.  They are required, however,
+    whenever the expression for < valuei > begins with a ( or with a
+    verb such as SIN, LOG, or unary -.  For example,
+             BLC  =  1   -3
+    sets all of BLC to -2.  The comma was required to set BLC to
+    1,-3,0,0,...   The expression
+             BLC  =  1  ,  -3   6   9   12
+    will work, however.

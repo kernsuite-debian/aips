@@ -1,0 +1,444 @@
+         SUBROUTINE DIDSUB (I1, I2, I3, I4, I5, I6)
+C-----------------------------------------------------------------------
+C! FPS AP 120B load module
+C# AP-appl Obselete
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+C-----------------------------------------------------------------------
+      INTEGER*2 CODE(  777)
+      INTEGER*2 I 1,J 1
+      INTEGER*2 I 2,J 2
+      INTEGER*2 I 3,J 3
+      INTEGER*2 I 4,J 4
+      INTEGER*2 I 5,J 5
+      INTEGER*2 I 6,J 6
+      INTEGER*2 SLIST(16)
+         COMMON /SPARY/SLIST
+         EQUIVALENCE (J 1,SLIST( 1))
+         EQUIVALENCE (J 2,SLIST( 2))
+         EQUIVALENCE (J 3,SLIST( 3))
+         EQUIVALENCE (J 4,SLIST( 4))
+         EQUIVALENCE (J 5,SLIST( 5))
+         EQUIVALENCE (J 6,SLIST( 6))
+         DATA CODE(1) / 194/
+         DATA CODE(    2),CODE(    3),CODE(    4),CODE(    5)/
+     *   Z4024,Z0000,Z0000,Z0030/
+         DATA CODE(    6),CODE(    7),CODE(    8),CODE(    9)/
+     *   Z40B3,Z8800,Z0400,Z0004/
+         DATA CODE(   10),CODE(   11),CODE(   12),CODE(   13)/
+     *   Z1080,Z0000,Z4A03,Z0010/
+         DATA CODE(   14),CODE(   15),CODE(   16),CODE(   17)/
+     *   Z1080,Z0000,Z4A00,Z0010/
+         DATA CODE(   18),CODE(   19),CODE(   20),CODE(   21)/
+     *   Z1080,Z0000,Z1A00,Z0010/
+         DATA CODE(   22),CODE(   23),CODE(   24),CODE(   25)/
+     *   Z1080,Z0000,Z00C0,Z1710/
+         DATA CODE(   26),CODE(   27),CODE(   28),CODE(   29)/
+     *   Z4124,Z0000,Z0000,Z1F00/
+         DATA CODE(   30),CODE(   31),CODE(   32),CODE(   33)/
+     *   Z1080,Z0000,Z4A04,Z1F30/
+         DATA CODE(   34),CODE(   35),CODE(   36),CODE(   37)/
+     *   Z0000,Z0000,ZC003,Z0000/
+         DATA CODE(   38),CODE(   39),CODE(   40),CODE(   41)/
+     *   Z0003,Z8600,Z0400,Z0802/
+         DATA CODE(   42),CODE(   43),CODE(   44),CODE(   45)/
+     *   Z1080,Z0000,Z4A01,Z0010/
+         DATA CODE(   46),CODE(   47),CODE(   48),CODE(   49)/
+     *   Z1080,Z0000,Z1A00,Z2000/
+         DATA CODE(   50),CODE(   51),CODE(   52),CODE(   53)/
+     *   Z0000,Z0000,Z4807,Z0000/
+         DATA CODE(   54),CODE(   55),CODE(   56),CODE(   57)/
+     *   Z0001,ZB600,Z0008,Z0000/
+         DATA CODE(   58),CODE(   59),CODE(   60),CODE(   61)/
+     *   Z0001,Z2600,Z01C8,Z0000/
+         DATA CODE(   62),CODE(   63),CODE(   64),CODE(   65)/
+     *   Z0000,ZC200,Z2000,Z2000/
+         DATA CODE(   66),CODE(   67),CODE(   68),CODE(   69)/
+     *   Z0003,Z8600,Z0400,Z0801/
+         DATA CODE(   70),CODE(   71),CODE(   72),CODE(   73)/
+     *   Z0000,Z0000,Z4005,Z0000/
+         DATA CODE(   74),CODE(   75),CODE(   76),CODE(   77)/
+     *   Z4178,Z0000,Z0000,Z0000/
+         DATA CODE(   78),CODE(   79),CODE(   80),CODE(   81)/
+     *   Z0001,ZC200,Z0000,Z0000/
+         DATA CODE(   82),CODE(   83),CODE(   84),CODE(   85)/
+     *   Z0000,ZC600,Z800C,Z0000/
+         DATA CODE(   86),CODE(   87),CODE(   88),CODE(   89)/
+     *   Z0001,Z8000,Z2000,Z0000/
+         DATA CODE(   90),CODE(   91),CODE(   92),CODE(   93)/
+     *   Z0000,Z0000,Z8007,Z0000/
+         DATA CODE(   94),CODE(   95),CODE(   96),CODE(   97)/
+     *   Z12CC,Z0000,Z4002,Z0004/
+         DATA CODE(   98),CODE(   99),CODE(  100),CODE(  101)/
+     *   Z12CC,Z0000,Z1002,Z0004/
+         DATA CODE(  102),CODE(  103),CODE(  104),CODE(  105)/
+     *   Z12CC,Z0000,Z1004,Z0004/
+         DATA CODE(  106),CODE(  107),CODE(  108),CODE(  109)/
+     *   Z12CC,Z0055,Z1007,Z0004/
+         DATA CODE(  110),CODE(  111),CODE(  112),CODE(  113)/
+     *   Z0000,Z0021,ZC7FF,ZE000/
+         DATA CODE(  114),CODE(  115),CODE(  116),CODE(  117)/
+     *   Z0000,Z0020,ZE7FF,ZE000/
+         DATA CODE(  118),CODE(  119),CODE(  120),CODE(  121)/
+     *   Z0000,Z0020,ZF400,Z0000/
+         DATA CODE(  122),CODE(  123),CODE(  124),CODE(  125)/
+     *   Z0000,Z001F,Z3400,Z0000/
+         DATA CODE(  126),CODE(  127),CODE(  128),CODE(  129)/
+     *   Z0000,Z0000,Z0060,Z1600/
+         DATA CODE(  130),CODE(  131),CODE(  132),CODE(  133)/
+     *   Z4000,Z0000,Z01F8,Z1600/
+         DATA CODE(  134),CODE(  135),CODE(  136),CODE(  137)/
+     *   Z0000,Z0000,Z0020,Z1600/
+         DATA CODE(  138),CODE(  139),CODE(  140),CODE(  141)/
+     *   Z0000,Z0000,Z0740,Z00F0/
+         DATA CODE(  142),CODE(  143),CODE(  144),CODE(  145)/
+     *   Z0000,Z0000,ZC001,Z1F00/
+         DATA CODE(  146),CODE(  147),CODE(  148),CODE(  149)/
+     *   Z40E4,Z0000,Z3000,Z9F00/
+         DATA CODE(  150),CODE(  151),CODE(  152),CODE(  153)/
+     *   Z0000,Z0000,ZC000,Z0000/
+         DATA CODE(  154),CODE(  155),CODE(  156),CODE(  157)/
+     *   Z3024,Z0000,Z4C07,Z0000/
+         DATA CODE(  158),CODE(  159),CODE(  160),CODE(  161)/
+     *   Z0003,Z8A00,Z0400,Z001B/
+         DATA CODE(  162),CODE(  163),CODE(  164),CODE(  165)/
+     *   Z0001,Z5C00,Z01C0,Z0000/
+         DATA CODE(  166),CODE(  167),CODE(  168),CODE(  169)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  170),CODE(  171),CODE(  172),CODE(  173)/
+     *   Z42A8,Z0000,ZA006,ZC000/
+         DATA CODE(  174),CODE(  175),CODE(  176),CODE(  177)/
+     *   Z0003,Z8A00,Z0400,Z0002/
+         DATA CODE(  178),CODE(  179),CODE(  180),CODE(  181)/
+     *   Z4054,Z0000,Z0000,Z0030/
+         DATA CODE(  182),CODE(  183),CODE(  184),CODE(  185)/
+     *   Z02B0,Z0000,Z0000,Z0000/
+         DATA CODE(  186),CODE(  187),CODE(  188),CODE(  189)/
+     *   Z0000,Z0000,Z0000,Z0000/
+         DATA CODE(  190),CODE(  191),CODE(  192),CODE(  193)/
+     *   Z405E,ZA800,Z0080,Z0000/
+         DATA CODE(  194),CODE(  195),CODE(  196),CODE(  197)/
+     *   Z029E,ZB800,Z0010,Z0000/
+         DATA CODE(  198),CODE(  199),CODE(  200),CODE(  201)/
+     *   Z0000,ZA200,Z0000,Z0000/
+         DATA CODE(  202),CODE(  203),CODE(  204),CODE(  205)/
+     *   Z0000,ZB200,Z0000,Z0000/
+         DATA CODE(  206),CODE(  207),CODE(  208),CODE(  209)/
+     *   Z0000,Z0000,Z0000,Z0000/
+         DATA CODE(  210),CODE(  211),CODE(  212),CODE(  213)/
+     *   Z0000,Z0153,Z0000,Z0000/
+         DATA CODE(  214),CODE(  215),CODE(  216),CODE(  217)/
+     *   Z0001,Z5200,Z0000,Z0000/
+         DATA CODE(  218),CODE(  219),CODE(  220),CODE(  221)/
+     *   Z0001,Z2200,Z0100,Z0000/
+         DATA CODE(  222),CODE(  223),CODE(  224),CODE(  225)/
+     *   Z2294,ZA200,Z0060,Z1830/
+         DATA CODE(  226),CODE(  227),CODE(  228),CODE(  229)/
+     *   Z0000,ZB200,Z2008,ZFF00/
+         DATA CODE(  230),CODE(  231),CODE(  232),CODE(  233)/
+     *   Z0001,Z8152,Z0000,Z1F00/
+         DATA CODE(  234),CODE(  235),CODE(  236),CODE(  237)/
+     *   Z0000,Z0057,Z0000,Z0000/
+         DATA CODE(  238),CODE(  239),CODE(  240),CODE(  241)/
+     *   Z0001,Z9756,Z0038,Z0000/
+         DATA CODE(  242),CODE(  243),CODE(  244),CODE(  245)/
+     *   Z0001,Z8155,Z0000,Z0000/
+         DATA CODE(  246),CODE(  247),CODE(  248),CODE(  249)/
+     *   Z0000,Z1200,Z0000,Z0000/
+         DATA CODE(  250),CODE(  251),CODE(  252),CODE(  253)/
+     *   Z02B2,ZA800,Z0080,Z0000/
+         DATA CODE(  254),CODE(  255),CODE(  256),CODE(  257)/
+     *   Z0002,ZB800,Z2010,ZA000/
+         DATA CODE(  258),CODE(  259),CODE(  260),CODE(  261)/
+     *   Z0000,Z0053,Z0000,Z0000/
+         DATA CODE(  262),CODE(  263),CODE(  264),CODE(  265)/
+     *   Z0001,ZD400,Z0180,Z0000/
+         DATA CODE(  266),CODE(  267),CODE(  268),CODE(  269)/
+     *   Z0001,Z804B,Z0000,Z0000/
+         DATA CODE(  270),CODE(  271),CODE(  272),CODE(  273)/
+     *   Z0000,ZA200,Z0000,Z0000/
+         DATA CODE(  274),CODE(  275),CODE(  276),CODE(  277)/
+     *   Z42EC,ZB200,Z0000,Z0000/
+         DATA CODE(  278),CODE(  279),CODE(  280),CODE(  281)/
+     *   Z0003,Z8A00,Z0828,Z0000/
+         DATA CODE(  282),CODE(  283),CODE(  284),CODE(  285)/
+     *   Z20EC,Z0153,Z0000,Z0030/
+         DATA CODE(  286),CODE(  287),CODE(  288),CODE(  289)/
+     *   Z0001,Z5200,Z0000,Z0000/
+         DATA CODE(  290),CODE(  291),CODE(  292),CODE(  293)/
+     *   Z0001,Z2200,Z0100,Z0000/
+         DATA CODE(  294),CODE(  295),CODE(  296),CODE(  297)/
+     *   Z0000,ZA200,Z0060,Z1800/
+         DATA CODE(  298),CODE(  299),CODE(  300),CODE(  301)/
+     *   Z0000,ZB200,Z2008,ZFF00/
+         DATA CODE(  302),CODE(  303),CODE(  304),CODE(  305)/
+     *   Z0001,Z0152,Z00C0,Z1700/
+         DATA CODE(  306),CODE(  307),CODE(  308),CODE(  309)/
+     *   Z2295,Z9657,Z0038,Z0030/
+         DATA CODE(  310),CODE(  311),CODE(  312),CODE(  313)/
+     *   Z2295,Z9756,Z0038,Z0030/
+         DATA CODE(  314),CODE(  315),CODE(  316),CODE(  317)/
+     *   Z0001,Z8157,Z0000,Z0000/
+         DATA CODE(  318),CODE(  319),CODE(  320),CODE(  321)/
+     *   Z4058,Z1200,Z0000,Z0000/
+         DATA CODE(  322),CODE(  323),CODE(  324),CODE(  325)/
+     *   Z02B2,ZA800,Z0080,Z0000/
+         DATA CODE(  326),CODE(  327),CODE(  328),CODE(  329)/
+     *   Z025A,ZB800,Z2010,ZA030/
+         DATA CODE(  330),CODE(  331),CODE(  332),CODE(  333)/
+     *   Z0000,Z0055,Z0000,Z0000/
+         DATA CODE(  334),CODE(  335),CODE(  336),CODE(  337)/
+     *   Z0001,ZD400,Z0180,Z0000/
+         DATA CODE(  338),CODE(  339),CODE(  340),CODE(  341)/
+     *   Z0001,Z804B,Z0000,Z0000/
+         DATA CODE(  342),CODE(  343),CODE(  344),CODE(  345)/
+     *   Z0001,ZD400,Z0180,Z0000/
+         DATA CODE(  346),CODE(  347),CODE(  348),CODE(  349)/
+     *   Z0001,Z8049,Z0000,Z0000/
+         DATA CODE(  350),CODE(  351),CODE(  352),CODE(  353)/
+     *   Z0000,ZA200,Z0000,Z0000/
+         DATA CODE(  354),CODE(  355),CODE(  356),CODE(  357)/
+     *   Z42EC,ZB200,Z0000,Z0000/
+         DATA CODE(  358),CODE(  359),CODE(  360),CODE(  361)/
+     *   Z0003,Z8A00,Z0828,Z0000/
+         DATA CODE(  362),CODE(  363),CODE(  364),CODE(  365)/
+     *   Z20EC,Z0153,Z1A00,Z6030/
+         DATA CODE(  366),CODE(  367),CODE(  368),CODE(  369)/
+     *   Z0001,Z5200,Z0000,Z0000/
+         DATA CODE(  370),CODE(  371),CODE(  372),CODE(  373)/
+     *   Z0001,Z2200,Z0100,Z0000/
+         DATA CODE(  374),CODE(  375),CODE(  376),CODE(  377)/
+     *   Z20EC,ZA200,Z0060,Z1830/
+         DATA CODE(  378),CODE(  379),CODE(  380),CODE(  381)/
+     *   Z0000,ZB200,Z2008,ZFF00/
+         DATA CODE(  382),CODE(  383),CODE(  384),CODE(  385)/
+     *   Z0000,Z9756,Z00D8,Z1700/
+         DATA CODE(  386),CODE(  387),CODE(  388),CODE(  389)/
+     *   Z0001,Z965A,Z0038,Z0000/
+         DATA CODE(  390),CODE(  391),CODE(  392),CODE(  393)/
+     *   Z0002,ZA800,Z0080,Z0000/
+         DATA CODE(  394),CODE(  395),CODE(  396),CODE(  397)/
+     *   Z02B0,Z0000,Z0000,Z0000/
+         DATA CODE(  398),CODE(  399),CODE(  400),CODE(  401)/
+     *   Z229A,ZB9E4,Z2010,ZA030/
+         DATA CODE(  402),CODE(  403),CODE(  404),CODE(  405)/
+     *   Z0000,Z0058,Z0000,Z0000/
+         DATA CODE(  406),CODE(  407),CODE(  408),CODE(  409)/
+     *   Z0001,Z9755,Z0038,Z0000/
+         DATA CODE(  410),CODE(  411),CODE(  412),CODE(  413)/
+     *   Z229C,Z0155,Z0000,Z0070/
+         DATA CODE(  414),CODE(  415),CODE(  416),CODE(  417)/
+     *   Z2294,Z0000,Z0000,Z0030/
+         DATA CODE(  418),CODE(  419),CODE(  420),CODE(  421)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  422),CODE(  423),CODE(  424),CODE(  425)/
+     *   Z0000,Z1248,Z0000,Z0000/
+         DATA CODE(  426),CODE(  427),CODE(  428),CODE(  429)/
+     *   Z229D,ZD64D,Z0030,Z0070/
+         DATA CODE(  430),CODE(  431),CODE(  432),CODE(  433)/
+     *   Z0001,ZD44C,Z0180,Z0000/
+         DATA CODE(  434),CODE(  435),CODE(  436),CODE(  437)/
+     *   Z0000,ZA200,Z0000,Z0000/
+         DATA CODE(  438),CODE(  439),CODE(  440),CODE(  441)/
+     *   Z42EC,ZB200,Z0000,Z0000/
+         DATA CODE(  442),CODE(  443),CODE(  444),CODE(  445)/
+     *   Z0003,Z8A00,Z0828,Z0000/
+         DATA CODE(  446),CODE(  447),CODE(  448),CODE(  449)/
+     *   Z20EC,Z0153,Z1A00,Z6030/
+         DATA CODE(  450),CODE(  451),CODE(  452),CODE(  453)/
+     *   Z0001,Z5200,Z0000,Z0000/
+         DATA CODE(  454),CODE(  455),CODE(  456),CODE(  457)/
+     *   Z0001,Z2200,Z0100,Z0000/
+         DATA CODE(  458),CODE(  459),CODE(  460),CODE(  461)/
+     *   Z0000,ZA200,Z0060,Z1800/
+         DATA CODE(  462),CODE(  463),CODE(  464),CODE(  465)/
+     *   Z20EC,Z0000,Z0000,Z0030/
+         DATA CODE(  466),CODE(  467),CODE(  468),CODE(  469)/
+     *   Z0000,ZB200,Z2008,ZFF00/
+         DATA CODE(  470),CODE(  471),CODE(  472),CODE(  473)/
+     *   Z0000,Z9752,Z00D8,Z1700/
+         DATA CODE(  474),CODE(  475),CODE(  476),CODE(  477)/
+     *   Z0001,Z9658,Z0038,Z0000/
+         DATA CODE(  478),CODE(  479),CODE(  480),CODE(  481)/
+     *   Z0001,Z9757,Z0038,Z0000/
+         DATA CODE(  482),CODE(  483),CODE(  484),CODE(  485)/
+     *   Z229C,Z0157,Z0000,Z0070/
+         DATA CODE(  486),CODE(  487),CODE(  488),CODE(  489)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  490),CODE(  491),CODE(  492),CODE(  493)/
+     *   Z0000,Z1200,Z0000,Z0000/
+         DATA CODE(  494),CODE(  495),CODE(  496),CODE(  497)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  498),CODE(  499),CODE(  500),CODE(  501)/
+     *   Z2298,Z0000,Z2000,ZA030/
+         DATA CODE(  502),CODE(  503),CODE(  504),CODE(  505)/
+     *   Z1080,Z0053,Z0000,Z0000/
+         DATA CODE(  506),CODE(  507),CODE(  508),CODE(  509)/
+     *   Z229D,ZD64B,Z0030,Z0070/
+         DATA CODE(  510),CODE(  511),CODE(  512),CODE(  513)/
+     *   Z0001,ZD44A,Z0180,Z0000/
+         DATA CODE(  514),CODE(  515),CODE(  516),CODE(  517)/
+     *   Z42EC,Z0000,Z1A00,Z6000/
+         DATA CODE(  518),CODE(  519),CODE(  520),CODE(  521)/
+     *   Z0003,Z8A00,Z0828,Z0000/
+         DATA CODE(  522),CODE(  523),CODE(  524),CODE(  525)/
+     *   Z20EC,Z0000,Z0000,Z1F30/
+         DATA CODE(  526),CODE(  527),CODE(  528),CODE(  529)/
+     *   Z1080,Z0000,Z0000,Z1F00/
+         DATA CODE(  530),CODE(  531),CODE(  532),CODE(  533)/
+     *   Z0000,Z9600,Z00D8,Z1700/
+         DATA CODE(  534),CODE(  535),CODE(  536),CODE(  537)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  538),CODE(  539),CODE(  540),CODE(  541)/
+     *   Z229C,Z0000,Z0000,Z0070/
+         DATA CODE(  542),CODE(  543),CODE(  544),CODE(  545)/
+     *   Z2298,Z0000,Z0000,Z0030/
+         DATA CODE(  546),CODE(  547),CODE(  548),CODE(  549)/
+     *   Z1080,Z0051,Z0000,Z0000/
+         DATA CODE(  550),CODE(  551),CODE(  552),CODE(  553)/
+     *   Z0000,Z0000,Z1A00,Z6000/
+         DATA CODE(  554),CODE(  555),CODE(  556),CODE(  557)/
+     *   Z0000,Z0000,Z0000,Z1F00/
+         DATA CODE(  558),CODE(  559),CODE(  560),CODE(  561)/
+     *   Z0000,Z0000,Z0000,Z1F00/
+         DATA CODE(  562),CODE(  563),CODE(  564),CODE(  565)/
+     *   Z0000,Z9600,Z0018,Z0000/
+         DATA CODE(  566),CODE(  567),CODE(  568),CODE(  569)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  570),CODE(  571),CODE(  572),CODE(  573)/
+     *   Z229C,Z0000,Z0000,Z0070/
+         DATA CODE(  574),CODE(  575),CODE(  576),CODE(  577)/
+     *   Z0000,Z0051,Z0000,Z0000/
+         DATA CODE(  578),CODE(  579),CODE(  580),CODE(  581)/
+     *   Z4034,Z0000,Z0000,Z0000/
+         DATA CODE(  582),CODE(  583),CODE(  584),CODE(  585)/
+     *   Z400C,Z0000,Z0000,Z0000/
+         DATA CODE(  586),CODE(  587),CODE(  588),CODE(  589)/
+     *   Z4090,Z0000,Z0000,Z0000/
+         DATA CODE(  590),CODE(  591),CODE(  592),CODE(  593)/
+     *   Z4040,Z0000,Z0000,Z0000/
+         DATA CODE(  594),CODE(  595),CODE(  596),CODE(  597)/
+     *   Z0240,Z0000,Z0000,Z0000/
+         DATA CODE(  598),CODE(  599),CODE(  600),CODE(  601)/
+     *   Z4284,Z0000,Z0000,Z0000/
+         DATA CODE(  602),CODE(  603),CODE(  604),CODE(  605)/
+     *   Z4388,Z0000,Z0000,Z0000/
+         DATA CODE(  606),CODE(  607),CODE(  608),CODE(  609)/
+     *   Z120C,Z0000,Z0000,Z000D/
+         DATA CODE(  610),CODE(  611),CODE(  612),CODE(  613)/
+     *   Z43FC,Z0000,Z0000,Z0030/
+         DATA CODE(  614),CODE(  615),CODE(  616),CODE(  617)/
+     *   Z12CC,Z0000,Z4007,ZFF85/
+         DATA CODE(  618),CODE(  619),CODE(  620),CODE(  621)/
+     *   Z02BC,Z0000,Z0000,Z0030/
+         DATA CODE(  622),CODE(  623),CODE(  624),CODE(  625)/
+     *   Z0000,Z0000,Z4A04,Z0000/
+         DATA CODE(  626),CODE(  627),CODE(  628),CODE(  629)/
+     *   Z4374,Z0000,Z0700,Z00F0/
+         DATA CODE(  630),CODE(  631),CODE(  632),CODE(  633)/
+     *   Z0002,ZA800,Z0080,Z0000/
+         DATA CODE(  634),CODE(  635),CODE(  636),CODE(  637)/
+     *   Z0276,ZB800,Z0010,Z0000/
+         DATA CODE(  638),CODE(  639),CODE(  640),CODE(  641)/
+     *   Z0001,Z8000,Z01C0,Z1400/
+         DATA CODE(  642),CODE(  643),CODE(  644),CODE(  645)/
+     *   Z0274,Z0000,Z0000,Z1F70/
+         DATA CODE(  646),CODE(  647),CODE(  648),CODE(  649)/
+     *   Z0000,Z0000,Z0000,Z1F00/
+         DATA CODE(  650),CODE(  651),CODE(  652),CODE(  653)/
+     *   Z02B4,Z0000,Z0000,Z00B0/
+         DATA CODE(  654),CODE(  655),CODE(  656),CODE(  657)/
+     *   Z0000,Z00E0,Z0000,Z0000/
+         DATA CODE(  658),CODE(  659),CODE(  660),CODE(  661)/
+     *   Z4098,Z0000,Z0000,Z0030/
+         DATA CODE(  662),CODE(  663),CODE(  664),CODE(  665)/
+     *   Z403C,Z0000,Z4004,Z0010/
+         DATA CODE(  666),CODE(  667),CODE(  668),CODE(  669)/
+     *   Z401C,Z0000,Z0000,Z0030/
+         DATA CODE(  670),CODE(  671),CODE(  672),CODE(  673)/
+     *   Z0394,Z0000,Z0A00,Z0000/
+         DATA CODE(  674),CODE(  675),CODE(  676),CODE(  677)/
+     *   Z0388,Z0000,Z0A00,Z0000/
+         DATA CODE(  678),CODE(  679),CODE(  680),CODE(  681)/
+     *   Z4088,Z7800,Z0000,Z0030/
+         DATA CODE(  682),CODE(  683),CODE(  684),CODE(  685)/
+     *   Z0290,Z0000,Z0000,Z0000/
+         DATA CODE(  686),CODE(  687),CODE(  688),CODE(  689)/
+     *   Z0258,Z0000,Z0000,Z0000/
+         DATA CODE(  690),CODE(  691),CODE(  692),CODE(  693)/
+     *   Z2194,Z0000,Z0000,Z0000/
+         DATA CODE(  694),CODE(  695),CODE(  696),CODE(  697)/
+     *   Z3095,Z8020,Z1A00,Z8000/
+         DATA CODE(  698),CODE(  699),CODE(  700),CODE(  701)/
+     *   Z0001,ZB3F2,Z0020,Z0000/
+         DATA CODE(  702),CODE(  703),CODE(  704),CODE(  705)/
+     *   Z4188,Z0000,Z0000,Z0000/
+         DATA CODE(  706),CODE(  707),CODE(  708),CODE(  709)/
+     *   Z2041,Z8000,Z0000,Z0030/
+         DATA CODE(  710),CODE(  711),CODE(  712),CODE(  713)/
+     *   Z0249,Z2200,Z2100,ZA030/
+         DATA CODE(  714),CODE(  715),CODE(  716),CODE(  717)/
+     *   Z3095,Z0020,Z0000,Z0000/
+         DATA CODE(  718),CODE(  719),CODE(  720),CODE(  721)/
+     *   Z0000,Z79F2,Z0000,Z0000/
+         DATA CODE(  722),CODE(  723),CODE(  724),CODE(  725)/
+     *   Z4188,Z0000,Z0000,Z0000/
+         DATA CODE(  726),CODE(  727),CODE(  728),CODE(  729)/
+     *   Z0291,Z8153,Z1A00,Z8000/
+         DATA CODE(  730),CODE(  731),CODE(  732),CODE(  733)/
+     *   Z41FC,Z0000,Z482C,Z0000/
+         DATA CODE(  734),CODE(  735),CODE(  736),CODE(  737)/
+     *   Z4110,Z0000,Z0000,Z0000/
+         DATA CODE(  738),CODE(  739),CODE(  740),CODE(  741)/
+     *   Z401D,ZB3E8,Z0020,Z0000/
+         DATA CODE(  742),CODE(  743),CODE(  744),CODE(  745)/
+     *   Z0249,Z8000,Z1C00,Z8000/
+         DATA CODE(  746),CODE(  747),CODE(  748),CODE(  749)/
+     *   Z0001,Z2200,Z2100,ZA000/
+         DATA CODE(  750),CODE(  751),CODE(  752),CODE(  753)/
+     *   Z0001,Z8000,Z0000,Z0000/
+         DATA CODE(  754),CODE(  755),CODE(  756),CODE(  757)/
+     *   Z4198,Z0000,Z0820,Z00F0/
+         DATA CODE(  758),CODE(  759),CODE(  760),CODE(  761)/
+     *   Z0000,Z0152,Z0000,Z0000/
+         DATA CODE(  762),CODE(  763),CODE(  764),CODE(  765)/
+     *   Z41FC,Z0000,Z482C,Z0000/
+         DATA CODE(  766),CODE(  767),CODE(  768),CODE(  769)/
+     *   Z40CC,Z0000,Z0700,Z00F0/
+         DATA CODE(  770),CODE(  771),CODE(  772),CODE(  773)/
+     *   Z43FC,Z0000,Z0C00,Z00D0/
+         DATA CODE(  774),CODE(  775),CODE(  776),CODE(  777)/
+     *   Z0000,Z00E0,Z0000,Z0000/
+         J 1=I 1
+         J 2=I 2
+         J 3=I 3
+         J 4=I 4
+         J 5=I 5
+         J 6=I 6
+         CALL APEX(CODE,   0,SLIST,   6)
+         RETURN
+         END

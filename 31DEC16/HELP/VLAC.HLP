@@ -1,0 +1,376 @@
+; VLAC
+;---------------------------------------------------------------
+;! verifies correctness of continuum calibration software
+;# RUN General
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1996, 1999
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+VLAC      LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VLAC :  Calibration verification/timing test.
+TCODE                              INIT, TEST, READ, or WRIT
+TMODE                              'T' or 'M' inputs
+TMASK           1.0       127.0    test selection bit mask
+DDISK           1.0         9.0    Disk drive #: master UVDATA
+MDISK           1.0         9.0    Disk drive #: other masters
+TDISK           1.0         9.0    Disk drive #: test images
+IOTAPE          0.0         9.0    Input/Output tape drive #.
+DDTDISK                            Disk area for READ and WRIT
+EDGSKP          0.0        64.0    Pixels to skip at edges
+TERSE          -1.0        10.0    > 0 => reduced output
+DOCRT          -1.0       132.0    > 0 => output on terminal
+                                   > 72 => width of terminal
+OUTPRINT
+                                   Printer disk file to save
+BADDISK                            Disks to avoid
+VERSION
+----------------------------------------------------------------
+VLAC
+Type: RUN file
+Use:  VLAC performs the AIPS verification test for continuum calibration
+      software.  See RUN files VLACLOAD.001 and VLACEXEC.001.  The
+      purpose of the inputs file is to perform bounds checks on the
+      parameters and to enable the use of TPUT and TGET.
+Adverbs:
+ TCODE    String*4      'INIT', 'TEST', 'READ', or 'WRIT'
+ TMODE    String*1      'T' or 'M' inputs for SPLIT, IMAGR
+ TMASK    Scalar        test selection bit mask (1-127)
+ DDISK    Scalar        Disk drive # (1-9) master UVDATA
+ MDISK    Scalar        Disk drive # (1-9) other master files
+ TDISK    Scalar        Disk drive # (1-9) test files
+ IOTAPE   Scalar        Input AND output tape drive #. (1-9)
+ DDTDISK  String*8      Logical name of disk area to be used for
+                        FITS-disk files in READ or WRIT instead of
+                        actual magnetic tape.
+                        ' ' => use magnetic tape.
+ EDGSKP   Scalar        Number of pixels to skip at edges in comparing
+                        test and master images
+ TERSE    Scalar        > 0 => reduced output:
+                          > 0 = drops INPUTS for all tasks and TPHEAD
+                                when reading tape
+                          > 2 = also drops CATALOG listings
+                          > 3 = also drops IMHEADER listings
+                        Use 0 on all new or uncertain systems.
+ DOCRT    Scalar        <= 0 -> print the messages and output from tasks
+                           on the line printer.
+                        > 0 -> show the messages and output from tasks
+                           in slightly abbreviated form on the terminal.
+                           If you have a wide terminal, set DOCRT to its
+                           width in characters for a more complete
+                           display.
+ OUTPRINT String*48     Disk file name in which to save the line printer
+                        output.   ' ' => use scratch and print
+                        immediately for interactive jobs - batch jobs
+                        use OUTPRINT = 'PRTFIL:BATCHjjj.nnn' (jjj = job
+                        #, nnn = user #).  When OUTPRINT is not blank,
+                        multiple outputs are concatenated and the file
+                        is not actually printed.
+ BADDISK  Array         Disks to avoid for scratch files.
+ VERSION  String*48     OLD,NEW,OLDPSAP,NEWPSAP,LOCAL
+                        (also private dirs; use | to separate)
+
+VLAC runs in four different modes: (TCODE)
+   INIT = starts from the original master UV dataset, and (re)computes
+           master files (does ALLDEST).  The "mask" TMASK controls which
+           steps execute.
+   TEST = re-does the INIT computation but stores the new files under
+           different names and compares against masters. The "mask"
+           TMASK controls which steps execute.  For the early, table
+           manipulation steps, the TEST mode can only operate on the
+           output of the previous step and step 1 must be run first.
+           For the SPLIT and IMAGR (32 and 64) tests either the TEST run
+           output of the previous step (TMODE=T) or the INIT run output
+           (TMODE=M) can be used as input.
+   WRIT = write out all master files to tape or pseudo-tape FITS disk.
+   READ = read in all master files from tape or pseudo-tape FITS disk.
+A binary mask controls which steps of the test execute:
+   TMASK +1=>UVCOP,  +2=>UVFLG,SETJY, +4=>CALIB, +8=>GETJY,CLCAL,
+        +16=>PCAL,CLCOR,  +32=>SPLIT, +64=>IMAGR
+For example, TMASK=54 would execute UVFLG&SETJY, CALIB, PCAL&CLCOR and
+SPLIT.  Note: the UVCOP step is required once to the create the input
+file for the following steps for TCODE='TEST'.
+----------------------------------------------------------------
+Explanation of VLAC:               (WDC Sep90)
+
+VLAC is designed to verify the correct functioning of the continuum
+calibration using a test set of VLA observations.  All of the typical
+steps in editing and calibrating a set of continuum (non-VLBI) are
+exercized except for interactive editing. Since most of these operations
+modify only tables, a comparison of selected portions of various of the
+calibration tables is made. After the calibration tasks are completed,
+the data is calibrated using SPLIT and the uv data is compared with the
+master version.  The final test is a comparison of images made from the
+calibrated data.
+================================================================
+Steps to execute the VLAC Test on a new computer:
+
+1. Log in to AIPS under the user number which will own the data files
+   and the SAVE/GET files associated with the test.  It is probably
+   convenient to clear your AIPS message file before proceeding:
+   PRNUM=-1; (PRTMSG possibly) ; CLRMSG
+
+2. Now do the POPS command "RUN VLACLOAD". This initiates the
+   compilation process, which can take as long as 15 minutes on a
+   heavily loaded VAX-11/780. You may want to execute the POPS command
+   "PRTMSG" afterwards to document the compilation of the test
+   procedures.
+
+3. The next step is to read the data files from the tape.  There are 6
+   files for this test.  The read process consists of the following
+   steps:
+      CLRMSG                       (prepare for tape read steps)
+      GET VLACINIT
+      Specify DDISK, MDISK, TDISK, and IOTAPE
+      DDTDISK = ' ' for real tapes
+      Also specify BADDISK as needed
+      TCODE='READ'; TPUT VLAC         (TPUT saves adverb values)
+      MOUNT the tape
+      RUN VLACEXEC
+      DISMOUNT the tape
+   The READ mode of VLAC will execute FITLD to read the UV and map files
+   to disk.  At the end of the process, it rewinds the tape and prints a
+   directory of the disk files.
+
+   Alternately, if you have the files on disk, merely set the DDTDISK
+   adverb to point at where the files reside (you need to define or use
+   a "logical" or environment variable with an uppercase name before
+   starting AIPS to use this feature; e.g. FITS).
+
+   NOTE: VLACEXEC will insist on having non-default values for
+   IOTAPE, DDISK, MDISK, and TDISK.
+
+4. Now it is time to actually perform the test.  The 'TEST' mode
+   recomputes the various files.  All map, uv data and selected
+   calibration table results are compared to the master versions which
+   were read from tape in the previous step. The steps are:
+      CLRMSG                       (prepare for test results)
+      GET VLACINIT
+      TGET VLAC
+      TCODE='TEST'; TMASK=127
+      TPUT VLAC                     (saves the adverb values)
+      RUN VLACEXEC
+   The message file from VLACEXEC will be more than 2000 lines long.  It
+   is intended to be the major item documenting the test procedures and
+   results.  Several tasks will print results rather than put them in
+   the message file. Especially, the LISTR output should be checked.
+
+5. The 'WRIT' mode tests task FITTP, while 'READ' tests FITLD.  The
+   basic idea is to produce a tape, and then to read that tape on an
+   AIPS system to verify that it yields correct results.  It follows
+   that generating a new tape with the 'WRIT' mode and then executing
+   'READ' and 'TEST' on it will also effectively test the tape tasks.
+   Better yet, take the tape to another AIPS and run VLAC on it!  This
+   verifies the intercommunication of the systems.
+   The steps are:
+      CLRMSG
+      GET VLACINIT
+      TGET VLAC
+      TCODE='WRIT'; TMASK=127
+      DDTDISK = ' ' for real tapes or DDTDISK = 'yourarea' for disk
+      TPUT VLAC
+      RUN VLACEXEC
+
+   Note that when we say "tape", we mean either magnetic tape in the
+   usual sense, or pseudo-tape disk files.  The latter are selected by
+   setting DDTDISK to a non-blank value which is the logical name
+   (environmental variable) for the disk area to be used.  The disk
+   files are given a fixed and obvious pattern of names (VLACnnnnnn,
+   where nnnnnn is the image name related to the task name).
+
+6. Finally, one wants to know the accounting statistics from the test
+   runs.  The accounting listing can be correlated with the message file
+   listings in order to analyze the performance of the tested system.
+   VLAC now runs task PRTAC to produce the desired information.  Note
+   that PRTAC has exclusive access to the accounting file until it
+   finishes, and so various tasks may complain while they are waiting to
+   get access to the file.
+
+   The listing produced by PRTAC will have one line for each execution
+   of any task or program AIPS.  The columns of the listing give the
+   taskname, POPS#, user#, start-time, real-time, CPU-time, and "IOCNT".
+   Asterisks mark any run that aborted.  After this basic sequential
+   listing comes a listing by task name giving the totals accumulated by
+   each task.  The listing is given in two sort orders.
+
+   The tasks tested in some modes are: FITLD, FITTP, UVCOP, TABED,
+   UVFLG, SETJY, CALIB, TASRT, TASAV, GETJY, CLCAL, PCAL, TACOP, CLCOR,
+   LISTR, SPLIT, UVDIF, IMAGR, and COMB
+
+================================================================
+               Description of Data Calibration Test
+
+   The test data set consists of observations of a phase calibrator over
+a period of 4 hours to get a spread of parallactic angle for
+polarization calibration, a scan of 3C286 to calibrate the flux density
+and the polarization orientation and slightly over an hour of program
+source data.  The data were obtained with the VLA in "A" configuration
+at 3.6 cm wavelength and 12.5 MHz bandwidth.  The data contains two IFs
+and RR, LL, RL and LR polarization correlations.  Tha master copies of
+the files were computed on s prerelease version of 15JAN91 AIPS on a Sun
+3/60.
+
+   The following sections describe in some detail the tasks run in each
+of the test steps.  Only the test mode is described; READ, WRIT and INIT
+modes are fairly obvious given the TEST mode operation.
+
+Step 1.  The master uv data file is copied to a test version using
+UVCOP.
+
+Step 2.  Bad data are flagged with several runs of UVFLG.  The fluxes in
+the SU table are reset and the flux of 3C286 set using SETJY.  TABED is
+used to correct the flux of 3C286 for the appropriate UVRANGE.
+
+Step 4.  CALIB is run on 3C286 and the phase calibrator.  The SN table
+is sorted using TASRT and the tables are copied using TASAV.  The
+comparison of the SN tables is done using the TASAV version.
+
+Step 8.  GETJY is used to estimate the flux density of the phase
+calibrator and corrects the SN table.  CLCAL then filters the SN table
+with a 1.1 hour median window filter on the amplitudes and writes CL
+table 2.  Comparisons are made of the SU and CL #2 tables.
+
+Step 16.  PCAL is used to determine the instrumental calibration and the
+polarized flux of the phase calibrator.  If TERSE is less than 3 then
+LISTR is used to give a matrix listing of the polarized flux of 3C286.
+TACOP and CLCOR are used to correct the AN and CL table #3 for the
+right-left phase difference.  Comparisons are made of the AN
+(polarization parameters), SU (polarized flux) and CL #3 tables.
+
+Step 32.  SPLIT is used to apply the calibration and editing tables to
+the source data and write a single source output file.  This file is
+compared with the master.
+
+Step 64.  IMAGR is run on the output of SPLIT to make I and Q images.
+Comparisons are made of the I image, I beam and the Q image.
+
+
+================================================================
+                Interpretation of Test Results
+
+The results of the mapping and table tests are recorded as the number of
+BITS of accuracy.  The BITS of accuracy are defined in two ways, by the
+MAX difference in the Master image and the Test image and by the RMS
+differences in the images.  The BITS measured by the the base 2
+logarithm of the ratio of PEAK and DIFFERENCE of the images.
+
+The BITS are calculated as -3.3219 * LOG(DIFF/PEAK).  (LOG is the Base
+10 Logarithm; 1/LOG(2) = 3.3219)
+
+The expected BITS of accuracy for the tasks are in the range of 10 to 20
+BITS.  The RMS BITS of accuracy is always greater than the PEAK BITS of
+accuracy.  Perfect agreement will be reported as 99 bits agreement.
+
+Note that some of the operations in this test modify the input file(s).
+This especially true for the table operations and in particular GETJY
+may recursively modify the SU and SN tables.  This may cause roundoff
+errors to accumulate.  For the most accurate test, all of the steps must
+be run in order exactly once each (i.e. use TMASK=127).
+
+Note also that the uv data is stored in compressed form meaning that it
+has at most 15 bits of precision rather than the 24-25 (usually) for
+floating point.
+
+There are three kinds of test made of agreement with the master data:
+1) UV data sets are compared using UVDIF which reports on individual
+visibility records with differences larger than the threshold.  The
+statistics of the data being checked are also reported.
+2) Images are differenced and the statistics of the difference image is
+reported both as the test is done and in the summary at the end.
+3) Selected portions of calibration tables will be compared with the
+master version and differences are reported in a manner similar to that
+for images.
+
+   The following describes the comparison tests between tables, uv data
+and images.  The column labeled "Test" gives the label used in the
+summary given at the end of the execution of VLACEXEC.
+
+Test        Type                 Comments
+__________  ____ _______________________________________________________
+CALIB SN 1  tab  The real part of IF 1, RCP of the SN table produced by
+                 CALIB is compared.
+
+CALIB SN 2  tab  The imag part of IF 2, LCP of the SN table produced by
+                 CALIB is compared.
+
+GETJY       tab  I flux from SU table determined by GETJY.
+
+CLCAL CL 1  tab  The real part of IF 1, RCP of the CL table produced by
+                 CLCAL is compared.  Every 25th element of the table is
+                 compared.
+
+CLCAL CL 2  tab  The imag part of IF 2, LCP of the CL table produced by
+                 CLCAL is compared.  Every 25th element of the table is
+                 compared.
+
+PCAL AN     tab  The third polarization constant for LCP in the AN
+                 tables produced by PCAL are compared.
+
+PCAL SU     tab  The U flux for IF=2 determined by PCAL in the SU table
+                 is compared.
+
+CLCOR CL 1  tab  The real part of IF 1, RCP of the CL table produced by
+                 CLCOR is compared.  Every 25th element of the table is
+                 compared.
+
+CLCOR CL 2  tab  The imag part of IF 2, LCP of the CL table produced by
+                 CLCOR is compared.  Every 25th element of the table is
+                 compared.
+
+SPLIT       uv   The output of SPLIT is compared.
+
+IMAGR ICL001 map  The I images from IMAGR are compared.
+
+IMAGR IBM001 map  The I beams from IMAGR are compared.
+
+IMAGR QCL001 map  The Q images from IMAGR are compared.
+
+Task LISTR is used to apply polarization calibration to the polarization
+angle calibrator to verify the correctness of the calibration.  The
+LISTR output should look something like the following:
+
+MVLAC       .UVDATA.   1  Vol= 5  User=  1  Channel=1  IF=2
+Freq=  8.711000000 GHz   Ncor=  4   No. vis=      2705
+Stokes = FULL Subarray =   1
+Applying calibration table   3
+Applying polarization corrections
+Applying flag table   1
+
+
+Time =   1/18:13:20 to   1/18:17:20   Source = 3C286     :0000
+Flux =  5.1045 Jy, Calcode = B   , Freq =  8.711000000 GHz
+Phases in degrees, averaging type = Vector
+RL in upper right, conjg(LR) in lower left
+
+  Ant -- 3----13---- 5---- 9----21---- 4----23----20----24--
+  3|                73    70    68    70          69    68
+ 13|                            65    72          68    67
+  5|    61                            69                67
+  9|    62                            68                65
+ 21|    62    66                                  64    63
+  4|    63    64    64    67                      65    66
+ 23|
+ 20|    60    66                66    66
+ 24|    63    69    66    68    64    66
+Matrix average =  6.60303E+01 sigma =  4.81587E-01

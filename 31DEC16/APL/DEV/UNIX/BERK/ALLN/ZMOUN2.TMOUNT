@@ -1,0 +1,153 @@
+#include <stdio.h>
+#include <strings.h>
+
+zmoun2_(mount, idrive, idens, ntaped, npops, nuser, msg, syserr, ierr)
+/*--------------------------------------------------------------------*/
+/*! mount or dismount magnetic tape device - lowest level Z           */
+/*# Tape Z2                                                           */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 1995                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/*  Issue a software tape mount or dismount requests.                 */
+/*  Inputs:                                                           */
+/*     mount    I      Operation indicator code:                      */
+/*                        1 => mount                                  */
+/*                        0 => dismount                               */
+/*     idrive   I      Drive number                                   */
+/*     idens    I      Density                                        */
+/*     ntaped   I      Number of tape drives                          */
+/*     npops    I      Pops number                                    */
+/*     nuser    I      User AIPS number                               */
+/*  Output:                                                           */
+/*     msg      C*80   Error message buffer                           */
+/*     syserr   I      System error code: 0 => no error               */
+/*     ierr     I      Error return code: 0 => no error               */
+/*                        1 => error                                  */
+/*  Alliant version - uses tmount (may be Jilla-specific) and ZCRLOG  */
+/*--------------------------------------------------------------------*/
+int *mount, *idrive, *idens, *ntaped, *npops, *nuser, *syserr, *ierr;
+char msg[];
+/*--------------------------------------------------------------------*/
+{
+   extern int errno;
+   int density, n, ll, lt, i4err;
+   register int i;
+   char cmd[256], mt0x[5], tlog[12], vsn[1024], wrstr[1024];
+/*--------------------------------------------------------------------*/
+   *ierr = 0;
+   *syserr = 0;
+   errno = 0;
+                                        /* MOUNT or DISMOUNT?         */
+   if (*mount == 1) {
+					/* Prompt for tmount args */
+      printf ("\nMount VSN? ");
+      gets (vsn);
+      printf ("Write ring in y/(n)? ");
+      gets (wrstr);
+      if ((!strcmp(wrstr, "y")) || (!strcmp(wrstr, "yes")))
+      	 strcpy(wrstr, "w");
+      else
+         strcpy(wrstr, "");
+                                        /* Determine density factor   */
+                                        /* Calculate N for /dev/rmtN  */
+      density = 0;
+      if (*idens == 800) {
+         density = 1;
+         n = 0;
+         }
+      else if (*idens == 1600) {
+         density = 2;
+         n = 8;
+         }
+      else if (*idens = 6250) {
+         density = 3;
+         n = 12;
+         }
+                                        /* Density legal?             */
+      if (density == 0) {
+         sprintf(msg,"ZMOUN2: INVALID DENSITY = %d",*idens);
+         *ierr = 1;
+         goto exit;
+         }
+                                        /* Form "tmount" command     */
+      sprintf (cmd, "tmount -%sut %d 60 %s", wrstr, *idrive-1, vsn);
+                                        /* Issue mount request        */
+      if (system(cmd) != 0) {
+         sprintf (msg,"ZMOUN2: ALLOCATION ERROR FOR TAPE DRIVE %d",
+            *idrive);
+         *syserr = errno;
+         system ("tmount -s");
+         *ierr = 1;
+         goto exit;
+         }
+      else system ("tmount -s");
+                                        /* Assign shell variable MT0n */
+                                        /* "/dev/rmtMM"               */
+      sprintf(mt0x,"MT0%x",*idrive-1);
+      ll = 5;
+      sprintf(tlog,"/dev/rmt%d",n);
+      lt = 12;
+      zcrlog_(&ll, mt0x, &lt, tlog, &i4err);
+      if (i4err == 0) {
+         *ierr = 1;
+         goto exit;
+         }
+      }
+   else {
+					/* Prompt for VSN 	      */
+      printf ("\nDismount VSN? ");
+      gets (vsn);
+                                        /* Form "tpdealloc" command   */
+      sprintf (cmd, "tmount -d %s", vsn);
+                                        /* Issue dismount request     */
+      if (system(cmd) != 0) {
+         sprintf(msg,"ZMOUN2: DEALLOCATION ERROR FOR TAPE DRIVE %d",
+            *idrive);
+         *syserr = errno;
+         system ("tmount -s");
+         *ierr = 1;
+         goto exit;
+         }
+      else {
+         system("tmount -s");
+                                        /* Assign shell variable MT0n */
+                                        /* "/dev/rmtxx"               */
+         sprintf (mt0x, "MT0%x", *idrive-1);
+         ll = 5;
+         sprintf (tlog, "/dev/rmtxx");
+         lt = 12;
+         zcrlog_(&ll, mt0x, &lt, tlog, &i4err);
+         if (i4err != 0) {
+            *ierr = 1;
+            goto exit;
+            }
+         }
+      }
+
+exit:
+   return;
+}

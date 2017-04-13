@@ -1,0 +1,150 @@
+@@
+History files:               HIfsss01
+
+
+A. Overview
+
+
+Function:  History files are used to record, in character form, the
+processing history of an image.
+
+Details:  Although they are in fact separate physical files, they are
+treated as if they were extensions of the file containing the image
+data.  There must be one and only one history file for each image.  The
+files are normally created with relatively modest size and extended
+when necessary.
+
+Names:  The file names are HIfsss01 , where f is the format version
+code and sss is the sequential position of the image header in the
+catalog file for that disk in hex.  With user owned file systems,
+the names are HIfsss01.uuu, where uuu is the user number in hex.
+
+
+B. File structure
+
+
+     History files consist of sequential 256-word records.  Each of
+these physical records begins with 4 words of special information (used
+only in the first record).  The rest of each physical record consists
+of 72-character logical records in AIPS HOLLERITH form (4 characters
+per integer or floating).  There are NL such logical records per
+physical record where NL = 252/(72/4) = 14.
+
+     The special data in the first record has the form
+
+  FIELD    TYPE          DESCRIPTION
+
+    1      I*4       Number of logical records currently in file
+    2      I*4       Number of logical records which can fit in file
+                     before expansion is required.
+    3      I*4(2)    Reserved.
+
+The logical records consist of 72 HOLLERITH characters with no
+required format.  However, the following FITS-like usages are
+recommended strongly:
+
+  (1) The first 5 characters should be the left-justified name of the
+      program causing this history record and the sixth character
+      should be blank.
+
+  (2) The rest of the card should show parameter values in the form
+
+                   <keyword>  =  <value>
+
+      where more than one keyword may appear on a "card" (logical
+      record).  Character string values must be enclosed in single
+      quotes ( ' ).
+
+  (3) Information which should never be parsed (i.e. comments) should
+      follow any parsable (i.e. keyword=value) information and should
+      be preceded by the slash ( / ) character.
+
+Thus,
+
+   IMLOD / Run at 14:23:06 on October 15, 1983
+   IMLOD INNAME='CASA' INCLASS='IPOL' INSEQ=3 / SOURCE SELECT
+
+are good logical records for history files.
+
+
+C. User notes
+
+     History files are important.  Any program which produces an output
+image should copy the history file(s) of the input image(s) to the
+history file of the output image.  It should then record in that file
+all parameters relevant to the function of the program.  Parameters
+which were defaulted by the user should have the actually-used values
+inserted in the history file.  History files need to be readable both
+to humans and to computers.  Thus comments and parameter names should
+not be overly terse or crowded onto the cards.  However, one should
+also try to avoid having the history files grow without bounds.  Thus,
+excessive commenting and one keyword per card are poor practices.  The
+parsing rules should be those of ANSII-standard Fortran 77 list-
+directed I/O.
+
+
+D. Routines and commons for writing history files
+
+
+      There is a collection of basic routines to create, open, add to,
+read, write, and close history files.  They all use the basic common
+called /HICOM/ :
+
+    NHIFIL  I*4         max number of history files open at once
+    NHIWRD  I*4         number of words/entry in HITAB
+    NHIWPL  I*4         # words / logical record
+    NHILPR  I*4         # logical records / physical record
+    HITAB   I*4(NHIFIL*NHIWRD)  table describing open history files
+
+If HIPNT is the pointer to an entry in HITAB, then the structure is
+
+    HITAB(HIPNT+0)    logical unit number of file
+    HITAB(HIPNT+1)    pointer to FTAB for file
+    HITAB(HIPNT+2)    number of logical records now in file
+    HITAB(HIPNT+3)    number logical records which will fit in file
+    HITAB(HIPNT+4)    disk number for file
+    HITAB(HIPNT+5)    sequential catalog position for image
+    HITAB(HIPNT+6)    physical record # now in user-supplied buffer
+
+The user of the standard routines must cause the HITAB to receive an
+appropriate size and to be initialized.  This may be done by
+
+
+    INCLUDE 'DHIS.INC'
+    ....
+
+    CALL HIINIT (n)
+
+where n is the number of history files around and is less than 20.
+The include 'DHIS.INC' declares HITAB(140).  If you really must
+have more than 20 simultaneous HI files, you will need to declare
+the COMMON and its variables in your own initialization routine.
+Do follow the example of DHIS.INC and HIINIT, however.
+
+      The user may create and open a history file with subroutine
+HICREA or open an old file with HIOPEN.  Among the arguments to these
+routines is a 256-word buffer which is used as a working buffer by all
+of the standard history routines.  The programmer should not modify
+the contents of this buffer between the call to HIOPEN (or HICREA) and
+the corresponding call to HICLOS.  Separate buffers must be provided
+for each open history file.  History records are normally added to
+history files via HIADD.  This routine calls HIIO to perform the actual
+input/output operations (when required only) including expanding the
+file as needed.  HICLOS is used to complete the writing of the file
+including updating the pointers in record 1 and to close the file.
+
+      There are a number of less basic routines which provide history-
+related services.  HISCOP copies the contents of one open history file
+into another.  HENCO1, HENCO2, and HENCOO encode and write to files
+some of the basic parameters used by most tasks.
+
+
+E. Routines and commons for reading history files
+
+
+     At this writing, there are no special routines for reading history
+files.  Normally, one uses HIINIT, HIOPEN, and HICLOS and the common
+/HICOM/ as described above.  HILOCT may be used to return the location
+of the entry in HITAB (called HIPNT above).  With this pointer, one may
+use HIIO (or simply ZFIO) to read the file one physical record at a
+time.

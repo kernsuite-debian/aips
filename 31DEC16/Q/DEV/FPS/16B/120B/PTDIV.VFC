@@ -1,0 +1,119 @@
+      DEFINE PTDIV (C,U,VS,INCVS,INCF,INCS,NCOMP,NVIS,NF,NS)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Divide point model visibility into uv data.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+      LOCAL PHASE,REAL,IMAG,X,Y,Z,V,W,JVS,MF,F
+"
+"     PTDIV divides the model visibility derived from CLEAN
+"     components into visibility records.  Arbitrary numbers
+"     of frequencies and polarizations can be processed.
+"     The weights of the visibilities are multiplied times
+"     the square of the amplitude of the model visibility.
+"
+"     PTDIV uses AP locations 0 and 1 and expects an array
+"     beginning in location 2 composed of:
+"              Freq(0) / Freq(ref) - 1.0
+"              Freq(1) / Freq(0)   - 1.0
+"                      .
+"                      .
+"                      .
+"              Freq(NF-1) / Freq(NF-2) - 1.0
+"
+"     Inputs:
+"     C       Base address of CLEAN components, increment=7
+"                  0 = Amplitude
+"                  1 = used (PHASE)
+"                  2 = used (REAL)
+"                  3 = used (IMAG)
+"                  4 = -2 * PI * X
+"                  5 = -2 * PI * Y
+"                  6 = -2 * PI * Z
+"     U       Base address of U's, assumed followed by V, W
+"     VS      Base address of vis rec. (real, imag, wt)
+"     INCVS   Increment of VS for next visibility
+"     INCF    Increment of VS for next frequency
+"     INCS    Increment of VS for next IF (RR of LL)
+"     NCOMP   Number of CLEAN components.
+"     NVIS    Number of visibilities.
+"     NF      Number of frequencies.
+"     NS      Number of IF (usually 1 or 2)
+"
+"
+"                                       MAKE SURE THERE IS DATA
+"
+      IF NCOMP <= 0 GOTO S999
+      IF NVIS <= 0 GOTO S999
+      IF NF <= 0 GOTO S999
+      IF NS <= 0 GOTO S999
+"
+"     SETUP
+"
+      SP09 = C
+      PHASE = SP09 + 1
+      REAL = SP09 + 2
+      IMAG = SP09 + 3
+      X = SP09 + 4
+      Y = SP09 + 5
+      Z = SP09 + 6
+      V = U + 1
+      W = V + 1
+"
+"      BEGIN VIS LOOP
+"
+LOOPV: CALL VSMUL(X,7,U,PHASE,7,NCOMP)          "U*X
+       CALL VSMA(Y,7,V,PHASE,7,PHASE,7,NCOMP)   "ADD V*Y
+       CALL VSMA(Z,7,W,PHASE,7,PHASE,7,NCOMP)   "ADD W*Z
+"
+       JVS = VS                                 "SET VIS POINTER.
+       MF = NF                                  "SET FREQ. COUNTER.
+       F = 2                                    "SET FREQ. TAB. POINTER
+"
+"      BEGIN FREQUENCY LOOP
+"
+LOOPF: CALL VSMA(PHASE,7,F,PHASE,7,PHASE,7,NCOMP)"CORR. PHASE FOR FREQ.
+       F = F + 1
+       CALL RECT(C,7,REAL,7,NCOMP)              "POLAR => RECT.
+       CALL SVE(REAL,7,0,NCOMP)                 "SUM REAL TO LOC 0.
+       CALL SVE(IMAG,7,1,NCOMP)                 "SUM IMAG TO LOC 1.
+       CALL CVSDIV(JVS,INCS,0,JVS,INCS,NS)      "DIVIDE VIS BY MODEL.
+       JVS = JVS + INCF                         "UPDATE VIS. POINTER
+       MF = MF - 1                              "DEC. FREQ. LOOP COUNT.
+       IF MF > 0 GOTO LOOPF                     "END FREQ. LOOP
+"
+       SP09 = INCVS
+       VS = VS + SP09
+       U = U + SP09
+       V = V + SP09
+       W = W + SP09                             "UPDATE POINTERS
+"
+       NVIS = NVIS - 1                          "DEC VIS. LOOP COUNTER.
+       IF NVIS > 0 GOTO LOOPV                   "END VIS. LOOP.
+"
+S999:  END

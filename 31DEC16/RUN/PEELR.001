@@ -1,0 +1,121 @@
+$ PEELR.001
+$---------------------------------------------------------------
+$! RUN file to define procs to calibrate interfering sources
+$# Run POPS UV CALIBRATION
+$---------------------------------------------------------------
+$;  Copyright (C) 2006, 2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$---------------------------------------------------------------
+PROC PEELDEF
+STRING*6  CLSCLS, PCLSTEMP
+ARRAY     PPARM(100)
+SCALAR    PMAX, CLSNUM
+FINISH
+PROC SETCLASS (CLSCLS, CLSNUM)
+pclstemp=char(clsnum)
+substr(clscls,7-leng(pclstemp),6)=pclstemp
+RETURN; FINISH
+PROC CHKIT
+chkname
+if (error <= 0) then;
+   print inna, incl, inse, 'found'; ii=ii+1; end
+return; finish
+$
+PROC PEELR
+$                                            defaults
+if (ngauss < 1) then; ngauss=1; end
+if (outname = ' ') then; outnam=innam; end
+if (outcl = ' ') then; outcl='peelr'; end
+if (outd=0) then; outd=indi; end
+vnum=33-getpopsn; vput peelr; ii = 0; indi=0
+$                                            check files
+inna=outna; incl='peelus'; inse=getpopsn; chkit
+incl='pee001'; for jj=1:ngauss;setclass(incl,jj);chkit; end
+incl='peelw0'; chkit; incl='peelw1'; chkit;
+incl='peelw2'; chkit; incl=outcl; inse=outse
+if (outse>0) then; chkit; end
+if (ii > 0) then;
+   print 'quitting - delete the listed files
+   vget peelr; return; end
+$                                            number of facets
+dowa 1; pmax=10
+for ii=1:100;
+   if ((pparm(ii)<=0) & (pmax>=ii)) then; pmax=ii-1; end; end
+$                                            initial subtraction
+default uvsub; vget peelr; task 'uvsub'
+  nmaps = ngaus*nfield; factor=1; outs=1; outcl='PEELUS'; go
+intyp=' '
+$                                            loop
+for ii=1:pmax;
+$                                            copy facets
+  default subim; vget peelr; task 'subim';
+  blc=0; trc=0; xinc=1; yinc=1
+  inna=in2n; incl=in2cl; inse=in2se; indi=in2d;
+  outc='PEE001'; outs=1
+  for jj=1:ngauss; kk=pparm(ii)+(jj-1)*nfield; setclass(incl,kk)
+     setclass(outcl,jj); go; end
+$                                            add back
+  default uvsub; vget peelr; task 'uvsub'; nmaps=ngauss;
+  inna=outna; incl='peelus'; inse=1; indi=outdi
+  in2n=outna; in2cl='pee001'; in2s=1; in2d=outd
+  outcl='peelw0'; outs=1; factor=-1; go; inty='uv'; zap
+$                                            calibrate
+  default calib; vget peelr; task 'calib';
+  inna=outna; incl='peelw0'; inse=1; indi=outdi
+  in2n=outna; in2c='pee001'; in2s=1; in2d=outd
+  minamp=10; minphs=10;
+  if (aparm(7)=0) then; aparm(7)=2; end
+  if (aparm(9)=0) then; aparm(9)=1; end
+  if (solmod <> 'p') then; solmod='a&p'; end
+  outcl='peelw1'; outse=1; nmaps=ngauss; go
+$                                            skip imagr for now
+$                                            subtract model
+  default uvsub; vget peelr; task 'uvsub'
+  inna=outna; incl='peelw1'; inse=1; indi=outdi
+  in2n=outna; in2cl='pee001'; in2s=1; in2d=outd
+  outcl='peelw2'; outs=1; factor=1; nmaps=ngauss; go
+  inty='uv'; zap; incl='pee001';  inty='ma';
+  for jj=1:ngauss; setclass(incl,jj); zap; end
+$                                            invert SN table
+  default clinv; vget peelr; task 'clinv'
+  inna=outna; incl='peelw0'; inse=1; indi=outdi; outver=1
+  outcl='peelw2'; outs=1; inext='sn'; invers=1; opty=' '
+  go; inty='uv'; zap
+$                                            apply inverted SN
+  default split; vget peelr; task 'split'; aparm=0; echan=0
+  inna=outna; incl='peelw2'; inse=1; indi=outdi; bchan=0
+  outcl='peelus'; outse=1; docalib=1; gainuse=1; douvc=-1;
+  go; inty='uv'; zap
+  end
+$                                            final restoration
+default uvsub; vget peelr; task 'uvsub'
+inna=outna; incl='peelus'; inse=1; indi=outdi
+nmaps = ngaus*nfield; factor=-1; go; zap
+$
+dowa=-1; vget peelr
+return; finish

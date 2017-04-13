@@ -1,0 +1,125 @@
+      .TITLE ZTXMA2 (FLEN, FILSPC, NMAX, IEXT, NNAM, NAMES, IERR)
+;-----------------------------------------------------------------------
+;! find all file names matching a given wildcard specification
+;# Z2 Text
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Find all file names that match a given wild card specification.
+;   Inputs:
+;      FLEN     I          Length in characters of FILSPC (< 128 !)
+;      FILSPC   C*(FLEN)   File specification
+;      NMAX     I          Maximum number of names
+;      IEXT     I          Extension disposition indicator:
+;                             0 => remove extension
+;                             1 => retain extension
+;   Output:
+;      NNAM     I          Number of matching names found
+;      NAMES    H*8(NMAX)  Array of matching names (H for Macro, C...)
+;      IERR     I          Error return code: 0 => no error
+;                             1 => no matching names found
+;                             2 => error opening or closing directory
+;                             3 => other
+;   VMS version
+;-----------------------------------------------------------------------
+$IODEF
+$FIBDEF
+$RMSDEF
+                                        ; Argument list offsets.
+FLEN   =  4
+FILSPC =  8
+NMAX   = 12
+IEXT   = 16
+NNAM   = 20
+NAMES  = 24
+IERR   = 28
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZTXMA2,^M<R2,R3,R4,R5,R6,R7,R8,R9>
+                                        ;
+        MOVL    FILSPC(AP),R2           ; Address of discriptor in R2
+        MOVC3   @FLEN(AP),@4(R2),WCNAME ; Put string part in WCNAME
+        MOVL    @FLEN(AP),LFLEN
+        MOVL    #0,@IERR(AP)            ; Zero error flag.
+        MOVL    #0,@NNAM(AP)            ; Zero number of names.
+                                        ; Prepare to parse.
+PARSE:  $FAB_STORE  -
+                FAB=FABBLK,-
+                FNS=LFLEN
+                                        ; Parse.
+        $PARSE  FAB=FABBLK
+        BLBS    R0,OK
+        BRW     ERR
+                                        ; Search for name in dir.
+OK:     MOVL    NAMES(AP),R8            ; Addr of array of names in R8.
+LOOP:   $SEARCH FAB=FABBLK
+        BLBC    R0,ERR                  ; Error of some kind
+
+        MOVAL   NAMBLK,R0               ; NAM block addr
+        MOVZBL  NAM$B_NAME(R0),R1       ; Length of name
+        BLBC    @IEXT(AP),SKIP          ; Skip extension
+        MOVZBL  NAM$B_TYPE(R0),R2       ; Length of extension
+        ADDL2   R2,R1                   ; Total length
+SKIP:   MOVC5   R1,@NAM$L_NAME(R0), -   ; Move into array, blank fill
+                #^A/ /,#8,(R8)
+        MOVL    R3,R6                   ; Save next avail byte.
+
+        CMPL    #0,@NNAM(AP)            ; See if first time
+        BEQL    SAV                     ; Skip if first time.
+        SUBL3   #8,R8,R7
+        CMPC3   #8,(R8),(R7)            ; Look for duplicate names.
+        BEQL    LOOP
+SAV:    MOVL    R6,R8                   ; Save current array loc.
+        INCL    @NNAM(AP)                ; Increment no. of names.
+        CMPL    @NMAX(AP),@NNAM(AP)       ; See if over the limit
+        BGEQ    LOOP
+        BRW     QUIT
+                                        ; Test for expected errors.
+ERR:    CMPL    R0,#RMS$_NMF            ; No more files.
+        BEQL    QUIT
+        MOVL    #1,@IERR(AP)            ; File not found.
+        CMPL    R0,#RMS$_FNF
+        BEQL    QUIT
+        MOVL    #2,@IERR(AP)            ; File not found.
+        CMPL    R0,#RMS$_DNF
+        BEQL    QUIT
+                                        ; other error.
+OTHER:  MOVL    #3,@IERR(AP)
+QUIT:   RET
+;-----------------------------------------------------------------------
+        .PSECT  DATA,LONG
+FABBLK: $FAB    FNA=WCNAME,-
+                NAM=NAMBLK
+NAMBLK: $NAM    ESA=EXTNAM,-
+                ESS=128,-
+                RSA=RESNAM,-
+                RSS=128
+LFLEN:  .LONG   128
+EXTNAM: .BLKB   128
+RESNAM: .BLKB   128
+WCNAME: .BLKB   128
+        .END

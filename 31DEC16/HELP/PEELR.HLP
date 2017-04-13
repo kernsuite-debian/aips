@@ -1,0 +1,232 @@
+; PEELR
+;---------------------------------------------------------------
+;! calibrates interfering sources in multi-facet imges
+;# Procedure UV CALIBRATION
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2006, 2008
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+PEELR      LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+PEELR        RUN PEELR for proc to calibrate interfering sources
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+IN2NAME                            Input image name (name)
+IN2CLASS                           Input image name (class)
+IN2SEQ            0.0     9999.0   Input image name (seq. #)
+IN2DISK           0.0        9.0   Input image disk unit #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ           -1.0     9999.0   Output UV file name (seq. #)
+OUTDISK           0.0        9.0   Output UV file disk unit #.
+NFIELD            1.0     4096.0   Number facets in IN2NAME
+NGAUSS            1.0       10.0   Number resolutions in IN2NAME
+PPARM             0.0              List of <= 100 facets to peel
+BCHAN             0.0    16384.0   Lowest channel number 0=>all
+ECHAN             0.0    16384.0   Highest channel number
+SOLINT                             CALIB solution interval (min)
+SOLTYPE                            Soln type,'  ','L1','GCON',
+                                      'R', 'L1R', 'GCOR'
+SOLMODE                            'P' phase only, else 'A&P'
+WEIGHTIT          0.0        3.0   Modify data weights function
+APARM                              General CALIB parameters
+                                      1=min. no. antennas
+                                      2 > 0 => data divided
+                                      3 > 0 => avg. RR,LL
+                                      5 > 0 => avg. IFs.
+                                      6=print level, 1=good,
+                                        2 closure, 3 SNR
+                                      7=SNR cutoff (0=>2)
+                                      8=max. ant. # (no AN)
+                                      9 >= 0 => pass failed soln
+                                     (7, 9 differ from CALIB)
+CPARM                              CALIB Phase-amp. parameters
+                                      1 = Min el for gain
+                                           normalization (deg)
+                                      2 >0 => normalize gain
+                                      3 avg. amp. closure err
+                                      4 avg. ph. closure err
+                                      5 >0 => scalar average
+                                      6 limit clipping in robust
+BADDISK                            Disk #'s to avoid
+----------------------------------------------------------------
+PEELR
+Proc:  This procedure begins by subtracting the CC model found in
+       NMAPS = NFIELD*NGAUSS images beginning with IN2NAME from the UV
+       data in INNAME making temporary UV file PEELUS.  Then for each
+       facet number (1-NFIELD) listed in PPARM it:
+           1. Copies facets PPARM(i), PPARM(i)+NFIELD, etc to
+              PPARM(i) + (NGAUSS-1)*NFIELD to image set PEE00n
+           2. Adds the CC model in PEE00n back to PEELUS making
+              PEELW0.
+           3. Runs CALIB (A&P) on PEELW0 with model PEE00n making
+              PEELW1.  Adverbs SOLINT, SOLTYP, SOLMODE, APARM, and
+              CPARM are active and MINAMPER and MINPHSER are set to
+              10.
+          ( 4. Optionally runs IMAGR on PEELW1. - not available )
+           5. Subtracts PEE00n model from PEELW1 making PEELW2.
+           6. Inverts SN table from PEELW0 (step 3) placing it in file
+              PEELW2.
+           7. Runs SPLIT on PEELW2 with inverted gain table making a
+              new PEELUS.
+       Finally, it adds the model in IN2NAME back TO the final PEELUS
+       making OUTNAME.  All the time it deletes those files that are
+       no longer needed.
+
+       Some cautions:
+       (1) CALIB can delete data because of failed solutions which can
+       cause your data set to shrink steadily.  Be sure to pass data
+       at failed solutions and to allow fairly low SNRs - these
+       considerations cause PEELR's defaults to differ from CALIB's.
+       (2) CALIB can get quite strange solutions.  Be sure to check
+       its solutions closely with APARM(6) set to examine SNRs and
+       even solutions.  SNPLT may also be useful in deciding whether
+       it has doen something sensible.
+       (3) If you get bad A&P solutions, you might consider try
+       phase-only solutions first.
+
+       You must first compile the procedure via
+            RUN PEELR
+       Then you may execute it by simply entering the word PEELR.
+       The procedure will be remembered in the lASTEXIT SAVE/GET file
+       and so does not need to be re-RUN.
+
+       The procedure makes lots of intermediate UV files which it
+       deletes as soonas possible while it runs.  This means that
+       certain names may not occur on your data disks.  These are
+             name         class        seq numbers
+             ------       ------      ---------------
+             OUTNAME      PEELUS      <GETPOPSN> (the aips number)
+             OUTNAME      PEE001      <GETPOPSN> (the aips number)
+             OUTNAME      PEELW0      <GETPOPSN> (the aips number)
+             OUTNAME      PEELW1      <GETPOPSN> (the aips number)
+             OUTNAME      PEELW2      <GETPOPSN> (the aips number)
+             OUTNAME      OUTCLASS    OUTSEQ
+       If there is more than one resolution, the image classes PEE002
+       etc will also be used.  The procedure will check for these
+       names and quit if any of them are present at the start of the
+       procedure.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  IN2NAME....Input Clean image name (name).      Standard defaults.
+  IN2CLASS...Input Clean image name (class).     Standard defaults.
+  IN2SEQ.....Input Clean image name (seq. #).    0 => highest.
+  IN2DISK....Disk drive # of Clean image file.   0 => any.
+  OUTNAME....Output UV file name (name).     Standard defaults.
+  OUTCLASS...Output UV file name (class).    Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).   0 => highest unique
+  OUTDISK....Disk drive # of output UV file. 0 => INDISK
+  NFIELD.....Number of facets per resolution size.  No default
+  NGAUSS.....Number of resolutions.  0 -> 1
+  PPARM......List of facet numbers to "peel".  No default
+             Up to 100 facets may be listed.  (Remember the ~ verb
+             that allows multiple values to be stored starting at any
+             address; e.g. PPARM(11) ~ 87, 99, 123, 49 sets PPARM of
+             11 through 14 only.)
+Parameters used for CALIB
+  BCHAN......First channel to use. 0=>all.
+  ECHAN......Highest channel to use. 0=>all higher than BCHAN
+             Channels BCHAN through ECHAN are averaged to find a
+             single continuum value for determining the gains.
+             Note used in the SPLIT step.
+  SOLINT.....Solution interval in minutes for CALIB step. 0 -> 1/6
+  SOLTYPE....Solution type:
+               '    ' => normal least squares,
+               'R   ' => as ' ' with robust iteration
+               'L1  ' => L1 solution; a weighted sum of the moduli
+                         of the residuals is minimized.
+			 The computed gain solutions are less
+			 influenced by wild data points, but there
+			 is some loss of statistical efficiency.
+	      		 See [F.R. Schwab, VLA scientific Memo #136]
+			 for further details.
+               'L1R ' => as 'L1' with robust iteration
+               'GCON' => least squares which may include gain
+                   constraint.
+               'GCOR' => as 'GCON' with robust iteration
+             The robust versions iterate the solution, discarding data
+             that does not fit the current solution well enough.  They
+             should be less disturbed by bad data, but will be
+             slower.
+  SOLMODE....'P' => phase only solutions.  Anything else => 'A&P' for
+             amplitude and phase.
+  WEIGHTIT...If > 0, change the data weights by a function of the
+             weights just before doing the solution.  Choices are:
+             0 - no change   weighting by 1/sigma**2
+             1 - sqrt (wt)   weighting by 1/sigma may be more stable
+             2 - (wt)**0.25
+             3 - change all weights to 1.0
+  APARM......CALIB: general control parameters not used in the SPLIT
+             step
+  APARM(1)...Minimum number of antennas allowed for a solution.
+             0 => max (3, min (6, Numant/2))
+  APARM(2)...If > 0 then the input data has already been
+             divided by a model; only solutions will be
+             determined.
+  APARM(3)...If > 0 then average RR, LL
+  APARM(5)...If > 0 then make a combined solution for the IFs;
+             if <= 0 then make separate solutions.
+  APARM(6)...Print flag, 0=none, 1=time, closure error statistics,
+             2=individual closure failures, 3=some additional info
+             including the antenna signal to noise ratio, 4=solutions,
+             5=data too.  MINAMPER and MINPHSER are both set to 10.
+  APARM(7)...The minimum allowed signal-to-noise ratio.
+             0 => 2 (in PEELR, a different default than CALIB itself)
+  APARM(8)...If there is no antenna (AN) table with the input
+             file then the maximum antenna number in the file
+             should be entered in APARM(8).
+  APARM(9)...When solutions fail or there is insufficient data
+             and APARM(9) >= 0 then (1,0) is written to the SN
+             table.  This will preserve the previous calibration
+             but this option should be used with extreme care.
+             Note that CALIB passes solutions only if APARM(9)>0,
+             PEELR changes APARM(9)=0 to 1.
+  CPARM......CALIB phase-amplitude parameters.
+  CPARM(1)...Minimum elevation in degrees for the solutions used to
+             constrain the mean gain modulus.
+  CPARM(2)...If > 0, constrain the mean gain modulus of the calibration
+             applied to be unity.  This is mostly used in self
+             calibration.
+  CPARM(3)...If > 0, the values of any amplitude closure errors whose
+             average absolute percentage value exceeds CPARM(3) will be
+             printed if APARM(6) > 0.
+  CPARM(4)...If > 0, the values of any phase closure errors whose
+             average absolute value exceeds CPARM(4) degrees will be
+             printed if APARM(6) > 0..
+  CPARM(5)...If > 0 then the amplitudes will be scalar averaged
+             before determining the solutions.
+  CPARM(6)...The robust solution method discards data more than
+                    f(iter) * rms(iter)
+             from the current solution to find the iter+1 solution
+             f(iter) = max (g(iter), CPARM(6)) and
+             g = 7.0, 5.0, 4.0, 3.5, 3.0, 2.8, 2.6, 2.4, 2.2, 2.5.
+             Thus CPARM(6) can be used to limit the discarding to less
+             restrictive values.
+  BADDISK....Disk #'s to avoid for scratch files
+----------------------------------------------------------------

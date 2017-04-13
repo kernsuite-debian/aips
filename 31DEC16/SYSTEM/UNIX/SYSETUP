@@ -1,0 +1,250 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997, 1999, 2004
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: SYSETUP [hostname [...]]
+#-----------------------------------------------------------------------
+# SYSETUP is used to add a new AIPS host, or update all existing hosts.
+# To add a new host run SYSETUP with a specific hostname or hostnames.
+# If you do not specify any hostnames, the $AIPS_ROOT/HOSTS.LIST file is
+# used to get a list of hosts and their architectures.
+#
+# SYSETUP will ask for the name of a master directory which can be the
+# $DA00 directory for any host which which contains a complete set of
+# the AIPS system files.  This will typically be the first system of a
+# given architecture on which you are installing AIPS.  It should
+# contain a copy of the files that need to be global: the GR (gripe),
+# and PW (password) files.
+#
+# The TEMPLATE directories under $AIPS_ROOT/$ARCH contain virginal
+# copies of the AIPS system files for four POPS with one batch queue.
+# It also contains examples of the GR and PW files.  These can be used
+# to manually construct a master directory by copying and renaming them
+#
+# The AC (accounting), BA (batch job), BQ (batch queue), ME (POPS
+# memory), SP (system parameter), TC (task communication), TD (task
+# data) and TP (tape) files are copied from the TEMPLATE area to the
+# host's DA00 area.  Note that the TEMPLATE area is architecture-
+# dependent.
+#
+#-----------------------------------------------------------------------
+#                                       Posix: echo behaves differently
+#                                       Following trick from Martin
+#                                       Shepherd (mcs@astro.caltech.edu)
+#                                       and Will Deich.
+ni1 () {
+   if [ "`echo -n YES`" = "YES" ] ; then
+      echo -n "SYSETUP: $*"
+   else
+      echo "SYSETUP: $*\c"
+   fi
+}
+ei1 () {
+   echo "SYSETUP: $*"
+}
+#                                       Parse command input.
+hosts="$*"
+#                                       --------------------------------
+#                                       Get AIPS manager account name.
+#
+ni1 "Enter the AIPS manager account name [aipsmgr]: "
+read aipsmgr
+[ "$aipsmgr" = "" ] && aipsmgr=aipsmgr
+#                                       Get the AIPS user group name.
+ni1 "Enter the AIPS user group name [aipsuser]: "
+read aipsusr
+[ "$aipsusr" = "" ] && aipsusr=aipsuser
+#
+#                                       Ensure that we are $aipsmgr.
+if [ "$LOGNAME" != $aipsmgr ] ; then
+   echo "This script must be run as $aipsmgr, not $LOGNAME."
+   exit 1
+fi
+if [ ! -d "$AIPS_ROOT" ] ; then
+   echo "AIPS_ROOT not defined or not a directory.  Check to see if the"
+   echo "AIPS environment variables are defined (LOGIN.SH/CSH, CDTST)."
+   exit 2
+fi
+#                                       --------------------------------
+#                                       Host from which to link shared
+#                                       files.
+ni1 "Enter the \"master\" host name [`uname -n`]: "
+read mstr
+[ "$mstr" = "" ] && mstr=`uname -n`
+mstr=`echo $mstr | tr "[a-z]" "[A-Z]"`
+echo
+ei1 "master = $mstr"
+if [ "$hosts" = "" ] ; then
+#                                       Do the lot.
+  if [ ! -f $AIPS_ROOT/HOSTS.LIST ] ; then
+    echo "SYSETUP: Cannot find HOSTS.LIST in $AIPS_ROOT"
+    echo 'SYSETUP: Cannot proceed.  Help!'
+    exit 2
+  fi
+#
+  hosts=`grep "^+.*$SITE" $AIPS_ROOT/HOSTS.LIST | \
+          awk '{ printf "%s ", $2 }'`
+fi
+#                                       Ensure upper case host names.
+hosts=`echo $hosts | tr [a-z] [A-Z]`
+nhosts=`echo $hosts | wc -w`
+echo
+ei1 "Operating on $nhosts hosts: $hosts"
+echo
+ni1 "Is this acceptable? (yes/no) "
+read yn
+if [ "$yn" != "yes" ] ; then
+  ei1 "very well, abandoning operation NOW."
+  exit 1
+fi
+#                                       --------------------------------
+#                                       Get most recent file version
+#                                       old tail grammar for Solaris
+ver=`ls $AIPS_ROOT/DA00/$mstr/AC?00000* | \
+     sed -e "s,$AIPS_ROOT/DA00/$mstr/AC,," | \
+     awk '{print substr($1,1,1)}' | tail -1`
+case $ver in
+  D) vdat="15JAN95 or later" ;;
+  C) vdat="15JUL94 or earlier" ;;
+  *) ei1 "Unknown version \"$ver\" ??? (AC${ver}\* in DA00)"
+     ei1 "I Don't know what to do.  Abandoning operation NOW!"
+     exit 1 ;;
+esac
+if [ "$ver" != "D" ] ; then
+  ei1 "found $vdat version (AC${ver}00000* in $AIPS_ROOT/DA00/$mstr)"
+  yn="no"
+  ni1 "*** Are you ABSOLUTELY sure this is the right version? (yes/no) "
+  read yn
+  if [ "$yn" != "yes" ] ; then
+    echo "Aieee!  Bailing out!"
+    exit
+  fi
+fi
+#                                       --------------------------------
+#                                       Sanity check...
+case "$AIPS_VERSION" in
+  *9[5-9]|*[01][0-9])
+       if [ $ver = C ] ; then
+         ei1 "Cannot use $ver version with AIPS_VERSION=$AIPS_VERSION"
+         exit 1
+       fi ;;
+  *)   if [ $ver = D ] ; then
+         ei1 "Cannot use $ver version with AIPS_VERSION=$AIPS_VERSION"
+         exit 1
+       fi ;;
+esac
+zeros="0000"
+ones="000001"
+vaxism=";"
+if [ "$ver" = "C" ] ; then
+  zeros="000"
+  ones="00001"
+  vaxism=";1"
+fi
+#                                       Loop for each machine.
+for host in $hosts ; do
+#                                       Don't touch master or TEMPLATE.
+  [ "$host" = "$mstr" -o "$host" = TEMPLATE ] && continue
+#
+#                                       Get the host architecture.
+  arch=`grep "^+  $host " $AIPS_ROOT/HOSTS.LIST | awk '{ print $3}'`
+#
+  echo
+  ei1 "Processing $host..."
+#                                       Create $arch/ERRORS directory
+#                                       if necessary.
+  if [ ! -d "$AIPS_VERSION/$arch/ERRORS" ] ; then
+    mkdir $AIPS_VERSION/$arch/ERRORS
+    chgrp $aipsusr $AIPS_VERSION/$arch/ERRORS
+    chmod 777 $AIPS_VERSION/$arch/ERRORS
+    chmod g+s $AIPS_VERSION/$arch/ERRORS
+  fi
+#                                       Create $ERRORS directory if
+#                                       necessary.
+  cd $AIPS_VERSION/$arch/ERRORS
+  if [ ! -d "$host" ] ; then
+    ei1 "Creating ERRORS directory for $host"
+    mkdir $host
+    chgrp $aipsusr $host
+    chmod 777 $host
+    chmod g+s $host
+  fi
+#                                       Create $DA00 if necessary.
+  cd $AIPS_ROOT/DA00
+  if [ ! -d "$host" ] ; then
+    ei1 "Creating DA00 directory for $host"
+    mkdir $host
+    chgrp $aipsusr $host
+    chmod 777 $host
+    chmod g+s $host
+  fi
+  cd $host
+#                                       Check for TEMPLATE area
+if [ ! -d $AIPS_VERSION/$arch/TEMPLATE ] ; then
+  ei1 "ERROR: no template area found for architecture $arch"
+  ei1 "       Cannot proceed with host $host, skipping it"
+  continue
+fi
+#                                       Copy host-private files from
+#                                       .../$arch/TEMPLATE.
+  for template_file in \
+      `ls $AIPS_VERSION/$arch/TEMPLATE/[ABMST]?${ver}*` ; do
+#                                       Don't copy existing files.
+    FILE=`ei1 $template_file | sed -e 's/^.*\///'`
+    if [ ! -f $FILE ] ; then
+      ei1 "Copying $template_file to DA00/$host"
+      cp $template_file .
+      chmod 664 $FILE
+    fi
+  done
+#                                       Link the gripe file.
+  if [ ! -f GR${ver}${zeros}00${vaxism} ] ; then
+    ei1 "Make symbolic link to" \
+        "$AIPS_ROOT/DA00/$mstr/GR${ver}${zeros}00${vaxism}"
+    ln -s $AIPS_ROOT/DA00/$mstr/GR${ver}${zeros}00${vaxism} .
+  fi
+#                                       Link the password file.
+  if [ ! -f PW${ver}${zeros}00${vaxism} ] ; then
+    ei1 "Make symbolic link to" \
+        "$AIPS_ROOT/DA00/$mstr/PW${ver}${zeros}00${vaxism}"
+    ln -s $AIPS_ROOT/DA00/$mstr/PW${ver}${zeros}00${vaxism} .
+  fi
+#                                       Sanity check: create MEMORY
+#                                       directory if necessary.
+  cd $AIPS_VERSION/$arch
+  if [ ! -d "MEMORY" ] ; then
+    ei1 "Creating MEMORY directory for $arch"
+    mkdir MEMORY
+    chmod 755 MEMORY
+    chmod g+s MEMORY
+    cp $AIPS_VERSION/$arch/TEMPLATE/ME${ver}${ones}${vaxism} MEMORY
+    cd MEMORY
+    mv ME${ver}${zeros}1${vaxism} `echo ME${ver}${ones}${vaxism} | \
+                                   sed -e 's/${ones}/${zeros}00/'`
+  fi
+done
+#                                       Done, we hope.
+exit 0

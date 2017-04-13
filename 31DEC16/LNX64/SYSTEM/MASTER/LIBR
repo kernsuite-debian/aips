@@ -1,0 +1,548 @@
+#-----------------------------------------------------------------------
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: LIBR directory [logfile]
+#-----------------------------------------------------------------------
+# This procedure, given a directory pathname corresponding to an AIPS
+# directory environment variable, determines the corresponding $LIBR
+# directory for the archive file (i.e., object library) and updates
+# it, if necessary.  The object library file name is always SUBLIB.
+# It will also accept a specific $LIBR subdirectory pathname.
+#
+# If object modules are found there and SUBLIB already exists, SUBLIB
+# is copied to a temporary, working version as SUBLIB.$$, where $$ is
+# the current process id.  This, of course, presumes that there is
+# sufficient disk space available to make the temporary version (the
+# worst case is $LIBR/APLSUB/SUBLIB).  The object modules are then
+# replaced in (or added to) SUBLIB.$$.
+#
+# If SUBLIB does not exist (e.g., at installation time) and object
+# modules are found there, it goes about creating an initial version
+# of SUBLIB in much the same way, except that it orders the modules in
+# the library suitable for single pass loading.
+#
+# If it finds that a file name of the form SUBLIB.$$ already exists,
+# it takes this as an indication that some other process is running
+# LIBR, and waits.  That is, in addition to serving as a temporary
+# copy of SUBLIB, SUBLIB.$$ also serves as lock file to ward off the
+# potentially corrupting effects of multiple, simultaneous executions
+# of LIBR (e.g., by other users).  It waits by extracting the $$
+# portion of SUBLIB.$$ and tests (via 'kill -0') to see if process $$
+# is active.  If so, it sleeps for a while and tests again, up to 50
+# times, before it finally gives up and tells the user to get help
+# from the AIPS system manager.  If not, it deletes the SUBLIB.$$ file
+# as a remnant of an aborted or failed execution of LIBR and goes
+# about business as usual.  In this way, the AIPS system manager can
+# create SUBLIB.1 (process id #1 is always active) to lock out all
+# users.  Much of this is necessary because 'ar' and 'ranlib' on most
+# systems lack file locking mechanisms.
+#
+# NOTE: The locking scheme is not bullet proof.  For example, process
+# ids are recyled, and it's possible that the $$ process id has been
+# assigned to another, totally unrelated process. This, however, is
+# is unlikely.  The solution in such a case would be to investigate,
+# and if appropriate, delete the remnant SUBLIB.$$ manually.  A more
+# serious problem exists for SUBLIBs that reside on network mounted
+# file systems since locking mechanism ONLY protects against other
+# invocations of LIBR on the same CPU.
+#
+# If all object module replacements/additions to SUBLIB.$$ and the
+# subsequent randomization are successful, the object modules are
+# deleted and SUBLIB.$$ is renamed to SUBLIB.  Although it can be,
+# LIBR is not actually intended for use as a stand alone procedure
+# It's used mostly by the procedure LINK to update the SUBLIBs
+# required for linking a given program.  It's also used by the
+# installation procedure, INSTEP2, to build the initial versions.
+#
+# NOTE: To avoid 'arg list too long' failures, object modules are
+# processed in several passes, if necessary, $NMODS at a time.  The
+# installation default value for NMODS is something small (e.g., 50),
+# because the ever growing number of AIPS logicals (i.e., environment
+# variables) consumes much of the available environment space.  The
+# environment space available varies from system to system.  For
+# example, NMODS on Convexes, Suns (under SunOS 4.0.3 and later) and
+# perhaps other systems, may be set to a number large enough to
+# handle all the modules in one pass for the worst case library,
+# APLSUB (a little over 300 as of 5/90).
+#
+# UNIX version.
+# --------------------------------------------------------------------
+#                                       Define maximum number of
+#                                       object modules to process at
+#                                       a time (to avoid 'arg list
+#                                       too long failures).
+NMODS=50
+#                                       Cleanup on signals 1,2,3 & 15.
+trap 'rm -f /tmp/SUBLIBS.$$ /tmp/ERROR.$$ /tmp/OBJECTS.$$ \
+   /tmp/BATCH.$$; exit 1' 1 2 3 15
+#                                       Default logfile.
+LOG=/dev/null
+case $2 in
+
+   *.LOG | *.log)
+#                                       Logfile specified.
+      LOG=$2
+   ;;
+
+esac
+#                                       Argument list valid?
+case $# in
+
+   1 | 2)
+#                                       Okay.
+   ;;
+
+   *)
+#                                       Usage error.
+      echo "Usage: LIBR directory [logfile]" | tee -a $LOG
+      exit 1
+   ;;
+
+esac
+#                                       Is argument a directory?
+if test ! -d $1
+then
+   echo "LIBR      : Argument   $1"    | tee -a $LOG
+   echo "LIBR      : not a directory!" | tee -a $LOG
+   echo "LIBR      : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Is $1 a $LIBR subdirectory?
+case $1 in
+
+   $LIBR/*)
+#                                       Good enough.
+         echo $1 > /tmp/SUBLIBS.$$
+      ;;
+
+   *)
+#                                       $1 not a $LIBR subdirectory.
+#                                       Get AIPS environment variable
+#                                       name that corresponds to $1,
+#                                       if any.
+      ENV=`PRINTENV | grep -v '^[CcPp][Ww][Dd]=' | grep $1$ | \
+         grep -v 'ENV=' | sed -e 's/=.*//'`
+      if test "$ENV" = ""
+      then
+         echo "LIBR      : Directory  $1"                   | \
+            tee -a $LOG
+         echo "LIBR      : not defined in the environment." | \
+            tee -a $LOG
+         echo "LIBR      : Dies of unnatural causes"
+         exit 1
+      fi
+#                                       Determine minimum non-
+#                                       redundant set of $LIBR
+#                                       subdirectories associated with
+#                                       $ENV source code area as
+#                                       defined in $SYSLOCAL/LIBR.DAT.
+      grep ':\$'$ENV'$' $SYSLOCAL/LIBR.DAT | \
+         sed -n -e 's/\/SUBLIB:.*//p' | sort -u > /tmp/SUBLIBS.$$
+#                                       Null $1 means directory not
+#                                       defined in $SYSLOCAL/LIBR.DAT.
+      if test ! -s /tmp/SUBLIBS.$$
+      then
+         echo "LIBR      : Directory  $1 not defined"      | tee -a $LOG
+         echo "LIBR      : in         $SYSLOCAL/LIBR.DAT." | tee -a $LOG
+         echo "LIBR      : Dies of unnatural causes"
+         exit 1
+      fi
+   ;;
+
+esac
+#                                       Process /tmp/SUBLIBS.$$
+#                                       entries one at a time.
+cat /tmp/SUBLIBS.$$ | \
+{
+   while read LIB
+   do
+#                                       Expand any environment
+#                                       variables in $LIB.
+      LIB=`eval echo $LIB`
+#                                       Does $LIB directory exist?
+      if test ! -d $LIB
+      then
+         echo "LIBR      : Directory  $LIB"
+         echo "LIBR      : not found!"
+         break
+      fi
+#                                       Change to proper $LIBR
+#                                       subdirectory.
+      cd $LIB
+#                                       Add ./SUBLIB.$$ to the cleanup
+#                                       list on signals 1,2,3 & 15.
+      trap 'rm -f /tmp/SUBLIBS.$$ /tmp/ERROR.$$ /tmp/OBJECTS.$$ \
+         /tmp/BATCH.$$ ./SUBLIB.$$; exit 1' 1 2 3 15
+#                                       Any extant SUBLIB.*?  If so,
+#                                       someone else may be doing the
+#                                       same thing.  Need a locking
+#                                       mechanism that works across
+#                                       networks here.
+      LOCKS=`ls SUBLIB.[0-9]* 2> /dev/null`
+      for LOCK in $LOCKS
+      do
+#                                       Extract the process id from
+#                                       the SUBLIB.[0-9]* filename
+#                                       extensions.
+         PID=`echo $LOCK | sed -e 's/.*\.//'`
+         kill -0 $PID 1> /tmp/ERROR.$$ 2> /tmp/ERROR.$$
+         if test ! -s /tmp/ERROR.$$
+         then
+            NTRIES=50
+            echo "LIBR      : Library    $LIB/SUBLIB"
+            echo "LIBR      : is locked by process #$PID. " \
+               "I will wait and retry up to $NTRIES times."
+            sleep 10
+            TRIES=0
+            kill -0 $PID 1> /tmp/ERROR.$$ 2> /tmp/ERROR.$$
+            while test ! -s /tmp/ERROR.$$
+            do
+               TRIES=`expr $TRIES + 1`
+               if test "$TRIES" = "$NTRIES"
+               then
+                  echo "LIBR      : Library    $LIB/SUBLIB"
+                  echo "LIBR      : is still locked by process" \
+                     "#$PID after $TRIES tries."
+                  echo "LIBR      : Contact the AIPS system" \
+                     "manager."
+                  echo "LIBR      : Abort!"
+                  break
+               else
+                  echo "LIBR      : Library    $LIB/SUBLIB"
+                  echo "LIBR      : is still locked by process" \
+                     "#$PID after retry #$TRIES of $NTRIES."
+               fi
+               sleep 10
+               kill -0 $PID 1> /tmp/ERROR.$$ 2> /tmp/ERROR.$$
+            done
+         else
+            echo "LIBR      : File       $LIB/$LOCK"
+            echo "LIBR      : seems to be inactive."
+            if rm $LIB/$LOCK
+            then
+               echo "LIBR      : Deleted    $LIB/$LOCK"
+            else
+               echo "LIBR      : File       $LIB/$LOCK"
+               echo "LIBR      : deletion failed!"
+               echo "LIBR      : Inform the AIPS system manager."
+               break 2
+            fi
+         fi
+      done
+#                                       Sanity check.  Any SUBLIB
+#                                       or *.o files in $LIB?
+      ls SUBLIB 2> /dev/null > /tmp/OBJECTS.$$
+      ls 2> /dev/null | grep '\.o$' >> /tmp/OBJECTS.$$
+      if test ! -s /tmp/OBJECTS.$$
+      then
+         echo "LIBR      : Neither    $LIB/SUBLIB"
+         echo "LIBR      : nor        $LIB/*.o"
+         echo "LIBR      : found!"
+         break
+      fi
+#                                       Any object modules to add or
+#                                       replace in the object library?
+      ls 2> /tmp/ERROR.$$ | grep '\.o$' > /tmp/OBJECTS.$$
+      if test -s /tmp/OBJECTS.$$
+      then
+#                                       Create new or update extant
+#                                       object library?
+         if test -f SUBLIB
+         then
+            OP=r
+         else
+            OP=q
+         fi
+#                                       Create a temporary library
+#                                       either from the extant SUBLIB
+#                                       or via 'ar'.
+         case $OP in
+
+            q)
+               echo "LIBR      : Create new $LIB/SUBLIB"
+               if ar cr SUBLIB.$$ 2> /tmp/ERROR.$$
+               then
+                  echo "LIBR      : Library    $LIB/SUBLIB.$$"
+                  echo "LIBR      : created"
+               else
+                  cat /tmp/ERROR.$$
+                  echo "LIBR      : Library   $LIB/SUBLIB.$$"
+                  echo "LIBR      : creation failed!"
+                  break
+               fi
+            ;;
+
+            r)
+               echo "LIBR      : Update old $LIB/SUBLIB"
+               if cp SUBLIB SUBLIB.$$ 2> /tmp/ERROR.$$
+               then
+                  echo "LIBR      : Copied     $LIB/SUBLIB"
+                  echo "LIBR      : to         $LIB/SUBLIB.$$"
+               else
+                  cat /tmp/$ERROR.$$
+                  echo "LIBR      : Library    $LIB/SUBLIB.$$"
+                  echo "LIBR      : creation failed!"
+                  break
+               fi
+            ;;
+
+            *)
+               echo "LIBR      : OP=$OP not recognized!"
+               break
+            ;;
+
+         esac
+#                                       Add/replace object modules a
+#                                       $NMODS at a time.
+         FROM=1
+         HEAD=$NMODS
+         TO=`wc -l /tmp/OBJECTS.$$ | \
+            sed 's/^\([^0-9]*\)\([0-9]*\)\(.*\)/\2/'`
+         TAIL=$NMODS
+         while expr $FROM \<= $TO > /dev/null
+         do
+#                                       Extract a batch of object
+#                                       module names.
+            head -$HEAD /tmp/OBJECTS.$$ | tail -$TAIL > /tmp/BATCH.$$
+#                                       Prep for next iteration.
+            FROM=`expr $FROM + $NMODS`
+            HEAD=`expr $HEAD + $NMODS`
+            if expr $HEAD \> $TO > /dev/null
+            then
+               TAIL=`expr $TAIL - \( $HEAD - $TO \)`
+            fi
+#                                       Switch on $OP.
+            case $OP in
+
+               q)
+#                                       Add this batch to
+#                                       SUBLIB.$$ in quick mode.
+                  echo "LIBR      : Add to     $LIB/SUBLIB.$$"
+                  sed 's#.*#LIBR      :            '$LIB'/&#' \
+                     /tmp/BATCH.$$
+                  if ar $OP SUBLIB.$$ `cat /tmp/BATCH.$$` \
+                     2> /tmp/ERROR.$$
+                  then
+                     continue
+                  else
+                     cat /tmp/ERROR.$$
+                     echo "LIBR      : Library   $LIB/SUBLIB.$$"
+                     echo "LIBR      : quick additions failed!"
+                     break 2
+                  fi
+               ;;
+
+               r)
+#                                       Replace this batch in
+#                                       SUBLIB.$$.
+                  echo "LIBR      : Replace in $LIB/SUBLIB.$$"
+                  sed 's#.*#LIBR      : module     '$LIB'/&#' \
+                     /tmp/BATCH.$$
+                  if ar $OP SUBLIB.$$ `cat /tmp/BATCH.$$` \
+                     2> /tmp/ERROR.$$
+                  then
+                     continue
+                  else
+                     cat /tmp/ERROR.$$
+                     echo "LIBR      : Library   $LIB/SUBLIB.$$"
+                     echo "LIBR      : replacments failed!"
+                     break 2
+                  fi
+               ;;
+
+               *)
+                  echo "LIBR      : OP=$OP not recognized!"
+                  break 2
+               ;;
+
+            esac
+
+         done
+#                                       If a brand new object library
+#                                       was created above, use it to
+#                                       determine the proper ordering
+#                                       for a single pass loading.
+#         case $OP in
+#
+#            q)
+#               echo "LIBR      : Re-create $LIB/SUBLIB.$$"
+#               echo "LIBR      : ordered for single pass loading."
+#
+#                                       Get single pass ordering.
+#               lorder SUBLIB.$$ | tsort > /tmp/OBJECTS.$$
+#                                       Delete and recreate SUBLIB.$$
+#                                       quickly, leaving a small
+#                                       window of vulnerability.
+#               rm -f SUBLIB.$$
+#               if ar cr SUBLIB.$$ 2> /tmp/ERROR.$$
+#               then
+#                                       Add/replace object modules a
+#                                       $NMODS at a time.
+#                  FROM=1
+#                  HEAD=$NMODS
+#                  TO=`wc -l /tmp/OBJECTS.$$ | \
+#                     sed 's/^\([^0-9]*\)\([0-9]*\)\(.*\)/\2/'`
+#                  TAIL=$NMODS
+#                  while expr $FROM \<= $TO > /dev/null
+#                  do
+#                                       Extract a batch of object
+#                                       module names.
+#                     head -$HEAD /tmp/OBJECTS.$$ | tail -$TAIL \
+#                        > /tmp/BATCH.$$
+#                                       Prep for next iteration.
+#                     FROM=`expr $FROM + $NMODS`
+#                     HEAD=`expr $HEAD + $NMODS`
+#                     if expr $HEAD \> $TO > /dev/null
+#                     then
+#                        TAIL=`expr $TAIL - \( $HEAD - $TO \)`
+#                     fi
+#                                       Add this batch to
+#                                       SUBLIB.$$ in quick mode.
+#                     echo "LIBR      : Add to     $LIB/SUBLIB.$$"
+#                     sed 's#.*#LIBR      :            '$LIB'/&#' \
+#                        /tmp/BATCH.$$
+#                     if ar $OP SUBLIB.$$ `cat /tmp/BATCH.$$` \
+#                        2> /tmp/ERROR.$$
+#                     then
+#                        continue
+#                     else
+#                        cat /tmp/ERROR.$$
+#                        echo "LIBR      : Library   $LIB/SUBLIB.$$"
+#                        echo "LIBR      : quick additions failed!"
+#                        break 2
+#                     fi
+#                  done
+#               else
+#                  cat /tmp/ERROR.$$
+#                  echo "LIBR      : Library   $LIB/SUBLIB.$$"
+#                  echo "LIBR      : re-creation failed!"
+#                  break
+#               fi
+#            ;;
+#
+#         esac
+
+#                                       To get here, things above
+#                                       must have worked.  Randomized
+#                                       SUBLIB.$$.
+         echo "LIBR      : Randomize  $LIB/SUBLIB.$$"
+         if ranlib SUBLIB.$$ 2> /tmp/ERROR.$$
+         then
+            echo "LIBR      : Library    $LIB/SUBLIB.$$"
+            echo "LIBR      : randomized."
+         else
+            cat /tmp/ERROR.$$
+            echo "LIBR      : Library    $LIB/SUBLIB.$$"
+            echo "LIBR      : randomization failed!"
+            break
+         fi
+#                                       To get here, everything must
+#                                       have gone okay.  Delete all
+#                                       the object modules in batches.
+         FROM=1
+         HEAD=$NMODS
+         TO=`wc -l /tmp/OBJECTS.$$ | \
+            sed 's/^\([^0-9]*\)\([0-9]*\)\(.*\)/\2/'`
+         TAIL=$NMODS
+         while expr $FROM \<= $TO > /dev/null
+         do
+#                                       Extract a batch of object
+#                                       module names.
+            head -$HEAD /tmp/OBJECTS.$$ | tail -$TAIL > /tmp/BATCH.$$
+#                                       Prep for next iteration.
+            FROM=`expr $FROM + $NMODS`
+            HEAD=`expr $HEAD + $NMODS`
+            if expr $HEAD \> $TO > /dev/null
+            then
+               TAIL=`expr $TAIL - \( $HEAD - $TO \)`
+            fi
+#                                       Delete this batch.
+#                                       SUBLIB.$$ in quick mode.
+            sed 's#.*#LIBR      : Delete     '$LIB'/&#' /tmp/BATCH.$$
+            if rm `cat /tmp/BATCH.$$` 2> /tmp/ERROR.$$
+            then
+               continue
+            else
+               cat /tmp/ERROR.$$
+               echo "LIBR      : Deletions failed!"
+               break 2
+            fi
+         done
+#                                       See if shared libraries are used
+         if test -f $SYSLOCAL/USESHARED
+         then
+#                                       Also check if it's LIBR(DBG)...
+         case $LIB in
+            */LIBRDBG/*)
+#                                       Don't do shared lib for DEBUG...
+               ;;
+#                                       Rebuild the shared library.
+            */LIBR/*)
+               rm -fr .shared
+               mkdir .shared
+               cd .shared
+               echo "LIBR      : Extract objects for shared libraries"
+               ar xo ../SUBLIB.$$
+#UPHOFF        rm -f _*
+               echo "LIBR      : Build      ${LIB}.so"
+               ld -r -x -o ${LIB}.so *.o
+               cd ..
+               rm -r .shared
+               ;;
+            esac
+         fi
+#                                       To get here, the deletions
+#                                       must have gone okay.  Move
+#                                       SUBLIB.$$ to SUBLIB.
+         if mv SUBLIB.$$ SUBLIB 2> /tmp/ERROR.$$
+         then
+            echo "LIBR      : Moved      $LIB/SUBLIB.$$"
+            echo "LIBR      : to         $LIB/SUBLIB"
+         else
+            cat /tmp/ERROR.$$
+            echo "LIBR      : Move of    $LIB/SUBLIB.$$"
+            echo "LIBR      : to         $LIB/SUBLIB"
+            echo "LIBR      : failed!"
+            break
+         fi
+      else
+         echo "LIBR      : Library    $LIB/SUBLIB"
+         echo "LIBR      : is up to date."
+      fi
+   done
+} | tee -a $LOG
+rm -f /tmp/SUBLIBS.$$ /tmp/OBJECTS.$$ /tmp/BATCH.$$
+if test -s /tmp/ERROR.$$
+then
+   echo "LIBR      : Dies of unnatural causes"
+   rm /tmp/ERROR.$$
+   exit 1
+else
+   echo "LIBR      : Ends successfully"
+   rm /tmp/ERROR.$$
+   exit 0
+fi

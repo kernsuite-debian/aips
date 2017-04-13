@@ -1,0 +1,850 @@
+; OMFIT
+;---------------------------------------------------------------
+;! Fits sources and, optionally, a self-cal model to uv data
+;# TASK UV CALIBRATION OOP ANALYSIS MODELING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1999-2000, 2003, 2006-2007, 2010, 2012, 2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+OMFIT     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+OMFIT     Task to fit gaussian or spheres to UV data.
+                                   -----DATA specification------
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ                              Input UV file name (seq. #)
+INDISK                             Input UV file disk unit #
+SOURCES                            Source Name (1 only)
+SUBARRAY                           Subarray
+TIMERANG                           Time: start day,hr,min,sec
+                                         stop  day,hr,min,sec
+ANTENNAS                           Antennas to include
+UVRANGE                            Range of projected spacings
+                                   (thousands of wavelengths)
+STOKES                             'I', 'HALF', 'RR', and 'LL'
+                                   default = 'I'
+FREQID                             Default FQ table entry (-1)
+BCHAN                              First chan ( 0 => 1 )
+ECHAN                              Last chan ( 0 => BCHAN!!!)
+BIF                                First IF ( 0 => 1 )
+EIF                                Last IF ( 0 => EIF !!!)
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL (or SN) table to apply
+DOPOL            -1.0       10.0   If >0 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+FLAGVER                            Flag table version
+DOBAND           -1.0       10.0   If >0 apply bandpass cal.
+                                   Method used depends on value
+                                   of DOBAND (see HELP file).
+BPVER                              Bandpass table version
+SMOOTH                             Smoothing function. See
+                                   HELP SMOOTH for details.
+                                   ---- Input MODEL file -----
+INFILE
+DOFIT                              shortcut for model specs
+                                   --- Output MODEL file -----
+OUTFILE
+                                   -------SCREEN output-------
+PRTLEV                             recommended value = 3
+                                   +100 => explain noise
+                                   +10 => show intermed. values
+                                   ---- Output DATA file -----
+OUTPRINT
+                                   -- Output AIPS DISK file --
+OUTNAME                            (name)
+OUTCLASS                           (class)
+OUTSEQ                             (seq. #)
+OUTDISK                            (disk #)
+OUTVERS                            (content type - see HELP
+                                    0: D      1: D-GS  2: S
+                                    3: GS     4: D/G   5: D/S
+                                    6: D/(GS) 7: D/|D|
+NOISE                              (1) a priori noise [Jy]
+                                       (not already in weights)
+                                   (2) outlier threshold
+                                      [sigmas]
+                                   (3) low-amp cutoff threshold
+                                      [sigmas]
+APARM                              Task Enrichment Parameters
+                                   Early Stopping Criteria:
+                                   ( set <0 to turn off )
+                                   (1) % change in Chi-squared
+                                       0 => 1% ( <0 to disable )
+                                   (2) greatest fractional
+                                       meaningful change in
+                                       parameters: 0 => 0.01
+                                   Misc. controls:
+                                   (3) LMM initial factor
+                                   (4) print covariance matrix
+                                      in OUTFILE (1=yes,2=no)
+                                      default=yes for a single
+                                      component model or if
+                                      matrix is small [<16x16]
+NITER                              max # iterations ( <1 => 40 )
+                                   ------Self-Calibration-------
+SOLMODE                            self-calibration mode
+                                   ['' => none requested]
+                                    traditional modes:
+                                    'A' => ampl. self-cal
+                                    'P' => phase self-cal
+                                    'M' => per comp self-cal
+                                    'T' => force closure
+                                    'B' => ignore closure
+                                   !! SOLINT and DPARM used only
+                                   if self-cal not requested !!!
+SOLINT                             solution interval [ sec! ]
+                                     (=< 0 --> 100 years)
+DPARM                              Specifies which parameters to
+                                   solve for in each iteration
+                                   (1,2) start/stop solving for
+                                             self-cal phases
+                                   (3,4) start/stop solving for
+                                             self-cal amplitudes
+                                   (5,6) start/stop solving for
+                                             non- self-cal
+                                             (source) parameters
+                                   [default = always solve at
+                                    at all iterations]
+WEIGHTIT          0.0        3.0   Modify data weights function
+BADDISK                            Disks not to use for scratch
+----------------------------------------------------------------
+OMFIT
+Task:  OMFIT fits a source model to the UV data directly.
+       Optionally, this task can simultaneously self-calibrate
+       the data using the model fit. There is no pre-compiled
+       limit to the number of input visibilities.
+       THIS IS DEVELOPMENT CODE written by Ketan Desai who no longer
+       works for NRAO.  Its support is questionable.
+Adverbs:[out-of-date, see inputs list above instead]
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  SOURCES....Selected source from multi source file, only 1
+             allowed.
+  SUBARRAY...Subarray number to use. 0 => 1.
+  TIMERANG...Time range of the data to be used. In order:
+             Start day, hour, min. sec,
+             end day, hour, min. sec. Days relative to ref.
+             date.
+  ANTENNAS...List of antennas to use in selecting data.  Only
+             baselines between antennas appearing on this list
+             are used.  If the list is empty, all antennas are
+             allowed.
+  UVRANGE....Range of allowed baseline lengths in
+             kilowavelengths.
+  STOKES.....The desired Stokes type of the data:
+             'I','RR','LL', and 'HALF' are allowed
+                where ' ' defaults to 'I'
+                and 'HALF' processes 'LL' and 'RR' separately
+  FREQID.....Frequency identifier to select (you may determine
+             which is applicable from the OPTYPE='SCAN' listing
+             produced by LISTR).
+  BCHAN......Channel range to select.
+  ECHAN
+  BIF........IF range to select.  Only one or all IFs
+  EIF        can be selected.
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....version number of the CL table to apply to
+             multisource files or the SN table for single
+             source files.  0 => highest.
+  DOPOL......If > 0.5 then correct data for instrumental polarization
+             as represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  BLVER......Version number of the baseline based calibration
+             (BL) table to appply. <0 => apply no BL table,
+             0 => highest.
+  FLAGVER....Specifies the version of the flagging table to be
+             applied.  0 => highest numbered table.  <0 => no flagging
+             to be applied.
+  DOBAND.....If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+  BPVER......Specifies the version of the BP table to be applied.
+             <0 => no bandpass correction done.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+  INFILE.....KEYIN format file containing additional control
+             parameters for the model-fit (see EXPLAIN OMFIT
+               for simple and detailed examples).
+  DOFIT......This is a new feature - and currently poorly
+             documented.  Basically, this feature allows you
+             to enter a model at the POPS prompt instead of
+             specifying an INFILE.
+  OUTFILE....KEYIN format file to which to write final fitted model.
+             This file can be used as an INFILE for another invocation
+             of OMFIT.  If the last character in the OUTFILE string is
+             a '+' (plus) character, the model will be appended to
+             the output file (or create a new one) all without the
+             trailing plus sign.  Without the plus, the OUTFILE will
+             be written only if it is a new file.
+  PRTLEV.....Output print level
+             0  => just the facts please - gimme the answer!
+             1  => basic info about the data (un)used in the fit
+             2  => some intermediary information
+             3  => more intermediary information - recommended level.
+             4  => too much intermediary information
+             10 => WAY TOO MUCH information
+                   [good for debugging - intermediary parameters
+                             are displayed in internal units ]
+  OUTPRINT...Text file containing model-fit residuals
+  OUTNAME....
+  OUTCLASS...
+  OUTSEQ.....
+  OUTVERS....Content to write to output AIPS data set
+             0: data
+             1: data - [gain model * source model]
+             2: source model
+             3: gain model * source model
+             4: data / gain model
+             5: data / source model
+             6: data / [ gain model * source model ]
+  NOISE(1)...Pre-fit amplitude (a priori) noise in Jy.   0 -> 1
+             Note - this enters into CHI-squared displayed at the end
+             and should be the additional noise not reflected in the
+             weights.  Thus if the weights are actually 1/sigma^2 in
+             Jy already, set NOISE(1) = 1 (the NEW default).  If the
+             wights should be 100 times bigger to be properly
+             calibrated, set NOISE(1)=0,1,
+             Estimated thermal noise per requested Stokes visibility.
+             If you set STOKES='I','RR','LL',or ' ', give here the
+             thermal noise per I visibility.  If set 'HALF', give here
+             the thermal noise per 'RR' or 'LL' [assumed the same].
+  NOISE(2)...Threshold for editing data in sigmas (0 -> 10).  Flag
+             data when residual exceeds NOISE(2)*NOISE(2)*Chisq.
+             Data editing parameter.  Data that differ from the model
+             by more than APARM(2)*(model-fit residual estimated for
+             current model) will be discarded at each iteration.
+  NOISE(3)...Low threshold for editing data in sigmas (0 -> 0).  Flag
+             data when amplitude less than NOISE(3) * SQRT(Chisq).
+             Data editing parameter.  Data with amplitudes below
+             APARM(3)*(model-fit residual estimated for current
+             model) will be discarded for each iteration.
+     Early stopping criteria:
+  APARM(1)...Chi-squared must change less than this amount (in %) to
+             stop.   0 -> 1  (set < 0 to turn this off)
+  APARM(2)...Greatest fraction change in any parameter must be less
+             than APARM(2) to stop.   0 -> 0.01.  (set < 0 to turn
+             this off)
+  APARM(3)...LMM initial factor - determines how fast OMFIT moves,
+             bigger values mean slower movement.
+             (-60 < APARM(3) < 60)
+  APARM(4)...Covariance matrix information will be written to OUTFILE
+             at each iteration if OUTFILE is set and APARM(4) not = 2.
+             Set = 1 to see these data when the number of global
+             parameters exceeds 16.
+
+     ******  The following APARMs are no longer used *******
+
+  APARM(5,6).Defaults = 0.01,0.05. APARM(5) is a threshold value
+             to which the fractional change in Chi-Squared over the
+             previous iteration is compared.  APARM(6) is a
+             threshold value to which the ratio of each parameter's
+             change to its estimated error bar is compared.  If
+             the changes to Chi-Squared and all the parameter
+             change/error-bar ratios fall below these thresholds,
+             the iteration will terminate early because the model
+             is not changing.  Set either APARM(5) or APARM(6)<0
+             to force the full number of iterations to be performed.
+  APARM(7)...Default = 0. [allowed range = -60 ... 60]
+             2**APARM(6) is the initial value to use for the Levenberg-
+              Marquardt Scaling parameter: GAMMA.
+             Large Positive GAMMA initially ignores covariances
+              between parameters and proceeds as a Steepest Descent
+              algorithm.
+             Large Negative GAMMA initially accepts all covariances
+              between parameters and proceeds as an Inverse Hessian
+              algorithm.
+             In ENGLISH:  GAMMA controls how much attention the
+              model-fitting procedure initially pays to the covariance
+              between the fitted parameters. If GAMMA is large, the
+              model-fitter starts by varying each parameter independentl
+              of all others.  If the parameters are highly covariant,
+              i.e. if varying one has much the same effect as varying
+              another, this is not a good idea.  A small GAMMA tells the
+              model-fitter to pay attention to these covariances from the
+              beginning.
+             The program increases or decreases GAMMA at each iteration
+              depending on how successful the last step was in reducing
+              Chi-Square; APARM(6) just sets the initial value.
+  APARM(8)...Minimum SNR used to edit self-calibration solutions.
+             If the SNR of a self-calibration solution falls below
+             APARM(7), the weight of the SN table entry is set
+             negative -- it is NOT removed.
+             Default is not to reject any self-calibration solutions.
+             NB: currently, OMFIT's SNR calculation does not conform to
+             the rest of AIPS.
+             APARM(8) is currently disabled.
+  APARM(9)...APARM(9) controls one final criterion for baseline
+             selection and model refinement control.  If self-cal is
+             selected: APARM(9)=0 forces baselines not part of a
+             triangle to be dropped while APARM(9)<>0 passes all
+             baselines.  This behaviour is reversed when self-cal is
+             not selected: APARM(9)=0 passes all baselines, APARM(9)<>0
+             forces baselines to be a part of closing triangles.
+             SELF-CALIBRATION INPUTS:
+  NITER......Default = 40. Number of iterations to perform
+  SOLMODE....Self-Calibration mode selection string.
+             Default = ' ' (no self-calibration)
+             Allowed values:
+               'A'   amplitude only self-cal
+               'P'   phase only self-cal
+               'AP'  full self-cal - amplitude and phase.
+               'MP'  multiple phase-only self-cal
+               'MA'  multiple amplitude-only self-cal
+               'MAP' multiple full - self-cal
+              "multiple" self-cal ==> independent self-cal for each
+              model component.
+              Additionally:
+                'T' explicitly requests that closure be forced
+                'B' explicitly requests that closure be ignored
+               default: closure is forced only if self-cal is selected
+  SOLINT.....Default = 36500*86400 [seconds]. Solution interval to use
+             if self-calibration is requested.
+  DPARM(1-2).specify at which iterations self-cal phases are solved for.
+             if self-cal phases not requested, phases are never solved
+             for.
+             default = 1,NITER IF phase self-cal requested via SOLMOD
+  DPARM(3-4).specify at which iterations self-cal amps are solved for.
+               if self-cal amps not requested, amps are never solved
+               for.
+               default = 1,NITER IF amp self-cal requested via SOLMOD
+  DPARM(5-6).specify at which iterations non-self-cal parameters are
+               solved for.
+               default = 1,NITER
+  WEIGHTIT...If > 0, change the data weights by a function of the
+             weights just before doing the solution.  Choices are:
+             0 - no change   weighting by 1/sigma**2
+             1 - sqrt (wt)   weighting by 1/sigma may be more stable
+             2 - (wt)**0.25
+             3 - change all weights to 1.0
+----------------------------------------------------------------
+OMFIT: This task simultaneously self-calibrates and model-fits
+       UV data.  The actual (non-linear) model-fitting is done
+       using the Levenberg-Marquardt method of least-squares
+       fitting (see, e.g., the _Numerical Recipes_ chapter on
+       modeling data, also Nash, Compact Numerical Methods for
+       Computers).
+       The matrix inversions are performed using LAPACK SVD code.
+       [Thank you LAPACK and NETLIB!!!!].
+DOCUMENTOR: Michael Rupen, NRAO/Socorro.
+PROGRAMMER: K. M. Desai, NRAO/SOC, UCSB, NRL/DC, NRAO/CV
+RELATED TASKS: UVFIT, CALIB, [IMFIT, JMFIT, IMSTAT]?
+
+  PURPOSE
+  SOURCE MODELS
+  INITIAL GUESES FOR THE ANGULAR SIZE
+  WHY USE OMFIT
+  SIMPLE INFILE EXAMPLE
+  FULL DESCRIPTION OF INFILE FORMAT
+  COMPLICATED INFILE EXAMPLE
+  TERMINOLOGY and COMMENTS
+  FEATURES 'UNDER DEVELOPMENT'
+
+
+
+                        PURPOSE
+                        =======
+OMFIT is a model-fitting program that fits the UV-data directly.
+OMFIT can fit for different modeltypes simultaneously.  Individual
+models may span different ranges of frequency space with [possible]
+overlap.   Different Stokes parameters may be selected for fitting;
+a few models can be fit to multiple STOKES parameters simultaneously.
+The following types of models are currently implemented:
+
+
+                    The Source Models
+                    =================
+The following models are currently supported:
+   Model  Type   #parameters  parameter description         parameter unit *1*
+   'DOT'  Point     3        Flux density of point source   [Jy]
+          source             Offset east of phase center    [mas]
+                             Offset north of phase center   [mas]
+
+   'POL'  Point     4        Flux density of point source   [Jy]
+          source             Stokes polarization            [AIPS stokes code]
+                             Offset east of phase center    [mas]
+                             Offset north of phase center   [mas]
+
+   'GAU'  Gaussian  6        Flux density of Gaussian       [Jy]
+                             Offset East of phase center    [mas]
+                             Offset North of phase center   [mas]
+                             Major axis angular size        [mas]
+                             Axial ratio (minor/major)      [dimensionless]
+                             Position Angle of major axis   [deg. East of
+                                                             North on the sky]
+
+   'DISK' Disk      7        Flux density of Disk           [Jy]
+                             Offset East of phase center    [mas]
+                             Offset North of phase center   [mas]
+                             Major axis                     [mas]
+                             Minor axis                     [mas]
+                             Position Angle of major axis   [deg. East of
+                                                             North on the sky]
+                         *2* Order of the bessel function   [dimensionless]
+
+   'SPHR' Disk      5        Flux density of spherical shell [Jy]
+                             Offset East of phase center    [mas]
+                             Offset North of phase center   [mas]
+                         *4* Average radius                 [mas]
+                         *4* Shell f                        [dimensionless]
+
+   'MAS'  Maser    10        Flux density of Gaussian       [Jy]
+                             Offset East of phase center    [mas]
+                             Offset North of phase center   [mas]
+                             Major axis                     [mas]
+                             Axial ratio (minor/major)      [dimensionless]
+                             Position Angle of major axis   [deg. East of
+                                                             North on the sky]
+                             Center of Gaussian spectral
+                               line profile                 [channels]
+                             FWHM of Gaussian spectral
+                               line profile                 [channels]
+                             Drift Eastwards per channel
+                               of position from center
+                               of spectral line profile     [mas/channel]
+                             Drift Northwards per channel
+                               of position from center
+                               of spectral line profile     [mas/channel]
+
+   'GAINS' Gain #IF*#POL     Antenna number                 [as in AN table]
+                             station gains                  [dimensionless]
+                               ordered as either
+                                 IF1 IF2 ... IFn
+                               or
+                                 IF1RR IF1LL IF2RR ... IFnLL
+
+*1* Any modeltype specified using a 'Y' prefix, eg 'YDOT', will have all its
+  angular size parameters (major axis, position offsets) interpreted in
+  arcseconds instead of milliarcseconds (mas).
+
+*2* Suitable choices for this parameter allow the use of a ring or a thin
+  sphere model [see below].
+
+*3* See full infile below for an implementation of GAINS.  A
+  triplet consisting of antenna number, mean gain, and vary flag may be
+  specified for each antenna in the data set.
+  **NB** when amplitude self-calibration is specified, although specified
+    gain values are read in and applied, they are not solved for.
+
+*4* The shell has inner radius r_in and outer radius r_out.  The
+  fitted radius, r_geo, is the geometrical mean of r_in and r_out
+  (r_geo = sqrt(r_in*r_out)).  Shell-f works this way:
+         r_out = r * (1 + shell-f/2.)
+         r_in  = r / (1 + shell-f/2.)
+  shell-f is close to but not equal to (r_out - r_in)/r_geo  Ie. if
+  r_out = 1.25 and r_in = 1.0, then r_geo is 1.118 and shell-f = 0.23607
+
+-------------------------------------------------------------------------
+
+            Initial guesses: angular size:
+            ==============================
+
+If the angular size is specified in arcseconds and a fiducial baseline length
+is determined using UVPLT, the product should equal a scale-factor which is
+typical of each modeltype:
+
+Modeltype     Angular size def      Fiducial baseline length  Scale factor
+GAU               FWHM              Vis fcn half power pt       91.1
+DISK          Uniform disk radius   First null of vis fcn      240.0
+DISK          Ring radius                                      150.0
+DISK          Thin sphere radius                               280.0
+
+The DISK model generates a thin sphere when n = 1.
+The DISK model generates a uniform ring when n = -2.
+The DISK model generates a uniform disk when n = 0.
+
+As may be apparent from the above list, different types of models are
+being added and requests will be accepted.
+
+-------------------------------------------------------------------------
+
+                         WHY USE OMFIT?
+                         ==============
+
+OMFIT has the following advantages over UVFIT:
+
++) OMFIT does not have any built-in limit on the number of visibilities
+   to be fit.  The data do not have to be pre-averaged to fit within a
+   fixed maximum number of visibilities; nor is any time-averaging
+   done within the task itself.
+
++) OMFIT can simultaneously solve for different model types.  This means
+   you can request that, e.g., an Elliptical and a Circular Gaussian be
+   fit simultaneously to the data.
+
++) OMFIT can self-calibrate the UV data while model-fitting.
+
++) OMFIT can also perform multiple self-calibration, i.e., solve
+   for different self-calibration solutions in different directions on
+   the sky.  This may be useful for low-frequency work, or when using
+   the phased-VLA for VLBI work.
+
++) OMFIT can solve for antenna-based IF and polarization dependent
+   time-independent gain factors.  This can be useful for transferring
+   a final amplitude scale from a calibrator to a target source.
+
+OMFIT's most significant disadvantages are:
+
+-) OMFIT runs more slowly than UVFIT.  This is because...
+   - OMFIT does not load the visibilities into memory
+   - self-calibration involves lots of overhead
+   - multiple self-calibration has even more overhead
+   Fortunately, self-cal and multiple self-cal are not usually necessary,
+   and turning them off recovers much of the speed of UVFIT.  OMFIT now
+   uses dynamic memory allocation which should also help recover some of
+   the overhead.  Gains do not cost much in terms of speed and should be
+   used instead of amplitude self-cal whenever possible.
+
+-------------------------------------------------------------------------
+
+                     SIMPLE INFILE EXAMPLE
+                     =====================
+
+The INFILE can be quite complicated, so this description begins with the
+simplest possible file:
+
+! ## MINIMAL INFILE
+!------------------------------------------------------------------------
+! This is a minimal INFILE
+!
+! Type  ID Bchan Echan FlTot vary?  Epos vary?  Npos vary?  Maj vary?
+!   Min/Maj vary?  PA  vary?
+  'GAU'  1     7     7   45.0  'T'  5.0000 'T'  7.0000 'T'  8.5000 'T'
+     0.90    'T'    9.0 'T' /
+/
+! DO NOT REMOVE
+!------------------------------------------------------------------------
+! ## END OF MINIMAL INFILE
+
+This infile requests fitting one component, labelled #1 (Icomp) in I/O,
+in channel 7 (Bchan, Echan).  The initial total flux is 45 Jy (FlTot);
+the source is located (5, 7) mas (East, North) of the phase-center
+(Epos, Npos).  The model is
+to be an elliptical Gaussian (Type) with initial parameters:
+major axis= 8.5mas (Maj), minor/major axis axial ratio= 0.9 (Min/Maj),
+position angle for the major axis= 9 degrees East of North (PA). All
+parameters are allowed to vary during the fitting process.
+****  The comment line entitled "DO NOT REMOVE" is required for proper
+      operation of the KEYIN input subroutine used by OMFIT.  Since
+      generation of a suitable INFILE is often frustrated by KEYIN's
+      fussiness, it is recommended that this line not be left out, not
+      even accidentally [thats not funny...] ****
+
+A more complicated sample INFILE follows the full description of the
+INFILE format.
+
+
+                  FULL DESCRIPTION OF INFILE FORMAT
+                  =================================
+
+INFILE is used to provide basic control parameters and is divided into
+logical lines.
+
+Logical lines are delimited by the '/' character.
+The '!' character serves as a comment character.
+Comment lines CANNOT appear _within_ a single logical line, i.e.,
+   1 10 101 'DOT' ! oops
+   5 'T' 1.0 'T' 2.0 'T' /
+is NOT legal, while
+   1 10 101 'DOT'
+   5 'T' 1.0 'T' 2.0 'T' / ! whew
+is OK.
+
+An INFILE may have multiple logical lines; it is terminated by a single
+ otherwise blank logical line.
+
+Description of logical line format (model specification):
+
+  Each logical line corresponds to one component to be fit, and consists of
+  a number of entries separated by blanks (or carriage returns):
+
+   1st entry: MODELTYPE component type, eg 'DOT', see list below
+   2nd entry: ID        source number for multi-source files;
+                        used as an "identification number" for both
+                        single and multi-source files.
+   3rd entry: BEG-CHAN  first channel in which this component exists
+   4th entry: END-CHAN  last  channel in which this component exists
+   Sub. entries:        Pairs of parameters for the model.  Each pair
+                        consists of a parameter value (initial guess),
+                        followed by 'T' or 'F':
+                        'T' -> find the best fit to that parameter
+                        'F' -> keep that parameter fixed
+   Last entry (/):      character indicating end of logical line
+
+==============================================================================
+
+
+                         COMPLICATED INFILE EXAMPLE
+                         ==========================
+
+! ## BEGIN COMPLICATED SAMPLE 'INFILE'
+!------------------------------------------------------------------------
+! This is a ridiculously complicated  infile
+! Mtype ID  Bch Ech  Flux flag EastPos flag NorthPos flag ...
+ 'YGAU' 469 1   1    3.25208  'T'    82.31136 'T'    -76.53779  'T'
+                     .69031   'T'     .96562  'T'    39.51926   'T' /
+ 'YGAU' 468 1   1    2.33739  'T'    81.62495 'T'    -83.76611  'T'
+                    1.02294   'T'     .95342  'F'    86.40079   'T' /
+ 'YDOT' 467 2   2     .11282  'T'    65.22981 'T'    -76.88685  'T' /
+ 'GAU'  465 3   3     .11964  'T'   -89554.05 'T'     80003.69  'T'
+                    1001.43   'T'     .99732  'T'   -12.58175   'T' /
+ 'YDOT' 462 3   3    1.04904  'T'   -66.15225 'T'     85.19714  'T' /
+ 'GAINS'
+        2  2.0  'T' /
+ 'GAINS'
+        0  1.1  'T' /
+ 'GAINS'
+        4  1.5  'F'  /
+/ ! end inputs
+! Required Blank Line - leave alone !
+! ## END COMPLICATED SAMPLE 'INFILE'
+
+Note the following characteristics about this example:
+- This file specifies a model for three channels.
+- Each channel is modelled independently.
+  [there are no features that span more than one channel.]
+- Channel 1 has two gaussian components, the axial ratio and
+  position angle component 468 will not be solved for.
+- Channel 2 has only a single point source component.
+- Channel 3 has both a point and a gaussian component.
+- The size and position parameters of the gaussian component
+  in channel 3 are specified in milliarcseconds.
+- The default gain information overrides all previously encountered
+  gain information. ***
+- All antennas will start with gains of 1.1 except for antenna 4 which
+  will start with 1.5.
+- The mean gain factors specified here will multiply the model visibility.
+  Eg, initially the model visibility on baseline 2-4 will be
+  multiplied by 1.1*1.5 = 1.65 .
+- mean gain factors will be determined for all stations except station 4.
+  *** except *** if amplitude self-calibration was requested through
+  SOLMODE = 'A', 'AP', or 'MAP'; in that case, mean gains will
+  not be determined for any station.
+- The order of the logical lines is arbitrary [except for the default gain
+  specification as described above].
+
+============================================================================
+
+
+                       TERMINOLOGY and COMMENTS
+                       ========================
+
+[3apr98 - outdated section (kmd) ]
+
+global parameters - these are all model parameters that are not self-cal
+   parameters, eg source flux, major axis size, minor axis size, position
+   angle, ra offset, dec offset, etc.
+
+local parameters - these are all model parameters that are self-cal
+   related and come in two flavours, local phases which are self-cal phases,
+   and local amplitudes which are self-cal amplitudes.
+
+DoF - The number of observed visibilities minus the number of model
+  parameters.
+
+"Discarded ?? global and ??? local params" - the singular value decomposition
+  method used to invert the normal matrices may choose to discard some
+  singular values [effectively discarding linear combinations of model
+  parameters] based upon the input value of CUTOF.  This message simply
+  warns the user that some linear combinations of his/her parameters are
+  being discarded in the model fitting procedure.
+
+1-sigma error calculation method - The principal problem with calculating
+  error bars in AIPS is that the weights, while possibly well known in a
+  relative sense, are unknown by an overall scale factor.  If this were not
+  so, SWSR would be the Chi-Square statistic, RSWSR would be the reduced
+  Chi-Square, and the goodness-of-fit of the model could be evaluated.
+  OMFIT reports two estimates of the 1-sigma error.  The 'formal' 1-sigma
+  error is shown in the OUTFILE output and uses the user estimated thermal
+  noise per visibility [default value = 1 Jy].  The 'suggested' 1-sigma
+  error is printed to screen when OMFIT runs and also is sent to the OUTFILE.
+  This error assumes that the model is a perfect representation of the data
+  so that the post-model fit residual is also an estimate of the thermal noise
+  per visibility.  This error bar is probably what you want since presumably
+  you do think that the model fits the data well.
+
+OMFIT is perfectly happy to allow you to solve for self-calibration
+  parameters and source position offsets.  It is important to realize that
+  these two types of parameters are somewhat degenerate - especially when
+  there is only one source component in the model.
+
+============================================================================
+
+                       FEATURES 'UNDER DEVELOPMENT'
+                       ============================
+
+See the section immediately following the local includes in
+$QPGOOP/OMFIT.FOR .
+
+You may request additional features, or report bugs via email to
+kdesai@nrao.edu .
+
+============================================================================
+
+      Comments from an M. Bietenholz, an experienced user of OMFIT
+
+It will probably never be particularly easy to use.  Its a bit clunky
+because in typical usage, you have to have your input text file open
+in an editor outside of AIPS to make changes between runs of OMFIT,
+but there is probably no reasonable way of moving all the possible
+model parameters to adverbs.  It is also sensitive to the input file
+format.
+
+I always use it on uv-files which have already had the vis. averaged
+together across both freq. and IF, I can't remember whether this is
+just to reduce number of points to fit or if OMFIT doesn't work for
+multiple IFs.
+
+A related but larger issue is that very often, the dominant errors in
+the visibilities are in fact calibration errors not noise, which are
+highly correlated from 1 vis to the next in the typical case of
+vis.recs. being a few secs.  Using such small vis records means that
+OMFIT uses a huge number of degrees of freedom, and gets uncertainties
+which are ridiculously small.  I usually UVAVG to scans (for typical
+phase-ref VLBI scan lengths of ~1-2 min) before feeding to OMFIT.
+
+However, the issue of the real number of degrees of freedom and
+getting usable uncertainties does not have an easy solution,
+so probably some intelligence and diligence on the part of users
+will be unavoidable.
+
+I also think OMFIT does not recognize degenerate cases, such as
+amplitude self-cal *and* fitting your source flux density.  I don't
+remember what happens when you do this, I think it happily converges
+somewhere or other but doesn't necessarily let you know that the
+uncertainty on your fitted flux density is actually infinite.  There
+is some code to try an prune degenerate parameters from the fit, but I
+think it only works for single parameters that have no effect on the
+fit, e.g., p.a. of a *circular* Gaussian.  I don't know whether it
+would be easy to check fo the most common cases of degenerate
+combinations of parameters - ie. you need at least one source
+flux-density or gain-amplitude parameter NOT to be free.
+
+The other issue that will be difficult to avoid is that you need a
+reasonable starting model. Its not uncommon for there to be local
+minima in the Chi2 hypersurface. Getting the starting position of your
+model wrong by more than a beamsize or so is likely to converge to
+some local minimum in the Chi2 space that has nothing to do with the
+best fit.  My 2-dim picture is that the Chi2 surface has some
+concerted dip near the best fit, where you have some hope of finding
+the global min by crawling downslope, but far away from the best-fit
+its probably just some random hilly surface, so crawling downslope
+will get you to one of an infinite number of local minima.
+
+I don't think there is much than can be done about this.  The
+parameter space is probably generally too big to allow a brute-force
+grid search amongst different starting points (a la difmap), so
+probably the only way to get somewhat reliable results out of OMFIT is
+to a) have a pretty good idea of your starting points, especially
+positions and b) to run it several times.  My recipe is usually to
+give it starting parameter vector [x1], let it converge (hopefully) to
+[y], and then restart it with a starting point on the opposite side of
+[y], ie. something like [2*y - x1].  With luck it will again converge
+to [y] and you're good.  If not, a few more runs are in order. And
+that is just the sourc-model parameters, I've been mostly taking it on
+faith that starting the selfcal parameters at amp=1,phase=0 is okay.
+
+     ---- notes from another time ---------------
+
+You probably want to set APARM(1) to something quite small, I usually
+use ~1/(5*N_Vis), 1% is not good for lots of vis.  To make my life
+easier, I usually run OMFIT to get a reasonable fit first to figure
+out the noise level (rms per vis or something like in OMFIT output),
+and then set NOISE(1) to that level.  This doesn't change anything in
+the fit, it just scales the Chi2 values that get printed out, so that
+they wind up close to Degrees_of_Freedom and its easier to judge the
+significance of changes to the fit.  A gotcha here is that I think
+Ketan did some wierd scaling of Chi2 internally.  As long as you don't
+change the vis data set you are okay (ie. Chi2 is arbitrarily scaled
+but comparisons of different Chi2 values for different fits are
+useful).  If, however, you change the vis data, then it's dangerous to
+compare Chi2 values.  Another one of my hacks is to print out the
+unscaled Chi2 so you can estimate the significance of e.g., throwing
+out an antenna.
+
+Once you've got a fit, it is best is to re-run OMFIT with a few
+different starting values, usually not too far from the fitted values,
+but try and start it with starting values on on different sides of the
+fit point to make sure you are finding a global, not a local minimum.
+Ie, run it with a starting value of major=1.0mas; converges to 1.532
+mas; so rerun it with a starting value of 0.5mas - do you still get
+1.532 mas?  Repeat w/ starting value of 3mas.
+
+Total flux density is usually pretty robust against this, but for
+things like disk size (if vis-fn has nulls in) this can be a gotcha.
+If you are fitting antenna gains as well, convergence can be an issue,
+I've resorted to multiple runs of OMFIT with a fixed e.g., disk radius
+to build up manually a disk radius vs. chi2 curve.  It uses log
+format for e.g., disk radii, so best to use a non-zero but
+small compared to resolution value.
+
+Check also that it *has* converged; I use PRTLEV 3; in some cases even
+with e.g., NITER=500 it will not formally converge.  I think it is
+usually close to the an actual min in Chi2 in these cases so the
+final fitted values are probably okay, but - hey, you're in the world
+of far too many free parameters.
+
+
+
+

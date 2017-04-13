@@ -1,0 +1,96 @@
+      .TITLE ZDEST2 (PNAME, SYSERR, IERR)
+;-----------------------------------------------------------------------
+;! destroy a closed disk file
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Destroy (i.e., delete) a file.  The file should already be closed.
+;   Inputs:
+;      PNAME   H*48   Physical file name (H for Macro, C, ...)
+;   Output:
+;      SYSERR  I      system code for error
+;      IERR    I      Error return code: 0 => no error
+;                        1 => file not found (no message)
+;                        2 => device not found
+;                        3 => file in use
+;                        4 => other
+;   VMS version
+;-----------------------------------------------------------------------
+PNAME=4
+SYSERR=8
+IERR=12
+;
+FNALEN=48                       ;Maximum file name length.
+;-----------------------------------------------------------------------
+                                ;Reserve storage.
+        .PSECT DATA,LONG
+FAB:    $FAB
+;-----------------------------------------------------------------------
+        .PSECT CODE,NOWRT
+        .ENTRY  ZDEST2,^M<R2,R3,R4,R5,R6,R8>
+;
+;                               ;Calculate name length.
+;
+        MOVL    PNAME(AP),R1    ;R1 -> Physical file name.
+        LOCC    #^A/ /,#FNALEN,(R1)     ;Find blank.
+        BEQL    NBLNK           ;No blank. Use maximum length.
+        SUBL3   R0,#FNALEN,R8   ;R8 = length of name.
+        BRW     SET
+NBLNK:  MOVL    #FNALEN,R8      ;R8 = full string length.
+SET:
+        MOVL    PNAME(AP),R6    ;R6 -> Physical file name.
+;                               ;Construct the FAB for $ERASE.
+        $FAB_STORE      FAB=FAB,-
+                        FAC=DEL,-
+                        FNA=(R6),-
+                        FNS=R8
+;
+; Get addr of FAB in the FCB and delete the data set.
+;
+        $ERASE  FAB=FAB         ;DELETE IT
+        BLBC    R0,ERROR        ;Branch if error.
+        CLRL    @SYSERR(AP)     ;Return SYSERR=0
+        CLRL    @IERR(AP)       ;Return IERR=0
+        BRW     RETURN
+;
+ERROR:  MOVL    R0,@SYSERR(AP)  ;return system error code
+        MOVL    #1,@IERR(AP)    ;Return IERR=1 (file not found).
+        CMPL    #RMS$_FNF,R0    ; Look for file not found.
+        BEQL    RETURN
+        MOVL    #2,@IERR(AP)    ;Return IERR=2 (bad device).
+        CMPL    #RMS$_DEV,R0    ;
+        BEQL    RETURN
+        MOVL    #3,@IERR(AP)    ;Return IERR=3 (file busy).
+        CMPL    #RMS$_ACT,R0    ;
+        BEQL    RETURN
+        MOVL    #4,@IERR(AP)    ;Return IERR=4 (other).
+        BRW     RETURN
+;
+RETURN:
+        RET
+        .END

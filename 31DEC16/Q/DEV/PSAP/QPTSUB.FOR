@@ -1,0 +1,91 @@
+      SUBROUTINE QPTSUB (UV, VIS, IAPCC, LREC, NUMVIS, MCOMP, NVIS)
+C-----------------------------------------------------------------------
+C! Pseudo AP routine: Subtract point model visibility from uv data.
+C# AP-appl UV
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995, 2006
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+C   Pseudo-AP version
+C   Subtracts CLEAN components from visibility data.
+C   Currently does only U, V, and W terms.
+C   Inputs:
+C      UV     I  Start address of UV vector
+C      VIS    I  Start address of visibility vector
+C      IAPCC  I  Start address of CLEAN component vector
+C      LREC   I  Increment of UV and VIS
+C      NUMVIS I  Number of visibilities
+C      MCOMP  I  Number of CLEAN components
+C      NVIS   I  Number of vis to correct
+C                assumed to be separated by three words
+C   AP Locations 0 and 1 are used.
+C   CLEAN component data are arrainged 6 words to the component:
+C           1 = Flux density
+C           2 = used.
+C           3 = used.
+C           4 = X
+C           5 = Y
+C           6 = Z
+C-----------------------------------------------------------------------
+      INTEGER   UV, VIS, IAPCC, LREC, NUMVIS, MCOMP, NVIS
+C
+      INTEGER   REAL, IMAG, X, IVIS, J, JX, JU, JREAL
+      LONGINT   JJ, JVIS
+      INCLUDE 'INCS:DAPC.INC'
+C-----------------------------------------------------------------------
+C                                        Make sure that there is data.
+      IF ((MCOMP.LE.0) .OR. (NVIS.LE.0) .OR. (NUMVIS.LE.0)) GO TO 999
+C                                       Setup
+      REAL = IAPCC + 1
+      IMAG = REAL + 1
+      X = IMAG + 1
+C                                       Addresses to 1-rel
+      JVIS = VIS + PSAPOF
+      JU = UV + 1
+      JX = X + 1
+      JREAL = REAL + 1
+C                                        Loop subtracting comp.
+      DO 100 IVIS = 1,NUMVIS
+C                                        Compute phase.
+         CALL QPTFAZ (JX, 6, JU, JREAL, MCOMP)
+C                                        Phases complete - convert
+C                                        to rectangular coord.
+         CALL QRECT (IAPCC, 6, REAL, 6, MCOMP)
+C                                         Sum real and imaginary parts.
+         CALL QSVE (REAL, 6, 0, MCOMP)
+         CALL QSVE (IMAG, 6, 1 , MCOMP)
+C                                        Subtract from obs.
+         DO 50 J = 1,NVIS
+            JJ = JVIS + (J-1) * 3
+            APCORE(JJ) = APCORE(JJ) - APCORE(PSAPOF)
+            APCORE(JJ+1) = APCORE(JJ+1) - APCORE(1+PSAPOF)
+ 50         CONTINUE
+C                                         Update pointers.
+         JVIS = JVIS + LREC
+         JU = JU + LREC
+ 100     CONTINUE
+C
+ 999  RETURN
+      END

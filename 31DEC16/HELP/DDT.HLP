@@ -1,0 +1,340 @@
+; DDT
+;---------------------------------------------------------------
+;! verifies correctness and performance using standard problems
+;# RUN GENERAL
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1996, 2005
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+DDT       LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+DDT  :  Verification/timing test; see DDTLOAD.001, DDTEXEC.001
+TCODE                              INIT,TEST,READ, or WRIT
+TMODE                              T or M; Test or Master input
+TMASK           1.0       127.0    test selection bit mask
+DDTSIZE                            SMALL,MEDIUM,LARGE,HUGE test
+DDISK           1.0        35.0    Disk drive #: master UVDATA
+MDISK           1.0        35.0    Disk drive #: other masters
+TDISK           1.0        35.0    Disk drive #: test images
+IOTAPE          0.0         9.0    Input/Output tape drive #.
+DDTDISK                            Disk area for READ and WRIT
+EDGSKP          0.0        64.0    Pixels to skip at edges
+TERSE          -1.0        99.0    > 0 => reduced output
+OUTPRINT
+                                   Printer disk file to save
+BADDISK                            Disks to avoid
+VERSION
+----------------------------------------------------------------
+DDT
+Type: RUN file
+Use:  DDT performs the AIPS verification test of an AIPS system.
+      See RUN files DDTLOAD.001 and DDTEXEC.001.  The purpose of
+      the inputs file is to perform bounds checks on the
+      parameters and to enable the use of TPUT and TGET.
+
+      ***********************************************************
+      NOTE THAT THE DDT TEST HAS BEEN SUPERCEDED BY THE Y2K TEST.
+      IT IS STILL MAINTAINED, BUT Y2K IS WHAT IS USUALLY USED.
+      ***********************************************************
+
+Adverbs:
+ TCODE    String*4      'INIT', 'TEST', 'READ', or 'WRIT'
+ TMODE    String*1      'T' or 'M'; Test output from previous
+                        task as input to current.  'M' requests
+                        master input to all tasks.
+ TMASK    Scalar        test selection bit mask (1-127)
+ DDTSIZE  String*8      'SMALL', 'MEDIUM', 'LARGE' test
+ DDISK    Scalar        Disk drive # (1-9) master UVDATA
+ MDISK    Scalar        Disk drive # (1-9) other master files
+ TDISK    Scalar        Disk drive # (1-9) test files
+ IOTAPE   Scalar        Input AND output tape drive #. (1-9)
+ DDTDISK  String*8      Logical name of disk area to be used for
+                        FITS-disk files in READ or WRIT instead
+                        of actual magnetic tape.
+                        ' ' => use magnetic tape.
+ EDGSKP   Scalar        Number of pixels to skip at edges in
+                        comparing test and master images
+ TERSE    Scalar        > 0 => reduced output:
+                          > 0 = drops INPUTS for all tasks and
+                                TPHEAD when reading tape
+                          > 2 = also drops CATALOG listings
+                          > 3 = also drops IMHEADER listings
+                        Use -1 on all new or uncertain systems,
+                        or when determining the AIPSMark(93).
+ OUTPRINT String*48     Disk file name in which to save the line
+                        printer output.   ' ' => use scratch and
+                        print immediately for interactive jobs -
+                        batch jobs use OUTPRINT =
+                        'PRTFIL:BATCHjjj.nnn' (jjj = job #, nnn
+                        = user #).  When OUTPRINT is not blank,
+                        multiple outputs are concatenated and
+                        the file is not actually printed.
+ BADDISK  Array         Any bad disks to avoid for scratch files
+ VERSION  String*48     OLD,NEW,OLDPSAP,NEWPSAP,LOCAL
+                        (also private dirs; use | to separate)
+
+DDT runs in four different modes: (TCODE)
+   INIT = starts from the original master UV dataset, and
+           (re)computes master files (does ALLDEST).
+           The "mask" TMASK controls which steps execute.
+   TEST = re-does the INIT computation but stores the new
+           files under different names and compares against
+           masters. The "mask" TMASK controls which steps
+           execute. TEST steps use either the TEST run output
+           of the previous step (TMODE=T) or the INIT run
+           output (TMODE=M).
+   WRIT = write master or test files to tape (TMODE matters)
+   READ = read master files from tape.
+
+A binary mask controls which steps of the test execute:
+   TMASK +1=>SORT,  +2=>UVMAP, +4=>APCLN,
+         +8=>CALIB, +16=>MXmap,  +32=>MXclean,
+         +64=>VTESS
+   For example, TMASK=54 would execute UVMAP,APCLN,MXmap,and
+   MXclean.
+
+Input data files for test steps are selected by the TMODE
+   adverb which has two possible values: 'T' for those made
+   in previous steps of the present test or 'M' for the
+   master "correct" data sets input from tape.
+
+The adverb DDTSIZE controls the size of the test performed:
+   'S'    256x256 image, 2000 clean components, 8000 vis
+   'M'    512x512 image, 5000 clean components, 15000 vis
+   'L'    1024x1024 image, 15000 clean components, 75000 vis
+----------------------------------------------------------------
+Explanation of DDT:               (DCW, Feb/Mar85, EWG Nov85,
+                                   CF Mar89, GL Jan90, PM Sep94)
+
+DDT exercises the "Dirty Dozen" of AIPS tasks using data for one
+of three sources.  The three data sets provide three sizes of
+"real" AIPS reduction: 256x256 images with 8000 vis. and 2000
+components, 512x512 with 13000 vis. and 5000 components, and
+1024x1024 with 77000 vis. and 15000 components.  The sources for
+the "small" and "medium" problems were originally background
+sources for an HI absorption experiment by Liszt and Greisen
+while the "large" problem uses data supplied by Alan Bridle.
+
+The DDT problem is intended to be used to certify the correct
+execution of all AIPS systems. (The smallest is small enough to
+run in less than one day on all machines which will ever run
+AIPS.)  Its execution time is significant and easily measurable
+on modest systems such as the Sparc IPX, and approximate timings
+can also be obtained for faster systems.  The AIPSmark(93) is
+based on the total elapsed time for the Large DDT suite; see
+AIPS memo 85 for full details.
+================================================================
+Steps to execute the DDT Test on a new computer:
+
+1. Log in to AIPS under the user number which will own the data
+   files and the SAVE/GET files associated with the test.  It is
+   probably convenient to clear your AIPS message file before
+   proceeding: PRNUM=-1; (PRTMSG possibly) ; CLRMSG
+
+2. Now do the POPS command "RUN DDTLOAD". This initiates the
+   compilation process, which on most modern systems will not
+   take more than a few minutes.  You may want to execute the
+   POPS command "PRTMSG" afterwards to document the compilation
+   of the test procedures.
+
+3. The next step is to read the data files from the tape, or
+   from disk.  On tape, these are files 1 - 11 for the small
+   problem, files 12 - 22 for the medium problem, and files 23 -
+   33 for the large problem.  Alternately, if you have the files
+   on disk, merely set the DDTDISK adverb to point at where the
+   files reside (you need to define or use a "logical" or
+   environment variable with an uppercase name before starting
+   AIPS to use this feature; e.g. FITS).  The DDT files are
+   available via anonymous ftp to ftp.aoc.nrao.edu in
+   directory
+              cd pub/software/aips/FITS/31DEC04
+              prompt
+              binary
+              MGET DDTL*                  (or DDTS*, DDTM*)
+
+   On tapes, the first one in each set of 11 is the original
+   visibility data set of the DDT problem.  Subsequent files are
+   the "master" versions of files computed from the original
+   dataset.  The read process consists of the following steps:
+
+      CLRMSG
+      GET DDTINIT
+      Specify DDISK, MDISK, TDISK, and IOTAPE or DDTDISK
+      Also specify BADDISK as needed
+      DDTSIZE='SMALL' or 'MEDIUM' or 'LARGE'  (desired problem)
+      TCODE='READ'; TPUT DDT         (TPUT saves adverb values)
+      MOUNT the tape unless you have the disk files
+      RUN DDTEXEC
+      DISMOUNT the tape or remove/backup the disk files
+      PRTMSG                       (documents data read process)
+
+   In the case of a DDT tape, the READ mode will rewind the tape
+   and skip over the data for the smaller problems (if 'SMALL'
+   wasn't given).  It will then execute FITLD to read the UV and
+   image files to disk.  At the end of the process, it rewinds
+   the tape and prints a directory of the disk files.
+
+   NOTE: DDTEXEC will insist on having non-default values for
+   IOTAPE or DDTDISK, DDISK, MDISK, and TDISK.
+
+4. Now it is time to actually perform the test.  The 'TEST' mode
+   recomputes the various files.  All map results are compared
+   to the master versions which were read from tape in the
+   previous step.  There are two ways to perform the
+   calculations: with each step computed from the result of the
+   previous test calculation in the sequence, or else from the
+   result of the previous MASTER computation in the sequence.
+   The first mode (TMODE='T') tests how well the system under
+   test is able to reproduce a complex sequence of calculations
+   beginning from a designated starting point.  That is, it
+   measures the accumulation of error in the system.  The second
+   mode (TMODE='M') tests the steps of the sequence separately
+   so that errors created in each step can be isolated.  It also
+   should use tape.  It is also the step used for calculating
+   the AIPSmark(93).  Both tests are important, and both should
+   be performed to certify fully the scientific adequacy of an
+   AIPS installation, but it is generally best to use TMODE='M'
+   as the initial (and primary) test of all systems.  The steps
+   are:
+
+      CLRMSG                       (prepare for test results)
+      GET DDTINIT
+      TGET DDT
+      TCODE='TEST'; TMODE='M'; TMASK=127
+      DDTSIZE='SMALL' or 'MEDIUM' or 'LARGE'  (desired problem)
+      EDGSKP=4, 8, or 16 for small, medium or large DDTSIZE
+      TPUT DDT                     (saves the adverb values)
+      RUN DDTEXEC
+      PRTMSG                       (print out the test results)
+
+   For the AIPSmark(93) benchmark, TERSE should be set to -1.
+   The message file from DDTEXEC will be more than 2000 lines
+   long.  It is intended to be the major item documenting the
+   test procedures and results.
+
+   Making a second run with TMODE='T' is not required, but is
+   generally advisable to evaluate the accumulation of error.
+   This process also checks the manipulations of visibilities,
+   antenna files, and gain files; these processes are not really
+   tested in the 'M' mode because AIPS currently has no
+   comparison operators for files of these types. The 'T' mode
+   tests them by their effect on subsequent map results.  This
+   is particularly important for the output of the
+   self-calibration program CALIB.
+
+   One can also rerun the tests with a different value for the
+   VERSION adverb.  One can also use this option to test
+   experimental versions of specific tasks.
+
+5. The 'WRIT' mode tests task FITTP, while 'READ' tests FITLD.
+   The basic idea is to produce a tape (or FITS disk files), and
+   then to read that tape or those files on an AIPS system to
+   verify that it yields correct results.  It follows that
+   generating a new tape with the 'WRIT' mode and then executing
+   'READ' and 'TEST' on it will also effectively test the tape
+   tasks.  Better yet, take the tape to another AIPS and run DDT
+   on it!  This verifies the intercommunication of the systems.
+   Obviously, use of FITS disk files will do little to test your
+   tape I/O.
+
+   Note that DDT assumes that the tape consists of the 11 SMALL
+   data files, followed by 11 MEDIUM data files, followed by 11
+   LARGE data files.  You should first run DDT in WRIT mode for
+   the SMALL problem.  If generating a tape, having done this,
+   you may then (optionally) run DDT in WRIT mode for the
+   medium problem and, having done all this, you may then WRIT
+   the LARGE problem.
+
+   The steps are:
+
+      CLRMSG
+      GET DDTINIT
+      TGET DDT
+      DDTSIZE='SMALL' or 'MEDIUM' or 'LARGE'  (desired problem)
+      TCODE='WRIT';TMODE='T'
+      TPUT DDT
+      RUN DDTEXEC
+      PRTMSG                       (print out the test results)
+
+   Note that when we say "tape", we mean either magnetic tape in
+   the usual sense, or pseudo-tape disk files.  The latter are
+   selected by setting DDTDISK to a non-blank value which is the
+   logical name (environmental variable) for the disk area to be
+   used.  The disk files are given a fixed and obvious pattern
+   of names (DDTsnnnnnn, where s is S, M, L, or H and nnnnnn is
+   the image name related to the task name).
+
+6. Finally, one wants to know the accounting statistics from the
+   test runs.  The accounting listing can be correlated with the
+   message file listings in order to analyze the performance of
+   the tested system.  DDT now runs task PRTAC to produce the
+   desired information.  Note that PRTAC has exclusive access to
+   the accounting file until it finishes, and so various tasks
+   may complain while they are waiting to get access to the
+   file.
+
+   The listing produced by PRTAC will have one line for each
+   execution of any task or program AIPS.  The columns of the
+   listing give the taskname, POPS#, user#, start-time, real-
+   time, CPU-time, and "IOCNT".  Asterisks mark any run that
+   aborted.  After this basic sequential listing comes a listing
+   by task name giving the totals accumulated by each task.  The
+   listing is given in two sort orders.
+
+================================================================
+Regarding "cloning":
+
+It is obvious that DDTLOAD and DDTEXEC are cloneable.  First, a
+clone of DDT could process another dataset; this would be done
+by adding additional allowed string values for DDTSIZE and
+renaming the input UV data set DDDT?, where ? is the first
+character in the new allowed string value.  The adverb values
+needed for the new data set, are initialized in the DDTPROC
+procedure which is SAVEd in DDTSAVE.  Second, the general
+pattern of executing and testing the tasks in succession will
+work for a wide variety of AIPS tasks and data types.
+
+================================================================
+                Interpretation of Test Results
+
+The results of the mapping tests are recorded as the number of
+BITS of accuracy.  The BITS of accuracy are defined in two ways,
+by the MAX difference in the Master image and the Test image and
+by the RMS differences in the images.  The BITS measured by the
+the base 2 logarithm of the ratio of PEAK and DIFFERENCE of the
+images.
+
+The BITS are calculated as -3.3219 * LOG(DIFF/PEAK).  (LOG is
+the Base 10 Logarithm; 1/LOG(2) = 3.3219)
+
+The expected BITS of accuracy for the tasks are in the range of
+10 to 20 BITS.  The RMS BITS of accuracy is always greater than
+the PEAK BITS of accuracy.
+
+For further information on the interpretation of the results,
+refer to AIPS memo 85 and other memos in the AIPS memo series
+that relate to the DDT tests.  These are available via anonymous
+ftp and the world wide web on the internet; ftp to aips.nrao.edu,
+cd to /pub/aips/TEXT/PUBL/ .  The web page is
+http://www.cv.nrao.edu/aips/ .

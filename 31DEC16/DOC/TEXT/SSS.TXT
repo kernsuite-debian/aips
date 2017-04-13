@@ -1,0 +1,631 @@
+-----------------------------------------------------------------------
+;  Copyright (C) 1995-1996, 1998
+;  Associated Universities, Inc. Washington DC, USA.
+;
+;  This program is free software; you can redistribute it and/or
+;  modify it under the terms of the GNU General Public License as
+;  published by the Free Software Foundation; either version 2 of
+;  the License, or (at your option) any later version.
+;
+;  This program is distributed in the hope that it will be useful,
+;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;  GNU General Public License for more details.
+;
+;  You should have received a copy of the GNU General Public
+;  License along with this program; if not, write to the Free
+;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;  MA 02139, USA.
+;
+;  Correspondence concerning AIPS should be addressed as follows:
+;         Internet email: aipsmail@nrao.edu.
+;         Postal address: AIPS Project Office
+;                         National Radio Astronomy Observatory
+;                         520 Edgemont Road
+;                         Charlottesville, VA 22903-2475 USA
+-----------------------------------------------------------------------
+
+These notes are quite old and may not fully reflect the drastic
+revisions made for the 15APR92 release.  Caveat emptor.  There are
+some details here that may be of interest to programmers, however.  It
+has been updated to document the I/O to XAS in the $CVX experimental
+version.
+
+
+			     AIPS TV Server
+
+     The AIPS TV Server is a concept originally employed to enable
+users of the very early Sun workstations to use AIPS with an image
+display.  It employed the Sunview windowing system which has
+subsequently fallen into disuse at most sites running AIPS.
+Subsequently, the model behind this "SSS" server was used in the
+construction of XAS and XVSS, the former for X11 (X-windows) and the
+latter server for any X11 system with the XView toolkit libraries.
+The Y routines for SSS, XVSS and XAS were merged several versions ago
+and now populate the $YSS area.  By the $CVX system, only XAS remains
+in active use.
+
+     The model of AIPS TV on a workstation display consists of a set
+of Y routines which bundle commands into buffers and call Z routines
+which send the buffers over a socket to a cooperating program (the
+AIPS TV server).  The latter converts the commands into instructions
+to the window package (X server or SunView server) to drive the
+display.  Data and error codes can be sent back to AIPS from the TV
+server as well.
+
+     The AIPS installation process will offer to attempt to build the
+XAS screen server as part of INSTEP1.  In most cases you should not
+have to do anything other than check that the X11 include and library
+areas INSTEP1 shows you are correct.  If there are problems, you will
+need to investigate and possibly change the unpacked source in
+$YSERV/XAS/ and possibly modify the Makefile as well.
+
+     The main implementation of AIPS now supported uses internet
+sockets for inter-process communication from AIPS (or AIPS tasks) to
+the XAS TV server.  However, the Y routines in $YSS actually support
+either internet sockets or Unix sockets, and the former can be set to
+use buffered I/O (not used currently) or regular I/O.  However, since
+the 15APR92 version, use of unix sockets has not been possible (well,
+at least not easy) with the network setup.  The way the Y routines
+pick up on what sort of socket to use is the value of the environment
+variable TVDEVnn, where nn is the (extended hex, i.e. base 36) TV
+number set by default in the TVDEVS.SH shell script.  If this is, e.g.
+
+          SSSINB:foobar
+
+then the SSSIN service will be used for internet sockets (on a host
+called "foobar") and buffered I/O is used.  If it is
+
+          SSSIN:foobar
+
+then the SSSIN service is also used for internet sockets to host
+foobar but buffered I/O is not used.  Finally, if it is something like
+
+          $AIPS_ROOT/SOCKETS/aips_screen_nn
+
+(where nn is the TV number) then Unix based sockets (actually named
+files) are used.  This latter configuration has not been used at NRAO
+since 1991.
+
+		  STRATEGY - A HISTORICAL PERSPECTIVE
+
+     What follows is a mixture of the original contents of this file
+(SSS.TXT) with a perspective on how it actually worked out.
+
+     AIPS or other AIPS tasks talks to what it considers to be a
+simple TV (image display) device with simple read/write commands. The
+"device" is actually a program that maintains an appropriate window
+(the original notes mentioned the possibility of this program being an
+interface to a simpler device).
+
+     Communication consists of the process passing simple opcodes and
+related data, and receiving in turn status and data. The screen is
+always passive, and the protocol and opcode/data structure is kept
+deliberately simple.  The original document expressed the hope that
+new devices would be added with virtually no new Y routine
+development.  The almost universal acceptance of the X windowing
+system in the technical field for image display and manipulation has
+meant that the XAS tv server is the one most likely to be used at any
+given site.  Notwithstanding that, the merging of the Y routines for
+the three known TV servers (SSS, XVSS and XAS) also greatly simplified
+things.
+
+			COMMUNICATIONS PROTOCOL
+
+The data flow is as follows:
+
+Send    Opcode          ; Operation TV Server is to do
+        DAT1            ; Fixed data word 1, always sent
+        DAT2            ;                 2
+        DAT3            ;                 3
+        DAT4            ;                 4
+Send    NWVD            ; Number of 8-bit bytes of VDATA to send,
+                          often 0.
+[Send   VDATA]          ; Variable length DATA words, typically an
+                          image line.  Only sent if the opcode and
+                          DAT1-4 warrant it.
+
+Get     STATUS          ; Status word, 0 normally means success, other
+                          values are opcode specific. Generally -1
+                          will mean unknown opcode, and -2 will mean
+                          improper DATA length.
+Get     NWSD            ; Number of 8-bit bytes of status data to
+                          expect.  Often 0.
+[Get    SDATA]          ; NWSDATA bytes of data, e.g. cursor position.
+
+The Opcode, DATn, NWVD, NWSD, and STATUS are sent as 16-bit
+FITS-standard integers with conversion to/from local integer handled
+by the upper level I/O routine ZSSSXF..  The VDATA and SDATA are
+treated as byte streams by the I/O routines (ZSSSXF.FOR and ZSSSX2.C)
+Conversion to/from FITS-standard forms is the job of the Y routines
+including any packing/unpacking (e.g., to unsigned 8-bit integers for
+an image row).
+
+Every time an opcode + NWVD [+ DATA] are actually sent, a STATUS +
+NWSD [+ SDATA] are returned.  Note that the protocol is designed so
+that the client and server are guaranteed to be able to transfer data
+in sync, even if they don't know how to interpret the opcodes and
+status.  When the buffered mode is used, the I/O routines need to know
+which opcodes may be buffered.  This is coded into ZSSSOP2 which needs
+then to understand that minimal amount about each operation.  In
+buffered mode, operations which are allowed to be buffered will not
+get an immediate status return.  OPerations which required data
+returned may never be buffered.
+
+Opcodes
+-------
+
+Reserved number ranges:
+
+0  - 20         Used for open/close/reset type non-graphics operations.
+21 - 30         Read / Write image and graphics planes.
+31 - 40         Image catalog manipulations.
+41 - 60         Colour/grey LUT and OFM manipulation.
+61 - 80         Cursor/button opcodes.
+81 - 100        Zoom and scroll opcodes.
+
+
+#    Opcode     Parms   Description
+========================================================================
+
+11   OPEN               Opens the device. Currently NOP since the server
+                        should only accept one client at a time, and
+                        ZSSSOP connects to the socket.
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    0
+                SDATA   none
+
+12   CLOSE              Closes the device, allowing new connections.
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+
+13   INTGT              Interrogate the TV server to determine its
+                        properties.
+               [YDTVC ('READ'...]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    512 (256 of I*2)
+                SDATA   TV parameter common: last saved with some
+                        parameters including window set by XAS.
+
+14   WINDO              Interrogate server to find current window
+                        size.
+               [YWINDO (... ]
+                DAT1    Window BLC x: any 0 in input => read only
+                DAT2    Window BLC y  all > 0 => order this window size!
+                DAT3    Window TRC x
+                DAT4    Window TRC y
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    8 (4 of I*2)
+                SDATA   Actual window corners now set
+
+15   INIT               Init the TV server LUTs, OFMs, memories, zoom,
+                        scroll, channel on/off selection
+               [YINIT (...]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    0
+                SDATA   None
+
+16   VIEW               Sets the number of screen writes that are
+                        "held" for later display
+               [YHOLD (...]
+                DAT1    Number of writes to hold before display,
+                        0 forces re-synchronization.
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   none
+                STATUS
+                NWSD    0
+                SDATA   none
+
+17   PSAVE              Save the TV parameter common on close.
+               [YDTVC ('WRIT'...]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    512 (256 of I*2)
+                VDATA   TV parameter common
+                STATUS
+                NWSD    0
+                SDATA   none
+
+18   XDIE              Shut down command to XAS
+               [YDIE ()]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    N/A
+                VDATA   N/A
+                STATUS
+                NWSD    0
+                SDATA   none
+
+21   IMWRT              Write an image line to the screen (not vector
+                        line).  For an image plane excess bits are
+                        ignored.  For a graphics plane the lowest bit
+                        must be on, all else is irrelevant (since it
+                        will be shifted and OR'd appropriately).
+                        (actually this is currently untrue, 0 means off,
+                        anything else on).
+               [YIMGIO ('WRIT'...]
+                DAT1    X start position
+                DAT2    Y
+                DAT3    Channel (1 - NGRAPH+NGRAY)
+                DAT4    IANGL (1-4) (only 1-2 for now)
+                NWVD    number of pixels (NPIX)
+                VDATA   NWVD pixel values as unsigned 8-bit integers
+                STATUS
+                NWSD    0
+                SDATA   none
+
+22   IMRD               Read an image line from the screen (not vector
+                        line).  For an image plane excess bits are
+                        ignored.  For a graphics plane the lowest bit
+                        must be on, all else is irrelevant (since it
+                        will be shifted and OR'd appropriately).
+                        (actually this is currently untrue, 0 means off,
+                        anything else on).
+               [YIMGIO ('READ'...]
+                DAT1    X start position
+                DAT2    Y
+                DAT3    Channel (1 - NGRAPH+NGRAY)
+                DAT4    IANGL (1-4) (only 1-2 supported now)
+                NWVD    2 bytes (1 of I*2)
+                VDATA   1. NPIX
+                STATUS
+                NWSD    NPIX
+                SDATA   NPIX of data, 1 per 8-bit unsigned integer
+                       (0 or 1 for graphics)
+
+23   FILL               Fills a rectangle with a value
+               [YFILL (...]
+                DAT1    low x
+                DAT2    low y
+                DAT3    high x
+                DAT4    high y
+                NWVD    2  (as 8-bit integers)
+                VDATA   1. Channel (1 - NGRAY+NGRAPH)
+                        2. Value
+                STATUS
+                NWSD    0
+                SDATA   None
+
+24   CLEAR              Clears some or all image and graphics planes,
+                        doesn't affect ZOOM or Scroll "registers".
+               [YZERO (...]
+                DAT1    Channel to clear, 0 means all.
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+25  VECT                Writes a vector on the TV
+               [YCNECT (...]
+                DAT1    X1
+                DAT2    Y1
+                DAT3    X2
+                DAT4    Y2
+                NWVD    2  (as 8-bit integers)
+                VDATA   1. Channel (1 - NGRAY+NGRAPH)
+                        2. Value
+                STATUS
+                NWSD    0
+                SDATA   None
+
+26  CHARS               Writes a string on the TV
+               [YCNECT (...]
+                DAT1    X for lower left of 1st
+                DAT2    Y for lower left of 1st
+                DAT3    channel
+                DAT4    number of characters: NCHAR
+                NWVD    NCHAR
+                VDATA   NCHAR 8-bit ASCII characters
+                STATUS
+                NWSD    0
+                SDATA   None
+
+
+31    CATIN             Initialize the image catalog
+               [YCINIT(... ]
+                DAT1    plane: 0 => all, else 1 -> NGRAY+NGRAPH
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+32    CATRD             Find header for a position
+               [YCREAD(... ]
+                DAT1    plane: 1 -> NGRAY+NGRAPH
+                DAT2    X position
+                DAT3    Y position
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS  -2 => none at IX, IY
+                NWSD    1024 bytes
+                SDATA   Image catalog in FITS form
+
+33    CATWR             Write an entry in image catalog
+               [YCWRIT(... ]
+                DAT1    Low X of window
+                DAT2    Low Y of window
+                DAT3    High X of window
+                DAT4    High Y of window
+                NWVD    1028 bytes
+                VDATA   1-1024:    image header in FITS form
+                        1025-1026: image type (2 chars)
+                        1027:1028: plane: 1 -> NGRAY+NGRAPH
+                STATUS  -2 => full
+                NWSD    0
+                SDATA   None
+
+34    CATOV             Are images overlapped in catalog
+               [YCOVER(... ]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    4 (8-bit integers)
+                SDATA   By quadrant, > 0 => overlapped
+
+35    CATFI             Find visible image
+               [YCFIND(... ]
+                DAT1    max plane number to check
+                DAT2    > 0 => type specified
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    2 (bytes)
+                VDATA   2-character image type
+                STATUS
+                NWSD    1027
+                SDATA   1-1024: image header found
+                        1025  : plane found
+                        1026  : > 0 => unique
+                        1027  : 0 => 1 found, 1 => none, 10 => > 1
+
+41    WLUT              Write LUT to the device.
+               [YLUT('WRIT',... ]
+                DAT1    !=0 implies red
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4    Channel - bit mask
+                NWVD    Number of entries (MAXINT+1)
+                VDATA   LUT as unsigned 8-bit integers
+                STATUS
+                NWSD    0
+                SDATA   None
+
+42    RLUT              Read LUT from the device.
+               [YLUT('READ',... ]
+                DAT1    !=0 implies red    (only 1 should be non zero)
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4    Channel - bit mask
+                NWVD    0
+                STATUS
+                VDATA   None
+                NWSD    Number of entries (MAXINT+1)
+                SDATA   LUT as unsigned 8-bit integers
+
+43    WOFM              Write OFM to the device.
+               [YOFM('WRIT',...]
+                DAT1    !=0 implies red
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4
+                NWVD    Number of entries (OFMINP+1)
+                VDATA   OFM as 8-bit unsigned integers
+                STATUS
+                NWSD    0
+                SDATA   None
+
+44    ROFM              Read OFM from the device.
+               [YOFM('READ',...]
+                DAT1    !=0 implies red    (only one should be on)
+                DAT2    !=0 implies green
+                DAT3    !=0 implies blue
+                DAT4
+                NWVD    0
+                STATUS
+                NWSD    Number of entries (OFMINP+1)
+                SDATA   OFM (8-bit unsigned integers)
+
+45    GRAPH             Turn graphics channel on/off
+               [YGRAPH (...]
+                DAT1    channel
+                DAT2    0 => off, 1=> on
+                DAT3
+                DAT4
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+46    SPLIT             Obsolete :Turn image channels on/off.
+               [YSPLIT ('WRIT', ...)
+                DAT1    lowest requested channel quadrant 1
+                DAT2    lowest requested channel quadrant 2 (=DAT1)
+                DAT3    lowest requested channel quadrant 3 (=DAT1)
+                DAT4    lowest requested channel quadrant 4 (=DAT1)
+                NWVD    4 (2 of I*2)
+                VDATA   1. X split pixel --- ignored for now
+                        2. Y split pixel --- ignored for now
+                STATUS
+                NWSD    0
+                SDATA   None
+
+47    SPLIT             Turn image channels on/off.  The split screen
+                        portions have not been implemented in XAS.
+                        The multiple channels portions and separate
+                        channels by color apply only to 24-bit color.
+               [YSPLIT ('WRIT', ...)
+                DAT1    X split pixel --- ignored for now
+                DAT2    Y split pixel --- ignored for now
+                DAT3    lowest requested channel quadrant 3 (=DAT1)
+                DAT4    lowest requested channel quadrant 4 (=DAT1)
+                NWVD    12 (12 of I*1)
+                VDATA   1. Red quadrant 1 channel bit pattern
+                        2. Red quadrant 2 channel bit pattern
+                        3. Red quadrant 3 channel bit pattern
+                        4. Red quadrant 4 channel bit pattern
+                        5. Green quadrant 1 channel bit pattern
+                        6. Green quadrant 2 channel bit pattern
+                        7. Green quadrant 3 channel bit pattern
+                        8. Green quadrant 4 channel bit pattern
+                        9. Blue quadrant 1 channel bit pattern
+                       10. Blue quadrant 2 channel bit pattern
+                       11. Blue quadrant 3 channel bit pattern
+                       12. Blue quadrant 4 channel bit pattern
+                STATUS
+                NWSD    0
+                SDATA   None
+
+
+51    WGRFX             Set color of a graphics plane:
+                        [YGRAFX ('WRIT'...]
+                DAT1    Graphics plane or (0) cursor
+                DAT2    Red (0 - 255)
+                DAT3    Blue (0 - 255)
+                DAT4    Green (0 - 255)
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+52    RGRFX             Read color of a graphics plane:
+                        [YGRAFX ('WRIT'...]
+                DAT1    Graphics plane or (0) cursor
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    3 bytes
+                SDATA   1. Red (0 - 255)
+                        2. Blue (0 - 255)
+                        3. Green (0 - 255)
+
+
+
+61   RCURS              Gets current cursor position, uncorrected for
+                        zoom or scroll
+               [ ]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    4 (2 of I*2)
+                SDATA   1. Cursor X position
+                        2.        Y
+
+62   RBUTT              Determine which buttons have been pressed
+                        since last time they were polled (and how many
+                        times).
+               [ ]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    8 (4 of I*2)
+                SDATA   1. Number of times "A" has been pressed
+                        2.                  B
+                        3.                  C
+                        4.                  D
+
+
+63   WCURS              Sets the current cursor position, uncorrected
+                        for zoom or scroll.
+               [YCRCTL ('WRIT'...]
+                DAT1    X
+                DAT2    Y
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+
+64   RCURB              Determine which buttons have been pressed
+                        since last time they were polled (and how many
+                        times) and get current cursor position,
+                        uncorrected for zoom or scroll.
+               [YCRCTL ('READ'...]
+                DAT1    N/A
+                DAT2    N/A
+                DAT3    N/A
+                DAT4    N/A
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    12 (6 of I*2)
+                SDATA   1. Cursor X position
+                        2.        Y
+                        3. Number of times "A" has been pressed
+                        4.                  B
+                        5.                  C
+                        6.                  D
+
+83     WZSCR            Write the zoom and scroll by setting the
+                        magnification and the pixel which begins in the
+                        upper left of the screen (not the visible
+                        window).
+               [YSCROL(...]
+                DAT1    Channel (0->all, !=0 returns an error currently)
+                DAT2    Magnification factor (< 1 => error)
+                DAT3    X pixel in upper left corner
+                DAT4    Y pixel in upper left corner
+                NWVD    0
+                VDATA   None
+                STATUS
+                NWSD    0
+                SDATA   None
+

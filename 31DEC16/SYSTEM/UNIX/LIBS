@@ -1,0 +1,118 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#-----------------------------------------------------------------------
+# Usage: LIBS directory [alternate] [-S] [[-]d[ebug]]
+#-----------------------------------------------------------------------
+# Prints the default object module library link list for programs
+# residing in the specified directory.  The directory should be a valid
+# $AIPS_VERSION program area.  The link list is determined from the
+# installation specific file $SYSLOCAL/LIBR.DAT.  The optional
+# 'alternate' argument is used to extract one of several several link
+# lists that may be possible for a given implemenation (e.g., the link
+# list including object libraries for a second model of TV device,
+# such as LIBR $QYPGNOT 2).
+#
+# A "-S" option is also recognised and indicates that non-AIPS libraries
+# should not be included in the link list.
+#
+# Likewise, a -d or -D or debug or DEBUG causes the debug versions of
+# the libraries to be used.
+#
+# Generic UNIX version.
+#-----------------------------------------------------------------------
+ALT=0
+#                                       Argument given?
+if test "$1" = ""
+then
+   echo "Usage: LIBS directory" 1>&2
+   exit 1
+elif test ! -d $1
+then
+   echo "LIBS      : Argument   $1"    1>&2
+   echo "LIBS      : not a directory!" 1>&2
+   exit 1
+else
+   DIR=$1
+fi
+#                                       Alternate load library given?
+MODE=""
+DONE=""
+DODEBUG=NO
+shift
+while test "$DONE" = ""
+do
+   case $1 in
+      "")
+         DONE=1
+         ;;
+      [0-9]*)
+         ALT=$1
+         ;;
+      -S)
+         MODE=SUBLIB
+         ;;
+      [Dd][Ee][Bb][Uu][Gg] | -[Dd]*)
+#                                       Debug.  Check for the key file
+#                                       and then check for LIBRDBG dir.
+	 [ -f $SYSLOCAL/DOTWOBIN -o -f $SYSLOCAL/DOTWOLIB ] && \
+            [ -d $AIPS_VERSION/$ARCH/LIBRDBG ] && \
+               DODEBUG=YES
+	 ;;
+   esac
+
+   if test "$2" = ""
+   then
+      break
+   fi
+
+   shift
+done
+#                                       Extract default link list for
+#                                       'directory' programs from
+#                                       $SYSLOCAL/LIBR.DAT, if any.
+      ENV=`PRINTENV | grep -v '^[CcPp][Ww][Dd]=' | grep $DIR$ | \
+         sed -e 's/=.*//'`
+      if [ "$DODEBUG" = NO ] ; then
+         LIBS=`grep $MODE':['$ALT']:\$'$ENV'$' $SYSLOCAL/LIBR.DAT | \
+                 sed -e 's/:.*//'`
+      else
+         LIBS=`grep $MODE':['$ALT']:\$'$ENV'$' $SYSLOCAL/LIBR.DAT | \
+                 sed -e 's/:.*//' -e 's#LIBR#LIBRDBG#'`
+      fi
+#                                       Check if it worked.
+      if test "$LIBS" != ""
+      then
+         echo $LIBS
+         exit 0
+      else
+         echo "LIBS      : Directory  $DIR not defined"   1>&2
+         echo "LIBS      : in         $SYSLOCAL/LIBR.DAT" 1>&2
+         exit 1
+      fi
+fi
+exit 0

@@ -1,0 +1,155 @@
+      .TITLE  ZCMPR2 (FCB, PNAME, NBLCKS, MAP, SYSERR, IERR)
+;-----------------------------------------------------------------------
+;! truncate a disk file, returning blocks to the system
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Truncates a disk file.  It is assumed that the file is open.
+;   Inputs:
+;      FCB     I(*)   File descriptor from FTAB file control block
+;      PNAME   H*48   File name (H for Macro, C, etc.)
+;      MAP     I      I/O type: 0 => non-map (single buffered)
+;                               1 => map (double buffered)
+;   In/out:
+;      NBLCKS  I      Desired/actual size in 256-integer blocks
+;   Output:
+;      IERR    I      Error code: 0 = success
+;                        1 = file name translation fails
+;                        2 = error occurred
+;                        3 = temporary file not deleted
+;   VMS version
+;   The end of file VBN in the file header is updated to give the used
+;   space equal to the allocated space.
+;-----------------------------------------------------------------------
+                                        ; System symbol definitions
+        $IODEF
+        $FIBDEF
+        $ATRDEF                         ;Attribute block defns
+;       $FATDEF                         ;Record attribute block def
+FAT$L_EFBLK=8                           ;End of file VBN offset
+                                        ;Argument list offets
+FCB=4
+PNAME=8
+NBLCKS=12
+MAP=16
+SYSERR=20
+IERR=24
+                                        ;FCB offsets
+CHAN=0
+FCBS1=16
+FCBS2=100
+EFN=20
+IOSB=24
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZCMPR2,^M<R2,R3,R4,R5,R6,R7>
+                                        ;
+        CLRL    @IERR(AP)               ;Set IERR = 0 initially.
+        CLRL    @SYSERR(AP)             ;Set SYSERR = 0 initially.
+                                        ;
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVL    #FIB$M_TRUNC,FIB+FIB$W_EXCTL    ; Set for 'truncate'
+        MOVL    @NBLCKS(AP),FIB+FIB$L_EXVBN     ; truncate starting at
+        ASHL    #1,FIB+FIB$L_EXVBN,FIB+FIB$L_EXVBN  ;AIPS blocks -> 512
+        INCL    FIB+FIB$L_EXVBN         ;Set truncation start block.
+        MOVL    FCB(AP),R6              ;R6->FCB
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_MODIFY,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC               ; File info block.
+                                        ;
+        BLBS    R0,GATTR                ; Branch if no error.
+        MOVL    #2,@IERR(AP)            ;IERR=2, TRUNC. ERROR
+        MOVL    R0,STATUS               ;Save the status.
+        BRW     ERROR
+                                        ; this block (1 offset)
+;                                        GET THE FILE ATTRIBUTES
+GATTR:
+        MOVL    FIB+FIB$L_EXVBN,VBNSAV  ; Save the new last VBN
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVL    FCB(AP),R6              ;R6->FCB
+        MOVAL   ATTCB,R7
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_ACCESS,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC,-             ; File info block.
+                P5=R7
+                                        ;
+        BLBS    R0,CHANG                ; Branch if no error.
+        MOVL    #2,@IERR(AP)            ;IERR=2, ACCESS ERROR.
+        MOVL    R0,STATUS               ; Save the status.
+        BRW     ERROR
+;
+; SET THE USED SPACE TO THE ALLOCATED SPACE IN THE FILE HEADER
+;
+CHANG:
+        MOVC5   #0,FIB,#0,#FIB$K_LENGTH,FIB     ; ZERO FIB
+        MOVW    VBNSAV,-
+                ATBUF+FAT$L_EFBLK+2     ;Set end of file VBN
+        MOVW    VBNSAV+2,-              ;   (INVERTED FORMAT)
+                ATBUF+FAT$L_EFBLK
+        MOVL    FCB(AP),R6              ;R6->FCB
+        $QIOW_S CHAN=CHAN(R6),-
+                FUNC=#IO$_MODIFY,-
+                IOSB=IOSB(R6),-
+                P1=FIBDSC,-             ; File info block.
+                P5=R7
+                                        ;
+        BLBS    R0,EXIT         ; Branch if no error.
+        MOVL    #4,@IERR(AP)            ;IERR=4, ACCESS ERROR.
+        MOVL    R0,STATUS               ;Save the status.
+ERROR:
+        MOVL    STATUS,@SYSERR(AP)      ;return system error #
+                                        ;
+EXIT:
+        SUBL3   #1,VBNSAV,@NBLCKS(AP)
+        ASHL    #-1,@NBLCKS(AP),@NBLCKS(AP)     ;correct to AIPS blocks
+        MOVL    @NBLCKS(AP),SIZBYT
+        ASHL    #10,SIZBYT,SIZBYT
+        MOVL    SIZBYT,FCBS1(R6)
+        TSTL    @MAP(AP)
+        BEQL    10$
+        MOVL    SIZBYT,FCBS2(R6)
+10$:    RET
+                                                ;
+        .PSECT  DATA,LONG
+FIBDSC: .LONG   FIB$K_LENGTH
+        .ADDRESS   FIB
+FIB:    .BLKB   FIB$K_LENGTH
+FDISC:  .LONG   0
+FADDR:  .LONG   0
+; ATTRIBUTE CONTROL BLOCK
+ATTCB:  .WORD   ATR$S_RECATTR           ;RECORD ATTRIBUTES, SIZE
+        .WORD   ATR$C_RECATTR           ;RECORD ATTRIBUTE, TYPE
+        .ADDRESS   ATBUF                   ;ATTRIBUTE BUFFER ADDRESS
+        .LONG   0                       ;MARK END OF LIST
+ATBUF:  .BLKB   ATR$S_RECATTR                   ;ATTRIBUTE BUFFER
+STATUS: .LONG   0                       ;AREA TO SAVE ERROR STATUS
+VBNSAV: .LONG   0                       ;ACTUAL SIZE OF FILE AFTER TRUN.
+SIZBYT: .LONG   0                       ; size in bytes
+        .END

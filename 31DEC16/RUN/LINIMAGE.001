@@ -1,0 +1,135 @@
+$ LINIMAGE.001
+$---------------------------------------------------------------
+$! RUN file to define LINIMAGE proc, spectral imaging over multiple IFs
+$# Run Imaging
+$-----------------------------------------------------------------------
+$;  Copyright (C) 2012
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+$
+$   IMAGR with UVCOP and MCUBE to allow spectral-line imaging
+$
+PROC LINIMAGE
+SCALAR DOWINAIT, XBIF, XEIF, XIF, XCH, XNCH, XECHAN, XCONF, XSO
+SCALAR CUBESEQ, FRQ0, FRQ1, FRQ, INCR0, INCR
+STRING*1 STSTR
+STRING*2 LINTYP
+$                                       defaults
+tput linimage; dowinait=dowait; dowait=true
+xconf=doconfrm; doconfrm=-2
+if (outname = ' ') then; outname=inname; end
+type '****', outname '****';
+xbif=bif; xeif=eif; bchan = max(1,bchan)
+keyword='naxis3'; gethead; xechan=keyvalue(1);
+if (echan<bchan) then; echan=xechan; end
+xch = echan-bchan+1; nchav=max(1,nchav); chinc=max(1,chinc)
+xnch = floor((xechan - nchav) / chinc + 1.001)
+ststr=substr(stokes,1,1)
+if (ststr=' ') then; ststr='I'; end
+lintyp='cl'; if (niter<1) then; lintyp='im'; end
+xso = outseq; CUBESEQ = 100000
+vnum = 33 - getpopsn; vput linimage
+$                                       loop
+for xif = xbif:xeif
+$                                       uvcop
+    default uvcop; vget linimage; task='uvcop'
+    outclass='LINUVC'; outseq=0
+    bif=xif; eif=xif; flagver=-1; go
+$                                       imagr outseq
+    default imagr; vget linimage; indisk=0
+    inname=outname
+    inclass=ststr !! lintyp !! '001'; inseq=0
+    inty='ma'; nameget; if (error) then; x = 1;
+    else; x=inseq; end
+$                                       imagr
+    default imagr; vget linimage; task='imagr'
+    inname=outname; inclass='LINUVC'; inseq=0;
+    indisk=outdisk; outseq=x+11; intype='uv'
+    bif=1; eif=1; bchan=1; echan=xch
+    go; zap
+$                                       flatn
+    if (nfield>1) then;
+       default flatn; vget linimage; task='flatn'
+       inclass=ststr!!lintyp!!'001'; indisk=outdisk;
+       inseq=0; intype='ma'; inname=outname;
+       nameget; nmaps=1; outclass='LINFLT'; outseq=0
+       if (fsize>0) then; imsize=fsize; end
+       go;
+       inclass = ststr !! lintyp !! '*'; alldest
+       inclass = ststr !! 'BM*'; alldest
+    else
+       default flatn; vget linimage; task='flatn'
+       inclass=ststr !! lintyp !! '001'; inseq=0
+       indisk = outdisk; inname=outname;
+       outclass='LINFLT'; outseq=0; rename;
+       intyp='ma'; inseq=0
+       inclass=ststr !! 'BM001'; zap
+       end
+    inname=outname; inclass=outclass; inseq=0;
+    indisk=outdisk; intyp='ma'; nameget;
+    cubeseq = min (cubeseq, inseq);
+    end
+$                                       test freqs
+default mcube; vget linimage; inclass='LINFLT';
+indisk=outdisk; inname=outname
+$                                       1st image
+inseq=cubeseq;  x=0; y=0;  in2seq=inseq+(xeif-xbif);
+keyw='crval3'; gethead; frq0=keyv(1); frq1=keyv(2)
+keyw='cdelt3'; gethead; incr0=keyv(1);
+for inseq=cubeseq+1:in2seq;
+   keyword='crval3'; gethead;
+   frq = (keyvalue(1)-frq0);
+   frq = frq + (keyvalue(2)-frq1)
+   frq= abs(frq/incr0);
+   frq = frq - floor(frq+0.5);
+   x = max (x, abs(frq))
+   keyw='cdelt3'; gethead; incr=keyvalue(1);
+   y=max(y,abs(incr-incr0))
+   end;
+y = y / incr0;
+print 'X = ',x
+print 'Y = ',y
+$                                       mcube
+if ((x < 0.05) & (y < 0.005)) then;
+   default mcube; vget linimage; task='mcube'
+   inname=outname;    axref=bchan;
+   inclass='LINFLT'; inseq=cubeseq; indisk=outdisk
+   in2seq=inseq+(xeif-xbif); in3seq=1; outseq=xso
+   npoints = xnch * (xeif-xbif+1)
+   if (outclass=' ') then; outclass='mcube'; end
+   go;
+$                                       fqube
+else
+   default fqube; vget linimage; task='fqube'
+   inclass='LINFLT'; inseq=cubeseq; indisk=outdisk
+   in2seq=inseq+(xeif-xbif); in3seq=1; outseq=xso
+   if (outclass=' ') then; outclass='fqube'; end
+   go; end
+$                                       clean up
+for inseq=cubeseq:in2seq; zap; end
+dowait = dowinait; tget linimage; doconfrm=xconf
+$
+return
+finish

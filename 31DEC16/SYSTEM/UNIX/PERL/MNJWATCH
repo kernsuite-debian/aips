@@ -1,0 +1,161 @@
+#!/usr/local/bin/perl
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2000-2001
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Purpose:  Periodic Monitoring of AIPS Midnight Job log file.
+# --------
+#
+#-----------------------------------------------------------------------
+require 'ctime.pl';
+require 'getopts.pl';
+&Getopts('dA:n');
+#                                       Usage: MNJWATCH [-d] [-A aroot]
+#                                       -d for debug messages
+#                                       -A for alternate AIPS_ROOT
+#                                       -n to not resolve IP addresses
+$mnjroot = "/AIPS/aipsmgr/";
+$MAXBAD = 50;
+if ($opt_A) {
+    if ( -d $opt_A ) {
+        $mnjroot = $opt_A;
+        if ($mnjroot !~ /\/$/) {
+            $mnjroot .= "/";
+        }
+    }
+}
+                                        # special hack for home users:
+                                        # dialup IP/hostname will vary.
+@isps = ( "rt66.com", "colorado.edu" );
+                                        # Logging
+$log = $mnjroot . "mnj.log";
+                                        # Configuration - log level etc.
+$config = $mnjroot . "mnj.config";
+if ( ! -f $config ) {
+                                        # default values go here
+    $loglevel = 1;
+    $enable = 1;
+    $hostnames = 0;
+    @baddies = ();
+} else {
+                                        # suck in the configuration
+    require $config;
+}
+                                        # Silly month conversion
+%mthlookup = ('Jan', 1, 'Feb', 2, 'Mar', 3, 'Apr', 4,
+              'May', 5, 'Jun', 6, 'Jul', 7, 'Aug', 8,
+              'Sep', 9, 'Oct', 10, 'Nov', 11, 'Dec', 12);
+if ( ! -f $log ) {
+    die "No log file ($log) found\nCannot summarize it!\n";
+} else {
+    open(LOG, "<$log") || die "Failed to open log file $log: $!\n";
+}
+$now = &ctime(time); chomp($now);
+$lastfile = $mnjroot . "mnjwatch.timestamp";
+if ( ! -f $lastfile ) {
+    $mtime = 0;              # Yeah, 1969.  Way cool, man.
+    if ($opt_d) {
+        printf STDERR "MNJWATCH: way cool man, it's 1969!\n";
+        printf "(no timestamp file $lastfile)\n";
+    }
+} else {
+    $mtime = (stat($lastfile))[9];
+    unlink($lastfile) or die "Cannot remove $lastfile: $!\n";
+}
+open(STAMP, ">$lastfile") or die "Cannot create $lastfile: $!\n";
+close(STAMP);
+$first = 1;
+while (<LOG>) {
+    chomp;
+    # name  month day time zone yr  host   "<-" filename result
+    ($dname, $mth, $d, $t, $z, $y, $rhost, $dum, $file, $status) =
+        split;
+    # Need to decode time, compare to original, skip if done.
+    ($h, $m, $s) = split(":", $t);
+    $datstr = sprintf("%4.4d.%2.2d.%2.2d %2.2d:%2.2d:%2.2d",
+                      $y, $mthlookup{$mth}, $d, $h, $m, $s);
+    $dat = ($y * 10000) + ($m * 100) + $d + ($h / 24.0) + ($m / 1440)
+        + ($s / 86400);
+    # compare datstr lexically to a string based on mtime, skip if <;
+    # To be done.
+    if ($first == 1) {
+        $first = 0;
+        $begindate = $datstr;
+    }
+    $rhost = lc($rhost);        # lowercase!
+    if (($rhost =~ /^[\d\.]+$/) && (!$opt_n)) {
+        ($remhost, $aliases, $type, $len, $addrs) =
+            gethostbyaddr(pack ('C4', split(/\./, $rhost)),2); # AF_INET
+        if ($remhost) {
+            $rhost = $remhost;
+        }
+    }
+  isploop:
+    foreach $isp (@isps) {
+        if ($rhost =~ /$isp/) {
+            printf STDERR
+                "MNJWATCH: $datstr: replacing $rhost with $isp\n"
+                    if ($opt_d);
+            $rhost = $isp;
+            last isploop;
+        }
+    }
+    if ($status =~ /COPIED/) {
+        if ($file =~ /(...)\/UPDATE\/(\d{2}[A-Z]{3}\d{2})\.UPD/) {
+            $ver = $1; $verdat = $2;
+            # need to encode version string
+            $datstr .= " ($ver = $verdat)";
+            $hosts{$rhost} = $datstr;
+            printf STDERR
+                "MNJWATCH: $datstr: $rhost added\n" if ($opt_d);
+        }
+    } else {
+        $tmp = sprintf "%s  %s  %s %s\n", $datstr, $rhost, $status,
+                                          $file;
+        push(@badhosts, $tmp);
+    }
+}
+printf "AIPS Midnight Job Report\n========================\n\n";
+printf "Begin date: $begindate\n  End date: $datstr\n\n";
+printf "(This report only shows *latest* job run for each host)\n\n";
+
+foreach $hh (sort {$hosts{$b} cmp $hosts{$a}} keys(%hosts)) {
+    printf "%s  %s\n", $hosts{$hh}, $hh;
+}
+$nbad = 0;
+if ($#badhosts > -1) {
+    printf "\nQuestionable activities (most recent $MAXBAD):\n\n";
+    foreach $hh (reverse sort(@badhosts)) {
+        printf $hh;
+        $nbad++;
+        last if ($nbad > $MAXBAD);
+    }
+}
+
+# Possible log entries:
+#  printf LOG ("$now: %s <- %s BADHOST\n", $remip, $arg);
+#  printf LOG "$now: %s <- %s DENIED\n", $remip, $arg;
+#  printf LOG "$now: %s <- %s COPIED\n", $remip, $arg;
+#  printf LOG "$now: %s <- %s NOT-FOUND\n", $remip, $arg;

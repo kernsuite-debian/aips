@@ -1,0 +1,105 @@
+          DEFINE UVINTP(UV,VIS,WORK,L,G,CX,M,LROW,NFREQ,CNT,SCR)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Interpolate model uv data from grid.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+          LOCAL UV1,UV2,IWORK1,IWORK2,NOSHF,NOTAP,FCNT,IFQ
+"
+"     UVINTP interpolates model visibility values from a grid,
+"     corrects the model for the phase of the z*w term and
+"     subtracts the model from the data.  Will loop over several
+"     frequency channels.  Two workd of work space are assumed
+"     in front of the visibilities.
+"   Inputs:   All P I*4
+"       UV = Base address of U,V vector
+"       VIS = Base address of visibility
+"       WORK = Base address of complex work vector length CNT
+"       L  = Length of visibility record
+"       G  = Base address of grid
+"       CX = Base address of row interpolation function
+"            interpolation fns tabulated every 1/200 cell.
+"       M = Width of interpolation fn support size,  also
+"           the number of rows kept in AP (must be odd)
+"       LROW = length of a row (V)
+"       NFREQ  =  Number of frequencies to process.
+"       CNT =  Number of visibility points.
+"       SCR =  Base address of scratch complex vector
+"              in each vis rec, inc=L
+"
+"   ONLY REALLY WORKS FOR ONE FREQUENCY (UNLESS THEY ARE VERY CLOSE)
+"
+"     Expects necessary constants in following AP locations:
+"
+"          0 = U SCALING TO CELLS
+"          1 = V SCALING TO CELLS
+"          2 = DXC = -2 * PI * delta RA (in cells)
+"          3 = DYC = -2 * PI * delta DEC (cells)
+"          4 = DZC = -2 * PI * delta Z (in radians) for 1st
+"              frequency channel.
+"          5 = Used as work space.
+"          6 = Used as work space.
+"          16...16+NFREQ-2 = Differential frequency scaling table
+"               for channels after the first one.
+"               FREQ(n) = (1+MD(16+n-1)) * FREQ(n-1) FOR n>1
+"
+         SP09 = UV
+         UV1 = SP09 + 1
+         UV2 = SP09 + 2
+         FCNT = 0
+         IWORK1 = SCR
+         IWORK2 = IWORK1+1
+         IF CNT=0 GOTO S999
+"                                       Save u,v
+         CALL CVMOV (UV, L, WORK, 2, CNT)
+"                                       Init. w. scaling.
+         CALL CVMOV (4,2,5,2,1)
+"                                       Scale u,v to cells.
+         CALL VSMUL (UV,L,0,UV,L,CNT)
+         CALL VSMUL (UV1,L,1,UV1,L,CNT)
+         GOTO B1
+"                                       Frequency looping, rescale uv
+FLOOP:      IFQ = 15 + FCNT
+            CALL VSMA (UV,L,IFQ,UV,L,UV,L,CNT)   "update u
+            CALL VSMA (UV1,L,IFQ,UV1,L,UV1,L,CNT)   "update v
+            CALL VSMA (5,1,IFQ,5,1,5,1,1)        "update w fact.
+B1:      FCNT = FCNT + 1
+"                                       Shift position (z*w term).
+            CALL VSMUL(UV2,L,5,IWORK1,L,CNT)
+            CALL VSMA (UV,L,2,IWORK1,L,IWORK1,L,CNT)
+            CALL VSMA (UV1,L,3,IWORK1,L,IWORK1,L,CNT)
+            CALL VSIN(IWORK1,L,IWORK2,L,CNT)
+            CALL VCOS(IWORK1,L,IWORK1,L,CNT)
+"                                       Grid
+         CALL APINTP(UV,VIS,IWORK1,G,CX,M,LROW,L,CNT)
+         VIS = VIS + 2
+         NFREQ = NFREQ - 1
+         IF NFREQ>0 GOTO FLOOP
+"                                       Restore u,v
+         CALL CVMOV (WORK, 2, UV, L, CNT)
+S999:    END

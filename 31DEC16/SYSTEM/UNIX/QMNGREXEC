@@ -1,0 +1,249 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Start QMNGR session with process name QMNGRx (via exec w/o fork)
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2010
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: QMNGREXEC [DEBUG[=prog][:aips]] [LOCAL]
+#
+#  Starts up an QMNGR session with process name QMNGRx, then disappear
+#  (i.e., exec without fork).  Option NOEX will set all logicals but
+#  defer execution.
+#
+#  Inputs:
+#     DEBUG  to run under the control of a debugger.  If the form used
+#            includes the debugger name, the user will not be queried
+#            for this.  If the string ":aips" is appended to the DEBUG
+#            option (with or without a debugger name), QMNGR itself will
+#            be run under the debugger; otherwise the user is queried
+#            for this option too.
+#     LOCAL  to run a local version of QMNGR (assumes QMNGR.EXE is in
+#            current working directory)
+#
+# This version accomodates a multi-host environment and should only
+# be called from the START_QMNGR script.
+#   must be executable
+#--------------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Check if AIPS_ROOT is defined
+if [ "$AIPS_ROOT" = "" ] ; then
+  echo "AIPS_ROOT not defined.  Use 'aips' or 'QMNGR' or to start aips."
+  echo "(If you did, something is wrong; contact the AIPS manager)"
+  exit 2
+fi
+#                                       Set default file creation
+#                                       mask.  000 => owner, group and
+#                                       world readable and writable.
+#                                       002 => same but no world write.
+umask 002
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "$*"
+  else
+    echo "$*\c"
+  fi
+}
+#                                       Default name of AIPS startup
+#                                       program and priority.
+ZSTARTUP="ZSTRTQ"; export ZSTARTUP
+PRIORITY="normal"; export PRIORITY
+PRIO=0; export PRIO
+#                                       Parse command line arguments.
+NOEX="";
+for i
+do
+  j=`echo $i | tr '[a-z]' '[A-Z]'`
+  case $j in
+    LOCAL)
+#                                       Use QMNGR.EXE in current dir.
+      AIPSLOCAL=`$LPWD`; export AIPSLOCAL
+      ;;
+    DEBUG*)
+#                                       Run under control of debugger.
+      case $i in
+        *=*) DBUGR=`echo $i | awk -F= '{print $2}'`; export DBUGR
+             ANSWER="NO"; export ANSWER
+             msg="Using debugger $DBUGR from command line"
+             j=`echo $j | awk -F= '{print $1}'`
+             case $DBUGR in
+               *:aips|*:AIPS) DBUGR=`echo $DBUGR | awk -F: '{print $1}'`
+                              AIPSDBUGR=$DBUGR; export AIPSDBUGR
+                              ANSWER="YES"; export ANSWER
+                              msg="$msg (with QMNGR itself too)"
+                              ;;
+             esac
+             ;;
+      esac
+      case $j in
+        *:aips|*:AIPS) ANSWER="YES"; export ANSWER
+                       AIPSDBUGR=$DBUGR; export AIPSDBUGR
+                       msg="Using debugger on QMNGR itself (cmdline)"
+                       ;;
+      esac
+      if [ "$msg" != "" ] ; then
+         echo $msg
+      fi
+      SEARCH=`echo $PATH | sed -e 's/:/ /g'`
+      found=false
+      while [ "$found" = "false" ] ; do
+	if [ "$DBUGR" = "" ] ; then
+	  ni1 'Enter name of debugger or QUIT (e.g., dbx): '
+	  read DBUGR
+	  [ DBUGR = "QUIT" ] && exit 2
+	fi
+	if [ -f $DBUGR ] ; then
+	  found=true; echo "Found debugger $DEBUGGER; good."
+          break
+	else
+#                                       Look in path for the debugger.
+	  for DIR in $SEARCH ; do
+	    if [ -f $DIR/$DBUGR ] ; then
+              echo "Found $DBUGR in $DIR; proceeding."
+	      DBUGR=$DIR/$DBUGR; found=true
+              if [ "$AIPSDBUGR" != "" ] ; then
+                 AIPSDBUGR=$DBUGR
+                 break
+              fi
+	    fi
+	  done
+	fi
+	if [ "$found" = "false" ] ; then
+	  echo "QMNGREXEC: No $DBUGR found in $SEARCH"
+	  echo "QMNGREXEC: cancelling DEBUG mode"
+	  DBUGR=""; ANSWER="NO"
+          break
+	else
+	  export DBUGR
+	fi
+      done
+#                                       Run QMNGR itself under the
+#                                       control of $DBUGR?
+      while [ "$ANSWER" = "" ] ; do
+	ni1 "Run QMNGR itself under $DBUGR (y/n): "; read ANSWER
+	case $ANSWER in
+	  Y*|y*) AIPSDBUGR=$DBUGR; export AIPSDBUGR ;;
+	  N*|n*) ;;
+	  *)     ANSWER="" ;;
+	esac
+      done
+      ;;
+    *)
+#                                       Argument not recognized.
+      echo "Usage: QMNGREXEC [DEBUG] [LOCAL]"
+      exit 1
+      ;;
+  esac
+done
+#                                       Start QMNGR unless execution
+#                                       deferred
+if [ "$NOEX" != "YES" ] ; then
+  case $AIPSDBUGR in
+
+     */*)
+#                                       Debug mode.
+        case $AIPSLOCAL in
+
+           */*)
+#                                       Local AIPS.EXE in debug mode.
+              if test -f $AIPSLOCAL/QMNGR.EXE
+              then
+                 echo "Starting up $AIPSLOCAL/QMNG.EXE"
+                 echo "under the control of debugger $DBUGR"
+                 echo "with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+              else
+                 echo "Can't find $AIPSLOCAL/QMNGR.EXE"
+                 exit 1
+              fi
+           ;;
+
+           *)
+#                                       System QMNGR.EXE in debug mode.
+              if test -f $LOAD/$ZSTARTUP.EXE
+              then
+                  echo "Starting up `echo $AIPS_VERSION | \
+                     sed -e 's/.*\///g'` QMNGR"
+                  echo "under the control of debugger $DBUGR"
+                  echo "with $PRIORITY priority"
+                  exec $LOAD/$ZSTARTUP.EXE
+              else
+                  echo "Can't find $LOAD/$ZSTARTUP.EXE"
+                  exit 1
+              fi
+           ;;
+
+        esac
+
+     ;;
+
+     *)
+#                                       Non-debug mode.
+        case $AIPSLOCAL in
+
+           */*)
+#                                       Local QMNGR.EXE in non-debug
+#                                       mode.
+              if test -f $AIPSLOCAL/QMNGR.EXE
+              then
+                 echo "Starting up $AIPSLOCAL/QMNGR.EXE" \
+                    "with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+              else
+                 echo "Can't find $AIPSLOCAL/QMNGR.EXE"
+                 exit 1
+              fi
+           ;;
+
+           *)
+#                                       System QMNGR.EXE in non-debug
+#                                       mode.
+              if test -f $LOAD/$ZSTARTUP.EXE
+              then
+                 echo "Starting up `echo $QMNGR_VERSION | \
+                    sed -e 's/.*\///g'` QMNGR with $PRIORITY priority"
+                 exec $LOAD/$ZSTARTUP.EXE
+                 exec $ZSTARTUP.EXE
+              else
+                 echo "Can't find $LOAD/$ZSTARTUP.EXE"
+                 exit 1
+              fi
+           ;;
+
+        esac
+
+     ;;
+
+  esac
+fi
+#
+
+

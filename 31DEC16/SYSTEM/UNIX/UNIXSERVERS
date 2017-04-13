@@ -1,0 +1,482 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2002, 2004-2007, 2010-2012
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: UNIXSERVERS
+#-----------------------------------------------------------------------
+# Start AIPS TV, graphics and message servers on an X workstation.
+# Derived from XASERVERS; this version assumes unix sockets and permits
+# multiple instances of the four servers per host (up to 35 instances).
+# It MUST be invoked via $AIPS_ROOT/START_TVSERVERS which is responsible for
+# defining essential AIPS environment variables (including TVDEV, etc)
+# via HOSTS.SH, TVDEVS.SH, and AIPSPATH.SH, as well as DISPLAY.
+#
+# For information on AIPStv and other resources, see XASERVERS.
+#
+# The startup/hard-links code in here requires write access to the LOAD
+# area.  This is not necessarily possible for AIPS users.  A better
+# solution would be to use a clone of ZSTRTA to set the process name and
+# fork off the task; this could then be used by TPMON as well.
+#-----------------------------------------------------------------------
+#                                       Make sure that X programs are in
+#                                       the path in case this script is
+#                                       being run via remote shell.
+#                                       If TEKSRV/MSGSRV start locally
+#                                       but not remotely, you need to
+#                                       add to the following list of
+#                                       places where X programs might be
+#                                       hiding.
+for xdir in /usr/bin/X11 \
+            /usr/X11R6/bin \
+            /usr/X11/bin \
+            /usr/X386/bin \
+            /usr/Openwin/bin \
+            /usr/openwin/bin \
+            /usr/local/bin \
+            /usr/local/bin/X11 \
+            /usr/local/X11/bin \
+            /opt/local/bin \
+            /opt/local/bin/X11 \
+            /opt/local/X11/bin \
+            /usr/local/X11R6/bin \
+            /usr/local/X11R5/bin \
+            /usr/local/X11R4/bin
+#                                      If you add to this list remember
+#                                      to end every line except the last
+#                                      with a backslash!
+do
+   [ -d $xdir ] && PATH=$PATH:$xdir    # Append to end of path so that
+                                       # the user's preferences are
+                                       # kept intact
+done
+#                                       Set defaults if necessary
+[ -z "$AIPS_TEK_EMULATOR" ] && AIPS_TEK_EMULATOR=xterm
+[ -z "$AIPS_MSG_EMULATOR" ] && AIPS_MSG_EMULATOR=xterm
+[ -z "$AIPS_TEK_EXE_FLAG" ] && AIPS_TEK_EXE_FLAG="-e"
+[ -z "$AIPS_MSG_EXE_FLAG" ] && AIPS_MSG_EXE_FLAG="-e"
+#                                       Default naming convention
+#                                       Watch out!  -title takes 1 arg!
+if [ -z "$AIPS_TEK_NAME_FLAG" -a "$AIPS_TEK_EMULATOR" = "xterm" ] ; then
+   AIPS_TEK_NAME_FLAG="-title AIPS_TEKSRV_$TVN -n TKSRV$TVN"
+   AIPS_TEK_NAME_FLAG="$AIPS_TEK_NAME_FLAG -name AIPStek"
+   if [ "$AIPS_TEK_HOLD" = "YES" ] ; then
+      AIPS_TEK_NAME_FLAG="$AIPS_TEK_NAME_FLAG -hold"
+   else
+      AIPS_TEK_NAME_FLAG="$AIPS_TEK_NAME_FLAG -iconic"
+   fi
+#                                                  debug
+fi
+if [ -z "$AIPS_MSG_NAME_FLAG" -a "$AIPS_MSG_EMULATOR" = "xterm" ] ; then
+   AIPS_MSG_NAME_FLAG="-title AIPS_MSGSRV_$TVN -n MSSRV$TVN"
+   AIPS_MSG_NAME_FLAG="$AIPS_MSG_NAME_FLAG -name AIPSmsg"
+   if [ "$AIPS_MSG_HOLD" = "YES" ] ; then
+      AIPS_MSG_NAME_FLAG="$AIPS_MSG_NAME_FLAG -hold"
+   fi
+fi
+#                                       allow quiet output
+ei5 () {
+  if [ "$AIPS_QUIET" = "" ] ; then
+    echo "UNIXSERVERS: $*"
+  fi
+}
+#                                       Use which variant of "ps"...
+#                                       (if GNU ps, this won't work)
+case $ARCH in
+   SOL*|SUL|SGI|HP*) psf="-ef";;
+   *) psf="auxww";;
+esac
+#                                       Double-check we got it right
+[ "$AIPSTMP" = "" ] && AIPSTMP=/tmp
+tfil=${AIPSTMP}/${HOST}.${LOGNAME}.DELETEME.$$
+rm -f $tfil
+ps $psf >/dev/null 2>$tfil
+if [ $? -ne 0 ] ; then
+#                                       We got the wrong one.  Switch.
+   if [ $psf = auxww ] ; then
+      psf="-ef"
+   else
+      psf="auxww"
+   fi
+   rm -f $tfil
+#                                       Try it again; it should work now
+   ps $psf >/dev/null 2>$tfil
+   if [ $? -ne 0 ] ; then
+#                                       It didn't.  Abandon ship!
+      pscmd=`type ps | head | awk '{print $NF}'`
+      ei5 "Neither 'ps -ef' nor 'ps auxww' work on $ARCH?"
+      ei5 "Check your path to make sure the right version of the 'ps'"
+      ei5 "command is being used.  One of '-ef' or 'auxww' should work."
+      if [ "$pscmd" = "" ] ; then
+         ei5 "*NO* ps command found in your path???"
+	 ei5 "PATH = $PATH"
+      else
+         ei5 "First 'ps' in your path is $pscmd"
+      fi
+      ei5 "NOT starting any servers; cannot use 'ps'."
+      exit 1
+   fi
+fi
+rm -f $tfil
+if [ "$LOAD" = "" ] ; then
+   ei5 "LOAD undefined, cannot start servers on $TVHOST"
+   exit 1
+fi
+#                                       Multiple Unix sockets allowed.
+#                                       TVDEVS.SH has already set TVN.
+#                                       -------------------------------
+#                                       Start TV servers first; if you
+#                                       are using ssh, this prevents
+#                                       problems on closing the link.
+#                                       -------------------------------
+if [ "$TVDEV" != TVDEV00 ] ; then
+   ps $psf 2>/dev/null | grep -v grep | grep TVSRV$TVN >/dev/null
+   if [ $? -eq 1 ] ; then
+      ei5 "Start TV LOCK daemon TVSRV$TVN on $TVHOST"
+      if [ ! -f $LOAD/TVSRV$TVN ] ; then
+         if [ ! -f $LOAD/TVSERV.EXE ] ; then
+            ei5 "Cannot find TVSERV.EXE in $LOAD"
+            ei5 "This is a FATAL error.  Inform the AIPS manager."
+            exit 1
+         else
+            echo "Trying to make hard link in $LOAD to TVSERV.EXE"
+            ln $LOAD/TVSERV.EXE $LOAD/TVSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln TVSERV.EXE TVSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+         fi
+      else
+#                                       See which is newer.  NOTE!
+#                                       First used if equal!
+         if [ `(cd $LOAD; NEWEST TVSRV$TVN TVSERV.EXE)` = TVSERV.EXE ]
+         then
+            ei5 "TVSERV.EXE newer than TVSRV$TVN in $LOAD"
+            ei5 "need to delete TVSRV$TVN..."
+            rm -f $LOAD/TVSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this,"
+	       ei5 "by running the command: ln TVSERV.EXE TVSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "Done.  Making hard link TVSRV$TVN for TVSERV.EXE..."
+            ln $LOAD/TVSERV.EXE $LOAD/TVSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln TVSERV.EXE TVSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "done."
+         fi
+      fi
+      if [ "$DEBUG" = YES ] ; then
+         ei5 "starting TVSRV$TVN &"
+      fi
+      ( cd $LOAD; ( cd $LOAD; ./TVSRV$TVN & ) & )
+   else
+#                                       No need to check DISPLAY; TVSERV
+#                                       does not use the X server.
+      cmd=`ps $psf 2>/dev/null | grep -v grep | grep TVSRV$TVN`
+      who=`echo $cmd | awk '{print $1}'`
+      [ "$who" = "" ] && who="(unknown)"
+      msg="TVSRV$TVN is already running on host $TVHOST, user $who"
+      ei5 $msg
+   fi
+#                                       Start XAS if necessary.
+   ps $psf 2>/dev/null | grep -v grep | grep XAS$TVN >/dev/null
+   if [ $? -eq 1 ] ; then
+      ei5 "Start XAS$TVN on $TVHOST, DISPLAY $DISPLAY"
+      if [ ! -f $LOAD/XAS$TVN ] ; then
+         if [ ! -f $LOAD/XAS ] ; then
+            ei5 "Cannot find XAS in $LOAD"
+            ei5 "This is a FATAL error.  Inform the AIPS manager."
+            exit 1
+         else
+            echo "Trying to make hard link XAS$TVN to XAS ..."
+            ln $LOAD/XAS $LOAD/XAS$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln XAS XAS$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+         fi
+      else
+#                                       See which is newer.  NOTE!
+#                                       First used if equal!
+         if [ `(cd $LOAD; NEWEST XAS$TVN XAS)` = XAS ] ; then
+            ei5 "XAS is newer than XAS$TVN in $LOAD"
+            ei5 "Need to delete XAS$TVN..."
+            rm -f $LOAD/XAS$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this"
+	       ei5 "and then run the command: ln XAS XAS$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "Done.  Making hard link XAS$TVN for XAS..."
+            ln $LOAD/XAS $LOAD/XAS$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln XAS XAS$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "done."
+         fi
+      fi
+#                                       No '#' chars in title string!
+      ( cd $LOAD; ./XAS$TVN -display $DISPLAY \
+        -t "AIPSTV - UNIX-$TVN" \
+        -n "AIPSTV-U-$TVN" & )
+   else
+#                                       Only need one here as XAS is not
+#                                       run from within an xterm.
+      cmd=`ps $psf 2>/dev/null | grep -v grep | grep XAS$TVN`
+      who=`echo $cmd | awk '{print $1}'`
+      dis=`echo $cmd | awk \
+       '{for (i=1; i<NF; i++) if ($i == "-display") print $(i+1)}'`
+      [ "$who" = "" ] && who="(unknown)"
+      [ "$dis" = "" ] && dis="(unknown)"
+      msg="XAS$TVN   is already running on host $TVHOST,"
+      msg="$msg display $dis, user $who"
+      ei5 $msg
+   fi
+fi
+#                                       Start TEKSRV
+if [ "$TKDEV" != "TKDEV00" -a "$AIPS_TEK_EMULATOR" != "none" ] ; then
+   ps $psf 2>/dev/null | grep -v grep | grep TKSRV$TVN >/dev/null
+   if [ $? -eq 1 ] ; then
+#                                       Not found so start a new one.
+      ei5 "Start graphics server TKSRV$TVN on $TVHOST, display $DISPLAY"
+      if [ ! -f $LOAD/TKSRV$TVN ] ; then
+         if [ ! -f $LOAD/TEKSRV.EXE ] ; then
+            ei5 "Cannot find TEKSRV.EXE in $LOAD"
+            ei5 "This is a FATAL error.  Inform the AIPS manager."
+            exit 1
+         else
+            echo "Trying to make hard link TKSRV$TVN to TEKSRV.EXE ..."
+            ln $LOAD/TEKSRV.EXE $LOAD/TKSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln TEKSRV.EXE TKSRV$TVN"
+ 	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+         fi
+      else
+#                                       See which is newer.  NOTE!
+#                                       First used if equal!
+         if [ `(cd $LOAD; NEWEST TKSRV$TVN TEKSRV.EXE)` = TEKSRV.EXE ]
+         then
+            ei5 "TEKSRV.EXE newer than TKSRV$TVN in $LOAD"
+            ei5 "Need to delete TKSRV$TVN..."
+            rm -f $LOAD/TKSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this,"
+	       ei5 "and run the command: ln TEKSRV.EXE TKSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "Done.  Making hard link TKSRV$TVN for TEKSRV.EXE..."
+            ln $LOAD/TEKSRV.EXE $LOAD/TKSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this"
+	       ei5 "by running the command: ln TEKSRV.EXE TKSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "done."
+         fi
+      fi
+#                                       Leave -display first!
+#                                       Detection below needs this.
+      if [ "$DEBUG" = YES ] ; then
+         ei5 "starting $AIPS_TEK_EMULATOR"
+         ei5 "on display $DISPLAY"
+         ei5 "with flags $AIPS_TEK_NAME_FLAG"
+         ei5 "and $AIPS_TEK_EXE_FLAG ./TKSRV$TVN &"
+      fi
+      case $ARCH in
+        MAC*)
+          case $SHELL in
+            *bash|*zsh|*ksh|/sh)
+              ($AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG \
+              "export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH ; $LOAD/TKSRV$TVN" &) ;;
+            *csh)
+              ($AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG \
+              "setenv DYLD_LIBRARY_PATH $DYLD_LIBRARY_PATH ; $LOAD/TKSRV$TVN" &) ;;
+            *)
+              (cd $LOAD; $AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG ./TKSRV$TVN &) ;;
+          esac ;;
+        *)
+          case $SHELL in
+            *bash|*zsh|*ksh|/sh)
+              ($AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG \
+              "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH ; $LOAD/TKSRV$TVN" &) ;;
+            *csh)
+              ($AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG \
+              "setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH ; $LOAD/TKSRV$TVN" &) ;;
+            *)
+              (cd $LOAD; $AIPS_TEK_EMULATOR -display $DISPLAY \
+              $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG ./TKSRV$TVN &) ;;
+          esac ;;
+      esac
+#                                       ' ' marks not allowed by many
+#                                       if command fails try
+#       (cd $LOAD; $AIPS_TEK_EMULATOR -display $DISPLAY \
+#         $AIPS_TEK_NAME_FLAG $AIPS_TEK_EXE_FLAG ./TKSRV$TVN &)
+   else
+#                                       Two processes will be running:
+#                                       the terminal emulator and the
+#                                       TEKSRV.EXE itself.  Other Unix-
+#                                       based TKSRVn's may be there too.
+#                                       As xterm may be set-uid root,
+#                                       need to look at both processes.
+#                                       The xterm has display info, and
+#                                       the other has the user info.
+      cmd=`ps $psf 2>/dev/null | grep -v grep | grep TKSRV$TVN | grep display`
+      cmd2=`ps $psf 2>/dev/null | grep -v grep | grep TKSRV$TVN | grep -v display`
+      who=`echo $cmd2 | head -n 1 | awk '{print $1}'`
+      dis=`echo $cmd | head -n 1 | awk \
+       '{for (i=1; i<NF; i++) if ($i == "-display") print $(i+1)}'`
+      [ "$who" = "" ] && who="(unknown)"
+      [ "$dis" = "" ] && dis="(unknown)"
+      msg="TKSRV$TVN is already running on host $TVHOST,"
+      msg="$msg display $dis, user $who"
+      ei5 $msg
+   fi
+fi
+#                                       Start MSGSRV.
+if [ "$TTDEV" != "TTDEV00" -a "$AIPS_MSG_EMULATOR" != "none" ] ; then
+   ps $psf 2>/dev/null | grep -v grep | grep MSSRV$TVN >/dev/null
+   if [ $? -eq 1 ] ; then
+      ei5 "Start message server MSSRV$TVN on $TVHOST, display $DISPLAY"
+      if [ ! -f $LOAD/MSSRV$TVN ] ; then
+         if [ ! -f $LOAD/MSGSRV.EXE ] ; then
+            ei5 "Cannot find MSGSRV.EXE in $LOAD"
+            ei5 "This is a FATAL error.  Inform the AIPS manager."
+            exit 1
+         else
+            echo "Trying to make hard link MSSRV$TVN to MSGSRV.EXE ..."
+            ln $LOAD/MSGSRV.EXE $LOAD/MSSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this by"
+	       ei5 "running the command: ln MSGSRV.EXE MSSRV$TVN"
+ 	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+         fi
+      else
+#                                       See which is newer.  NOTE!
+#                                       First used if equal!
+         if [ `(cd $LOAD; NEWEST MSSRV$TVN MSGSRV.EXE)` = MSGSRV.EXE ]
+         then
+            ei5 "MSGSRV.EXE is newer than MSSRV$TVN in $LOAD"
+            ei5 "need to delete MSSRV$TVN..."
+            rm -f $LOAD/MSSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this,"
+	       ei5 "and run the command: ln MSGSRV.EXE MSSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "done.  Make hard link to MSGSRV.EXE..."
+            ln $LOAD/MSGSRV.EXE $LOAD/MSSRV$TVN
+            if [ $? -ne 0 ] ; then
+               ei5 "FAILED.  Please ask the AIPS manager to fix this,"
+	       ei5 "and run the command: ln MSGSRV.EXE MSSRV$TVN"
+	       ei5 "in the LOAD area $LOAD.  Then try again."
+               exit 1
+            fi
+            ei5 "done."
+         fi
+      fi
+#                                       Leave -display first!
+#                                       Detection below needs this.
+      if [ "$DEBUG" = YES ] ; then
+         ei5 "starting $AIPS_MSG_EMULATOR"
+         ei5 "on display $DISPLAY"
+         ei5 "with flags $AIPS_MSG_NAME_FLAG"
+         ei5 "and $AIPS_MSG_EXE_FLAG ./MSSRV$TVN &"
+      fi
+      case $ARCH in
+        MAC*)
+          case $SHELL in
+            *bash|*zsh|*ksh|/sh)
+              ($AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG \
+              "export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH ;$LOAD/MSSRV$TVN" &) ;;
+            *csh)
+              ($AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG \
+              "setenv DYLD_LIBRARY_PATH $DYLD_LIBRARY_PATH ; $LOAD/MSSRV$TVN" &) ;;
+            *)
+              (cd $LOAD; $AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG ./MSSRV$TVN &) ;;
+          esac ;;
+        *)
+          case $SHELL in
+            *bash|*zsh|*ksh|/sh)
+              ($AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG \
+              "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH ;$LOAD/MSSRV$TVN" &) ;;
+            *csh)
+              ($AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG \
+              "setenv LD_LIBRARY_PATH $LD_LIBRARY_PATH ; $LOAD/MSSRV$TVN" &) ;;
+            *)
+              (cd $LOAD; $AIPS_MSG_EMULATOR -display $DISPLAY \
+              $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG ./MSSRV$TVN &) ;;
+          esac ;;
+      esac
+#                                       ' ' marks not allowed by many
+#                                       if command fails try
+#        (cd $LOAD; $AIPS_MSG_EMULATOR -display $DISPLAY \
+#          $AIPS_MSG_NAME_FLAG $AIPS_MSG_EXE_FLAG ./MSSRV$TVN &)
+   else
+#                                       xterm may be set-uid root, so
+#                                       need to look at both processes.
+      cmd=`ps $psf 2>/dev/null | grep -v grep | grep MSSRV$TVN | grep 'display'`
+      cmd2=`ps $psf 2>/dev/null | grep -v grep | grep MSGSRV$TVN | grep -v display`
+      who=`echo $cmd2 | awk '{print $1}'`
+      dis=`echo $cmd | \
+       awk '{for (i=1; i<NF; i++) if ($i == "-display") print $(i+1)}'`
+      [ "$who" = "" ] && who="(unknown)"
+      [ "$dis" = "" ] && dis="(unknown)"
+      msg="MSSRV$TVN is already running on host $TVHOST,"
+      msg="$msg display $dis, user $who"
+      ei5 $msg
+   fi
+fi

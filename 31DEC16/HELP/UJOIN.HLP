@@ -1,0 +1,170 @@
+; UJOIN
+;---------------------------------------------------------------
+;! modifies UV data converting IFs to spectral channels
+;# Task UV SPECTRAL
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1996, 2000, 2008
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+UJOIN     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+UJOIN     Converts IFs to additional spectral channels
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ           -1.0     9999.0   Output UV file name (seq. #)
+OUTDISK           0.0        9.0   Output UV file disk unit #.
+CHANSEL           0.0     9999.0   Begin, end input channels,
+                                   begin output channel each IF
+OPCODE                             'DIFF' to output the vis
+                                   difference in the overlap
+DOWEIGHT         -1.0        1.0   0 => delete spectrum if any
+                                   IF or channel is flagged
+                                   < -0.5 => keep data even if
+                                   one of the IFs is flagged
+                                   > 0.5 => delete channel if
+                                   one of the IFs is flagged
+----------------------------------------------------------------
+UJOIN
+Task:  This task is intended to convert two IFs into one longer
+       spectrum, averaging the overlapped channels.  It can also write a
+       difference data set to let you test how nearly equal the two
+       overlapped regions actually are.
+
+       NOTE: This task does not apply flag tables or calibration.  All
+       such must be applied before this task is run - use SPLIT,
+       FUDGE, or some other appropriate task.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  OUTNAME....Output UV file name (name).     Standard defaults.
+  OUTCLASS...Output UV file name (class).    Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).   0 => highest unique
+  OUTDISK....Disk drive # of output UV file. 0 => highest with
+             space for the file.
+  CHANSEL....3 entries each for up to 10 IFs:
+             CHANSEL(1)= 1st  input channel to use from IF 1
+             CHANSEL(2)= last input channel to use from IF 1
+             CHANSEL(3)= output channel corresponding to 1st input
+                         channel used from IF 1
+             CHANSEL(4)= 1st  input channel to use from IF 2 etc.
+  OPCODE.....'DIFF' odd # IFs added, even numbered IFs subtracted;
+             else all IFs added with weights and then divided by sum of
+             weights in each output channel.
+  DOWEIGHT...= 0 => delete any spectrum in which one or more
+             channels/IFs are flagged.  This means that weights will
+             depend on channel only because of overlap.
+             < -0.5 => weight the data by the sum of the incoming
+             weights (weight = +1 or -1 for DIFF), so that an
+             overlapped channel having one of the IFs flagged will be
+             indicated only by a lower weight.  (This is not a good
+             idea on OPCODE 'DIFF')
+             > 0.5 => delete any channel in which one or more IFs is
+             flagged.
+----------------------------------------------------------------
+UJOIN:         Task to average/concatenate IFs to form a single-IF
+               output spectrum
+Documentor:    Michael Rupen
+Related tasks: AVSPC, MCUBE, SPECR, UVGLU, VBGLU, WTSUM
+
+     One often observes with IFs tuned to slightly different but
+overlapping frequencies, to obtain a broader bandwidth or higher
+spectral resolution than possible with a single IF.  UJOIN takes such
+data and averages or concatenates the data from the IFs to create a
+single-IF output data set with a single continuous spectrum.
+
+CHANSEL:
+   You must specify explicitly the correspondence between input and
+   output channels for each IF, using CHANSEL.  Consider a 2-IF
+   experiment with 5 channels per IF, set up as follows:
+      IF 1   Channels 1 2 3 4 5
+      IF 2   Channels     1 2 3 4 5
+   We want a 7-channel output spectrum like so:
+      IF 1   Channels 1 2 3 4 5 6 7
+   For this one would set
+      CHANSEL = 1 5 1 1 5 3
+   UJOIN would produce a single-IF data set with channels 1-2 taken
+   directly from IF 1, channels 3-5 formed from the (weighted) average
+   of the corresponding channels in each IF, and channels 6-7 copied
+   directly from IF 2.
+
+   As a more realistic example, consider a 2-IF experiment with 15
+   channels per IF, where the first 3 and last 2 channels are
+   significantly degraded by a roll-off in the bandpass.  Suppose the
+   IFs overlap by 7 channels. In this case we have
+  IF 1   Channels                 1  2  3  4  5  6  7 8 9 10 11 12 13 14 15
+  IF 2   Channels 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+   and we want to toss channels 1-3 of IF 1 and 14-15 of IF 2.  In this
+   case we would set
+      CHANSEL = 4 15 12 1 13 1
+
+OPCODE
+   By default, UJOIN takes the weighted sum of the input IFs on a
+   channel-by-channel basis.  With OPCODE='DIFF' the odd IFs are
+   summed and the even IFs are subtracted; if there are an even number
+   of IFs the resulting spectrum should be zero (apart from noise) on
+   each baseline in the overlap region.  This provides a useful check
+   on the consistency of the input IFs.  The actual data weights
+   (other than flagging) are ignored in DIFF mode.
+
+DOWEIGHT
+   A slight complication results if the uv-coverage of the IFs is
+   different, as it usually is: what should be done if a given
+   baseline has no data for one channel or one IF?  UJOIN offers three
+   options, specified by DOWEIGHT:
+   DOWEIGHT = 0   flag a baseline/Stokes in EVERY channel, if that
+      baseline/Stokes is flagged in *any* of the channels of *any* IF.
+      This insures that the uv-coverage is identical in every channel
+      -- an excellent idea for delicate spectral line work, to avoid
+      interpreting a change in the beam as a change in the line
+      emission.
+   DOWEIGHT <= -0.5   weight the data by the sum of the incoming
+      weights.  In this case a baseline in an overlapped channel which
+      is flagged in one IF will wind up with a lower weight, but will
+      still appear in the output data set.
+   DOWEIGHT >= 0,5   flag a baseline in a given channel if that
+      baseline/channel pair is flagged in *any* input IF.
+
+
+Comments and Suggestions
+   UJOIN should usually be run after amplitude, phase, and bandpass
+   calibration, and before continuum subtration.  Care should be taken
+   with the bandpass calibration in particular to ensure that the
+   spectrum produced by UJOIN doesn't create false emission/absorption
+   -- one useful check is to run UJOIN on your phase calibrator, and
+   confirm (with POSSM) that the resulting spectrum is indeed flat, or
+   at least linear, with frequency.
+
+   Unless you are very confident that you know what you're doing, set
+   DOWEIGHT=0 to insure that the uv-coverage of the UJOIN'd file is
+   the same in every channel.  See van Gorkom and Ekers 1994 (lecture
+   18 of _Synthesis Imaging in Radio Astronomy_, ASP Conference Series
+   vol. 6, eds. Perley, Schwab, & Bridle) for an expanation and
+   examples of the subtle errors that might otherwise result.
+----------------------------------------------------------------

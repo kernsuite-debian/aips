@@ -1,0 +1,717 @@
+; CALIBRAT
+;---------------------------------------------------------------
+;! describes the process of data calibration in AIPS
+;# INFORMATION CALIBRATION
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1997, 2002
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+CALIBRAT  LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+----------------------------------------------------------------
+For a list of adverbs, verbs, and tasks in AIPS related to the
+calibration of interferometric data, enter
+                ABOUT CALIBRAT
+To learn about the process of calibration, read on.
+
+
+          The AIPS Calibration and Editing System
+
+    The AIPS calibration and editing system works mainly with
+multi-source, time ordered, indexed "raw" uv data files and
+the associated tables that describe the data and also contain
+calibration and editing information.  When the user is
+satisfied with the calibration and editing (or is simply
+exhausted) task SPLIT is used to apply the calibration and
+editing tables and to write single-source uv files for the
+imaging and deconvolution routines.
+     The more important tables used are summarized below:
+
+Code   Name                       Use
+==== ===========  ==============================================
+ AN  Antenna      Keep subarray geometric information, time info
+                  polarization, etc.
+ BL  Baseline     Contains baseline dependent "Correlator"
+                  corrections.
+ BP  Bandpass     Contains the bandpass correction tables.
+ CL  Calibration  Contains calibration information and the model
+                  values which has been applied to the data.
+ CH  IF           Contains frequency offsets for "IF"s.
+ FG  Flag         Contains flagging information.
+ NX  Index        Indexes the file for rapid access.
+ SN  Solution     Contains CALIB solutions.
+ SU  Source       Contains source specific information
+
+     The general utility routines for managing AIPS tables
+include TACOP, TABED, TAMRG, PRTAB, TAPLT, TAFLG and SETJY.
+     All of these tables can be written to FITS files, and thus
+may be archived.
+
+              Multi-source UV data files
+
+     Many operations needed for calibrating and editing data are
+simplified if the data for all of the sources involved are
+contained in the same file.  For this reason, AIPS allows
+"multi-source" uv data files.  These files differ from single-
+source files by the inclusion of a SOURCE random parameter
+(visible via IMHEAD) and by the presence of Source (SU),
+Calibration (CL) and Index (NX) tables.  Note that a file in
+"multi-source" format may contain the data for only one source.
+     Most AIPS tasks will process uv data files in either multi-
+or single-source format. The details of the operation may depend
+on the format of the input file.  Most of the single-source
+routines will process multi-source data but will not distinguish
+between sources. Since multi-source files must be in time order,
+some sort-order-sensitive tasks (e.g. UVMAP, MX) will refuse to
+process multi-source data.  This is usually desirable as they
+cannot distinguish between sources !  A few multi-source tasks,
+especially APCAL and CLCOR, must have a multi-source input file.
+
+     There are several ways to obtain a multi-source uv data
+file:
+
+- Read a multi-source FITS file with UVLOD.
+- Read a VLA Modcomp tape with FILLR or FILLM.
+- Read an NRAO/SAO format file(s) with VLBIN followed by
+  (possibly DBCON, UVSRT, UVAVG, TAMRG and) INDXR.
+- Convert one or more single-source files to multi-source format
+  using MULTI then follow with (possibly DBCON and) INDXR.
+
+
+               General Method of Calibration
+
+     The heart of the general calibration is task CALIB, which
+will solve for antenna based amplitudes, phases, group delays
+and phase delay rates.  The model used may be one of the
+following: 1) point model specified, 2) "clean" model or
+3) point sources at the phase center with flux densities given
+by the source (SU) table.  Method 3 is the only one allowed if
+solutions for more than one calibrator are being determined
+in the same run of CALIB.  CALIB may however be run multiple
+times, once for each calibrator.  In that case, each run of
+CALIB makes a separate solution (SN) table, and the solution
+tables are merged as they are interpolated into the calibration
+(CL) table by CLCAL. If old SN tables are to be ignored, they
+should be deleted using the verb EXTDEST.
+     If CPARM(3 and/or 4) is specified then CALIB will list all
+baselines in each solution interval which disagree with the
+model by more than the specified amount.  These "closure"
+error listings are useful in the identification of bad data.
+     Data may be edited and have a previous calibration
+applied before determining the solutions.  Flux densities for
+the calibrator sources may be entered in the SU table using the
+task SETJY.
+
+     The flux densities of secondary flux calibrator sources
+may be determined from the solution tables using GETJY.  If
+CALIB has been run on both primary and secondary calibrators,
+GETJY will determine the source flux densities, put them into
+the source table and correct the amplitudes in the SN tables to
+what they would have been had the flux densities been in the
+SU table prior to running CALIB.
+
+     Solution tables may be concatenated and smoothed using
+task CLCAL.  CLCAL may also interpolate the smoothed,
+concatenated solutions to the times of a calibration (CL) table
+and either update the CL table or write a new table.  Up to
+46655 CL tables are allowed.  It is a good idea to create a new
+CL table each time, as this allows you to return to earlier
+stages of the calibration if anything goes wrong. CLCOR may be
+run several times writing to the same CL table using different
+groups of sources and calibrators.  It is strongly
+recommended that CL table 1 never be modified, as the
+calibration process can then be restarted by returning to CL
+table 1.  (CLCAL and some other tasks will actually refuse to
+modify CL table 1, for this reason).  Various combinations of
+sources and calibrators to be used may be specified in CLCAL.
+     It is the responsibility of the user to ensure that an
+appropriate set of SN tables is applied to the appropriate
+CL table at each step of calibration.  Incorrect application of
+SN tables will probably result in miscalibrated data.
+     Various corrections (such as phase jumps) or external
+calibration (e.g. weather related corrections) may entered
+directly into the CL table by tasks CLCOR, TABED, or APCAL.
+SN and CL tables may be listed using LISTR with OPTYPE='GAIN'.
+
+     A given calibration table can optionally be applied in
+many of the calibration and editing related tasks.  Calibrated
+single-source files may be generated using task SPLIT.  SPLIT
+will also perform several useful operations on single-source
+files such as applying a solution (SN) table or averaging
+spectral channels.
+
+                General Data Editing and Examination
+
+     The task LISTR will print selected portions of the data
+in several forms with calibration and editing optionally
+applied.  LISTR can also be used to display information from
+solution or calibration tables and to give a summary of the
+observations in a multi-source uv data file.
+
+     POSSM will average spectra given a set of data selection
+criteria and produce a plot file.  This plot file may then be
+displayed on any of the plot output devices.
+     UV data files may be gridded into an image using UVIMG for
+examination on the TV display.  Time-baseline displays should
+be particularly useful for spotting bad data.
+
+     Task UVFLG can be used to specify data to be ignored.  For
+single-source files, UVFLG modifies the data file but, for
+multi-source files, entries are made in the flag (FG) table.
+UVFLG may also be used to unflag data.  Multi-source data may
+be flagged/unflagged for a specified reason which makes it easy
+to undo selected sets of flags.  Most of the calibration and
+editing routines let you specify which flag table (if any) to
+apply to multi-source files.
+
+     A preliminary version of the generalized, interactive
+TV-based data editor (TVFLG) is now available.
+
+                General polarization calibration
+
+     The calibration of polarization sensitive visibility data
+involves two distinct operations: 1) determination of the
+effective feed responses and the correction of the data to
+remove the effects of imperfect feeds and 2) removal of any
+systematic phase offsets between the two systems of orthogonal
+polarization.  These two components of polarization calibration
+will be considered serarately.
+
+     The effective feed response can be parameterized in a
+number of ways; the most general is in terms of its
+polarization ellipticity and the orientation of the major axis
+of the ellipse.  Another parameterization which is adequate
+when all feeds involved are relatively good and of similar
+design is a linear approximation in which the response to a
+given polarization is assumed corrupted by a small complex gain
+times the orthogonal polarization.  Both of these methods are
+to be implemented in the task PCAL; the selection is made by
+the adverb SOLTYPE.
+     In general, the polarization of the calibrator(s) to be
+used to determine the feed parameters will not be known a
+priori and must be determined simultaneously with the feed
+parameters.  Observations of a given source over a wide range
+of parallactic angles is necessary to separate calibrator
+polarization from the feed parameters.  Task LISTR may be used
+to determine the parallactic angles at which a given source
+has been observed.  Several calibrators sources may be included.
+     Accurate calibration of data to be used to estimate the
+feed parameters is essential.  In particular, the phase
+calibration of any calibrator to be used should be determined
+from the calibrator itself (selfcalibration).
+     The values of the feed parameters determined depend on any
+systematic phase offsets between the orthogonal polarization
+systems.  If the phase offsets are time variable then they must
+be corrected before determining the feed parameters; if the
+phase offset is constant then it may be removed after
+determining the feed parameters.  In this latter case, the
+derived feed parameters must be corrected for the change in the
+phase offset.
+
+     The normal phase calibration technique treats parallel
+hand visibilities in the two orthogonal polarizations
+independently.  Thus, there will be a systematic phase
+difference between the two polarizations systems.  This
+difference may be due to differences in instrumental phase
+delay for the two systems or an effect of the propagation
+medium (Faraday rotation) or both.  Faraday rotation effects
+are particularly bothersome as they may be rapidly time
+variable and increase rapidly towards lower frequency.
+     The phase offsets at a given time may be determined from
+data from a source with a known angle of linear polarization
+which have had the effects of imperfect feeds removed.  The
+phase of the right-left correlations or the conjugate of the
+left right correlations indicates the phase difference between
+the two systems.
+
+     Polarization calibration in AIPS follows amplitude and
+phase calibration and proceeds as follows: 1) any time variable
+component of the phase difference between the right and left
+hand systems must be removed by suitable modifications of the
+appropriate CL table or direct correction of the data for
+single source files.  The CL tables may be modified using
+CLCOR.
+     2) PCAL is run to determine the polarization of a set of
+calibrators and the feed parameters.  The derived calibrator
+polarizations are placed in the Source (SU) table and the feed
+parameters are placed in the AN table.  AIPS tasks which apply
+the standard calibration (e.g. LISTR, SPLIT) can then be
+instructed to apply polarization corrections using DOPOL=true.
+     3) A constant phase difference between the right and left
+hand circular systems may be determined for each IF using a
+source of known polarization angle which has been phase
+calibrated on itself with the task 'LISTR'.  Use STOKES='POLC';
+DOPOL=TRUE; DOCAL=TRUE; GAINUSE=(appropriate CL table)
+OPTYPE='MATX'; DPARM(1)=1.  The expected RL phase is twice the
+polarization angle.
+     4) Corrections to the RL phase difference (1 per IF) may
+be made to the CL table and the feed parameters in the AN
+tables using task CLCOR.  AIPS tasks which apply
+the standard calibration (e.g. LISTR, SPLIT) can then be
+instructed to apply polarization corrections using DOPOL=true.
+
+                General bandpass calibration
+
+     The calibration of spectral line data is very similar to
+that of continuum data with the exception that the frequency
+response of the antenna gains have to be determined and
+corrected for in addition to the normal gain solutions. This
+complex bandpass response function is usually determined by
+observing a strong continuum source at the same frequency as
+the line observation.
+
+     The task BPASS is designed to take visibilty data from
+a specified calibrator(s) and determine the antenna-based
+complex bandpass functions. It does this in a manner analagous
+to self-cal in that the data are divided by a source model and
+then the antenna gains are determined as a function of
+frequency.  These are written to a BandPass (BP) table and can
+then be applied to the data by a variety of programs.
+
+     The BP tables are applied to the data by setting the adverb DOBAND
+> 0 and selecting the relevant BP table with the adverb BPVER. There are
+five modes of bandpass application. The first (DOBAND = 1) will average
+all bandpasses for each antenna within the time range requested thus
+generating a global solution for each antenna; the second mode
+(DOBAND=2) will use the antenna bandpasses nearest in time to the data
+point being calibrated; the third, and most cpu intensive, mode
+(DOBAND=3) is to interpolate in time between the antenna bandpasses and
+generate the correction from the interpolated data.  Modes 4 and 5 are
+like modes 2 and 3 (resp.) but ignore the bandpass solution weights
+which are used in modes 2 and 3.
+
+                Calibration of VLA data (continuum)
+
+     The AIPS calibration and editing facilities have a basic
+design similar to the calibration and editing system on the VLA
+Dec-10.  The general correspondences between Dec-10 tasks and
+tables and their AIPS counterparts are summarized in the
+following table:
+
+Dec-10    AIPS                Function
+======   =====   =============================================
+ANTSOL   CALIB   Determine antenna based calibration and write
+                 SN solution table.
+  "      GETJY   Determine source fluxes from SN table.
+DBCON    DBCON   Concatenate uv data files.
+FLAGER   UVFLG   Flag bad uv data.
+FILLER   FILLR   Load data from a Modcomp tape before Jan 88.
+         FILLM   Load data from a Modcomp tape after Jan 88.
+GTBCAL   CLCAL   Apply solutions from (ANTSOL/CALIB) to
+                 gain/calibration table.
+GTBCOR   CLCOR   Apply corrections to gain/calibration table.
+LISTER   LISTR   Print selected portions of a uv data file.
+PASSUM   POSSM   Average spectra in uv plane.
+POLCAL   PCAL    Determine polarization calibration parameters.
+SETJY    SETJY   Enter source info into source table.
+======   =====   ==============================================
+.CAL     SN      Table containing antenna-based solutions for
+                 interpolation into gain (calibration) table
+.GAI     CL      Table containing gain corrections to be
+                 applied to data.
+.NDX     NX      Index table for rapid access to selected
+                 portions of data.
+
+     The following procedure is recommended for calibrating VLA
+data:
+1) Load data from tape.
+
+          Data observed before January 1988:
+Read data from a VLA Modcomp tape with FILLR.  The CL table
+increment DPARM(8) should be appropriate for the configuration,
+frequency and weather at the time of observation.  Two (2)
+minutes should be appropriate for many circumstances.
+     The AC correlator data will be written as AIPS IF 1; the
+BD data will be AIPS IF 2 and will be kept in the same uv data
+file.  These may be selected by BIF and EIF in many of the
+calibration/editing tasks.
+
+          Data observed after January 1988:
+Use task PRTTP to obtain an index of the tape or tapes to be
+read.  Data may be loaded 1 band at a time using FILLM.  If the
+number of output visibilities specified (NPOINTS) is
+sufficiently large (see PRTTP listings), then data from multiple
+tapes can be written into the same AIPS file by specifying
+OUTNAME, OUTSEQ and leaving NPOINTS the same.  Tapes should be
+loaded in the correct time order.  Multiple output
+files may be written if necessary, e.g. separate files for
+"channel 0" and line data are written.  A subset of the
+spectral channels may be selected using BCHAN and ECHAN.
+     The CL table increment DPARM(8) should be appropriate for
+the configuration, frequency and weather at the time of
+observation.  Two to five minutes should be appropriate for
+many circumstances. The AC correlator data will be written as
+AIPS IF 1; the BD data will be AIPS IF 2 and will be kept in
+the same uv data file.   These may be selected by BIF and EIF
+in many of the calibration/editing tasks.
+
+2) Enter the flux density of the primary flux density
+calibrator (usually 3C286, or 3C48) in the SU table using SETJY.
+Use ZEROSP = flux,0 if only the I flux density is known. One
+run of SETJY is required for each source and each IF, despite
+what you might think from the presence of a SOURCES input, as
+ZEROSP can handle only one (I,Q,U,V) flux set at a time.
+Setting the CALCODE allows selection by this parameter later.
+   The flux densities of 3C286 and 3C48 on the scale of Baars
+et al. (1977, Astron. Astrophys. 61,99) are given in the VLA
+Calibrator Manual (Sep. 1986) as:
+
+3C286:
+Log S = 1.480 + 0.292 * Log v -0.124 * (Log v)**2
+
+3C48:
+Log S = 2.345 + 0.071 * Log v -0.138 * (Log v)**2
+
+where S = flux density in Jy and v is Frequency in MHz.  These
+values at a few selected frequencies are:
+
+Frequency (MHz)   S 3C286 (Jy)    S 3C48 (Jy)
+===============   ============    ============
+     1465            14.51           15.37
+     1680            13.55           13.76
+     4885             7.41            5.36
+    14765             3.48            1.75
+    15035             3.44            1.71
+    22485             2.53            1.09
+
+3) Use LISTR with DOCRT=FALSE to print the scan-averaged raw
+data for all primary and secondary calibrators in matrix format.
+Use OPTY='MATX', DOCALIB=FALSE, DPARM=3,1,0 (for amplitude,
+r.m.s., ampscalar averaging) or DPARM=5,1,0 (for amplitude,
+phase, ampscalar averaging). Separate runs must be made for the
+two IFs, using BIF=1 and BIF=2.
+
+4) Use UVFLG to specify any data to be flagged. Use FLAGVER=1.
+TVFLG may be used as an alternative to steps 3 & 4. One warning,
+most users should set FLAGVER to 1 in the flagging step, this
+ensures that all the flagging information is written into the
+same FG table and is not spread between several tables as can
+happen if multiple editing passes are made.
+
+5) Determine calibrator solutions using CALIB.  Remain calm!
+CALIB isn't really as bad as it looks.  Most of the inputs
+can be left at null (default) values.  Use RESTORE 0
+to set defaults, or set DOCALIB=FALSE, FLAGVER=1, SMODEL=0,
+DODELAY=FALSE, SOLINT=0, APARM=0, SOLTYPE='', SOLMODE='',
+CPARM=0, ANTWT=0 and CLR2NAME. The only parameters you must
+then specify are the input uv file (use GETNAME), CALSOUR (set
+to the names of your calibrators), UVRANGE or ANTENNAS
+(if restricting the solution for your calibrators by
+uv distance or antenna number) and REFANT (if possible, choose
+a stable antenna near the center of the array that was present
+throughout your observations).
+   Separate runs of CALIB must be made if different calibrators
+need different values of UVRANGE or ANTENNAS (usually the case)
+or if a source model other than a point model is to be used.
+Multiple calibrators may be processed in a given run of CALIB
+if the same UVRANGE and ANTENNAS is appropriate.  Each run of
+CALIB will produce a separate SN table.
+   IMPORTANT: If a run of CALIB is redone, the previous SN
+table corresponding to that run should be deleted using EXTDEST.
+LISTR with OPTYPE='GAIN' may be used to determine which
+calibrators are present in a given SN table.
+   The closure error listing option in CALIB may be useful in
+the identification of bad data.  Use CPARM(3)=5, CPARM(4)=5 to
+obtain listings of all calibrator data differing from the model
+by more than 5% in amplitude and 5 degrees of phase.  PRTMSG
+may be used to obtain a hardcopy of this information.
+   Both 3C286 and 3C48 are resolved by the VLA in some
+configurations and frequencies.  Point models for these sources
+are therefore only accurate over a limited range of baseline
+length.  The range of baseline length used can be controlled by
+the adverb UVRANGE.  If there are too few baselines to a given
+antenna, accurate solutions may not be possible; therefore, it
+is frequently necessary to limit the antennas used to the inner
+antennas on each arm.  (The antenna pad numbers which include
+the order number from the array center on each arm can be
+determined by running PRTAN).  The VLA Calibrator Manual
+suggests the following sets of UVRANGE (in kilolamda) and inner
+number of antennas.
+
+3C48:
+Band     UVRANGE   Array   No. ant. per arm   Notes
+====  ===========  =====   ================  =================
+20cm     0-35        A            7
+           "       B,C,D         All
+
+6cm      0-50        A            3
+           "       B,C,D         All
+
+2cm      0-60        A            1           Not recommended
+           "         B            3
+           "        C,D          All
+
+1.3cm    0-68        A            1           Not recommended
+           "         B            3
+           "        C,D          All
+3C286:
+Band     UVRANGE   Array   No. ant. per arm   Notes
+====  ===========  =====   ================  =================
+20cm     0-18        A            4
+           "       B,C,D         All
+        90-180       A           All         Reduce flux 6%
+
+6cm      0-25        A            1          Not recommended
+           "         B            4
+           "        C,D          All
+        150-300      A           All         Reduce flux 2%
+
+2cm      0-150       A            3
+           "       B,C,D         All
+
+1.3cm    0-180       A            2
+           "         B            7
+           "        C,D          All
+   The values of UVRANGE for each secondary calibrator may be
+determined from the VLA Calibrator manual or by using UVPLT to
+plot the amplitudes as a function of baseline length.
+
+6) Determine the flux densities of the secondary calibrators
+using GETJY.  GETJY reads the SU and SN tables to determine the
+flux densities of the secondary calibrators, enters the values
+in the SU table and corrects the SN tables.  The fitted values
+are listed on the message terminal and written to the message
+file.
+   To run GETJY set INNAME etc. using GETNAME, SOURCES='list of
+secondary calibrators', CALSOUR='primary flux density
+calibrator(s)', QUAL=-1, CALCODE='', TIMERANGE=0, SUBARRAY=0
+and ANTENNAS=0.
+
+7) Apply SN table(s) from CALIB to CL table 1 writing CL table
+2 using CLCAL.  Use SOURCES=(list of program source names),
+CALSOUR=(list of phase calibrators), OPCODE='CALI', GAINVER=1,
+GAINUSE=2, REFANT=reference antenna desired.  If there are
+several groups of sources and calibrators, each group should be
+processed in a separate run of CLCAL, all writing to CL table 2.
+If all calibrators are to be used and the calibrator codes are
+given in the SU table set CALSOUR='', CALCODE='*'.
+
+8) Examine calibrated data using LISTR. Use as in 3) above but
+use DOCALIB=TRUE, GAINUSE=2.  Alternately, UVIMG can be used to
+grid the uv data into a form that it can be displayed on a
+television device.  Use UVFLG to flag data if necessary.
+   Also, TVFLG may be used to interactively edit the data set.
+
+9) Use SPLIT to calibrate and edit the data into single-source
+uv data files.  Use SOURCE='' (or specify sources
+individually), STOKES='',DOCAL=TRUE, GAINUSE=2, APARM=0.
+AC and BD data may be separated, if desired, using BIF and EIF.
+
+
+                Polarization Calibration of VLA data
+
+     Polarization calibration may be performed on amplitude and
+phase calibrated VLA data using the following procedure:
+
+1) Run PCAL on one or more phase calibrator sources observed
+with a wide range of parallactic angles.  Set INNAME etc. to
+the input multisource file, CALSOUR=list of calibrators to use,
+TIMERANG=0, ANTENNAS=0, UVRANGE=(appropriate range),
+DOCALIB=TRUE, GAINUSE=CL table to use, CLR2N (to clear IN2NAME
+etc.), PMODEL=0, SOLINT=2, SOLTYPE='APPR', PRTLEV=0,
+REFANT=reference antenna, CPARM=0.
+
+2) Use LISTR to determine to apparent RL phase angle of the
+polarization angle calibrator source (e.g. 3C286).  Use
+OPTYPE='MATX', DOPOL=TRUE, STOKES='POLC', SOURCE='(polarization
+angle calibrator)', DOCAL=TRUE, GAINUSE=(appropriate CL table,
+the source should be phase calibrated on itself only),
+UVRANGE=(appropriate range for source/frequency/array),
+ANTENNAS=(appropriate list for array/frequency), FLAGVER=1,
+DPARM=1,0.  LISTR needs to be run once per IF specifying BIF.
+The matrix averaged RL phase angle will be printed after the
+matrix of phases.  Check that none of the phases differ from
+the mean by more than a few degrees.  If any do then use UVFLG
+to edit this data and go back to step 1.  Special care will be
+needed if the average is near +/- 180 degrees as the average
+value given may not be reliable.
+
+3) Use TACOP to copy the CL table with the results of the
+amplitude and phase calibration.  (Note: this step is not
+essential but reduces the magnitude of the disaster if the
+the next step is done incorrectly.)  Set INNAME, OUTNAME etc.
+to point to the relevant file, INEXT='CL'; INVER=(result of
+amplitude and phase calibration), OUTVER=(current highest + 1).
+
+4) The RL phase offset corrections can be made using task CLCOR.
+The phase offset correction is the expected value (66 deg for
+3C286) minus the observed phase from step 2.  Set INNAME etc.
+to point to the file whose CL and AN tables are to be corrected,
+SOURCE='', STOKES='L', BIF=1, EIF=2, TIMERANG=0, ANTENNAS=0,
+SUBARRAY=1, GAINVER=(CL table just created by TACOP),
+OPCODE='POLR', BPARM=(RL phase corrections, 1 per IF in order).
+Note: if more than one CL table needs to be corrected, use the
+OPCODE='POLR' option only once; other CL tables should be
+corrected using OPCODE='PHAS' and correcting 1 IF at a time.
+Correction applied by CLCOR are cumulative; multiple runs with
+OPCODE='POLR' may result in invalid feed parameters in the AN
+table or incorrect RL phase offsets in the CL table.
+
+5) Use DOPOL=TRUE in SPLIT or LISTR to apply polarization
+corrections before copying the data to a single source file or
+listing the data.
+
+                Calibration of VLA line data
+
+     The calibration of VLA line data follows closely the recipe
+laid out in the section on VLA continuum calibration. However
+there are are number of steps which are different so below is
+listed the recipe recommended for the calibration of line data.
+
+1) Reading the data. If your data are on a VLA Modcomp tape then
+they should be read into AIPS using FILLM, as descibed in C(1)
+(C(1) means the continuum calibration description above, section
+(1)). FILLM will fill a typical line observation into two files,
+a large one containing the line data only, and a smaller file
+containing the "Channel 0" data. Most of the calibration and
+editing on performed on channel 0 and the results copied over
+to the line database.
+
+2) What if your channel 0 data are meaningless? For instance
+if you have observed a maser source which has no associated
+continuum emission. In this case you have to follow two
+steps. You should still use the channel 0 data for your
+calibrator sources to generate the appropriate calibration
+tables, but in the editing step you will have to edit the
+channel 0 continuum data, and then in a second pass edit
+the line data set with examination of the relevant channels.
+
+3) Editing. You should follow the same steps as outlined in
+the continuum section, i.e. steps C(3) - C(4), with the caveat
+mentioned above. However if all your editing has been done on
+the channel 0 case - which is the most common method, the FG
+table generated should be copied to the line file. Use TACOP
+with INNAME etc set to the channel 0 data, OUTNAME to the line
+data, INEXT = 'FG', NCOUNT = 1, INVER and OUTVER should be set
+to whatever is appropriate. The KEYVAL, KEYWORD and KEYSTRNG
+adverbs should be set to their null values.
+  There is one problem in this step which will be fixed in the
+future, it is that since the flagging was done on the channel 0
+data the channel numbers in the FG table are inappropriate for
+the line data. This can be fixed using TABED. Set INNAME etc
+to the line data, INEXT = 'FG', INVER = 1, OUTVER = 1,
+CLRONAME, BCOUNT = 0, ECOUNT = 0 to edit the whole table,
+OPTYPE = 'REPL', APARM = 6, 2, 2 to edit column 6, subscript 2
+(i.e. the last channel number), KEYVAL = 127,0 for a 127 channel
+database.
+
+4) Calibration. The basic calibration steps described in C(5) -
+C(8) should then be performed on the channel 0 data. When you
+are satisfied with your results you should copy the relevant CL
+table over to the line database. Use TACOP with INNAME etc set
+to the channel 0 data, OUTNAME to the line data, INEXT = 'CL',
+NCOUNT = 1, INVER and OUTVER should be set to whatever is
+appropriate.  The KEYVAL, KEYWORD and KEYSTRNG adverbs should
+be set to their null values.
+
+5) Bandpass correction. This should be performed on calibrated
+data; you should ensure that when CLCAL was run in the
+calibration stage that your bandpass calibrator was include in
+the list of SOURCES.  Determine antenna based bandpass response
+functions using BPASS.  SOURCES=(list of bandpass calibrators),
+BCHAN and ECHAN should be left as zero to select the full range,
+or can be set if for some reason you only wish to determine the
+bandpasses over a small channel range.  DOCALIB = 1, GAINUSE =
+whichever appropriate, FLAGVER = 1, SOLINT = 0, REFANT=reference
+antenna desired, BPVER = 1.  All other adverbs should be at
+their default values.
+   BPASS can be used to do more than this simple-minded bandpass
+determination, see the HELP/EXPLAIN file for details.
+
+6) Use SPLIT to apply the gain and bandpass calibration and edit
+the data into the single-source files necessary for the imaging
+tasks. Use SOURCE=(line sources), DOCALIB=1, GAINUSE=whatever,
+DOBAND=1, BPVER=1, FLAGVER=1, APARM=0.
+   If you wish to average subsets of the spectrum into a pseudo-
+continuum file you can select the channels using BPARM and
+setting APARM=1,0.
+
+
+                Calibration of VLBI data (continuum)
+
+     The details of calibration of VLBI data depend strongly on
+the type of data, sources and calibrators (if any) used and
+personal preference.  The following will suggest a number of
+steps which may be needed:
+
+1) Reading the data into an AIPS multi-source file.  If the
+data are in the NRAO/SAO format, AIPS task VLBIN will read them
+directly into a multi-source file.  FITS multi-source files may
+be read directly by UVLOD.  For other sources of data, task
+MULTI followed by INDXR may be used to convert single-source to
+multi-source files.
+
+2) Consolidating the data.  If the data for a given experiment
+are contained in several files, they may be concatenated using
+DBCON.
+   If the data contain multiple correlations of the same data
+then UVSRT and UVAVG can be used to get rid of the redundant
+data.  The combined CL table can be compressed using TAMRG.
+For TAMRG use INEXT='CL',INVER=1, OUTVER=1,
+APARM=4,1,4,0,1,1,1,0  BPARM=1,4  CPARM=1.157E-5,0.2
+DPARM=0.
+    (Re)index the source file using INDXR.
+
+3) Amplitude calibration.  ANTAB reads Cal Tech-like text files
+containing antenna gain and system temperature information and
+places the information in a TY and GC table.  These are then
+used by APCAL to create an SN table, which is then applied using
+CLCAL.
+
+4) Fringe fitting.  Use CALIB to determine delay and rate
+residuals.  If calibrators were observed, then solutions may be
+determined for them which can then be applied to the program
+source(s) before fringe fitting the program source.  In either
+case, use DOCAL=TRUE and GAINUSE=(the appropriate CL table).
+If a CLEAN model is to be used, fill in IN2NAME etc.; otherwise
+provide values for SMODEL, or enter source flux densities in
+the SU table using SETJY.
+     Other parameters are CALSOUR=(source name or names
+to fringe fit), FLAGVER=1, DODELAY=TRUE, REFANT=desired
+reference antenna, SOLINT=(suitable solution time, 0=> scan),
+APARM=0, The values of DPARM depend strongly on the source
+being processed, and on the expected delay and rate errors.
+For program sources with calibrator source solutions applied,
+the search windows can be small (remember 0=>Nyquist range).
+The values in ANTWT depend on the prior calibration.  Use of
+APCAL before CALIB may result in data getting appropriate
+weights.
+
+5) Apply solutions to the calibration table.  The results of
+CALIB may be examined with LISTR with OPTYPE='GAIN'.  If the
+results are satisfactory then they may be applied to the CL
+table applied in CALIB.  CLCAL will optionally smooth the SN
+table and apply it to the specified CL table.  It is best to
+write a new output CL table.
+
+6) Examining/editing the data. Use LISTR with OPTYPE='MATX' or
+OPTYPE='LIST' to examine the data. Use DOCALIB=TRUE, GAINUSE=0.
+Bad data may be flagged using UVFLG.  TVFLG may also be useful.
+
+7) Calibrating and editing data into a single-source file.
+SPLIT will apply the calibration and write a single-source file.
+Note: CALIB can be used to self calibrate single-source files.
+
+----------------------------------------------------------------

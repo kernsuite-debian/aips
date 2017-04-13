@@ -1,0 +1,109 @@
+; TDEPEND
+;---------------------------------------------------------------
+;! Time-dependent imaging procedure sequence
+;# procedure AP IMAGING OOP CALIBRATION INTERACTIVE TV-APPL
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2014
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+TDEPEND   LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+TDEPEND   Procedures to do time-dependent imaging
+
+          ******** see TDSTEP3 and TDSTEP5 for adverbs *********
+----------------------------------------------------------------
+TDEPEND
+Type:  Process
+ Use:  TDEPEND is a process involving some procedures which you may
+       use plus some steps which you are left to do in your favorite
+       way.  To compile the procedures, enter RUN TDEPEND, a command
+       you need enter only once.  The process consists of 3
+       preliminary steps, plus a pait of steps which may be iterated.
+       The preliminary process is:
+
+       1. Run task SPLIT on your data to create a fully calibrated and
+       editied single-source data set.  Set INNAME, INCLASS, INSEQ,
+       and INDISK to point at this output data set for inputs to the
+       later steps.
+
+       2. Prepare adverb TD_TIMES which is a list of times in days
+       indicating the time ranges to be used in breaking up your data.
+       Thus the I'th time range is from td_times(i) to td_times(i+1).
+       The procedure TD_SSCANS(i,j) will read the index table and find
+       all scans of source i.  It will make j time intervals within
+       each scan, filling the TD_TIMES adverb.  TD_SCANS(i) does the
+       same with simple breaks between scans.
+
+       3. TDSTEP3 loops over the time ranges doing:
+            a. SPLIT to make 'ISPLIT' containing all data for time
+               range (i)
+            b. IMAGR of NFIELDS+1 where NFIELDS is the number of
+               facets required to image the full area and facet
+               NFIELDS+1 is centered on the time-variable target
+               source.  BOXFILE must include all NFIELDS+1 facets and
+               should do an UNClean box on the target source wherever
+               it occurs in facets numbered <= NFIELDS and should do
+               UNClean boxes surrounding the source in facet
+               NFIELDS+1.  The latter is really only required if you
+               do auto-boxing.
+            c. UVSUB subtracts facet NFIELDS+1 from ISPLIT and appends
+               the data in a file with class 'APPEND'
+            d. It then deletes ISPLIT and all images and beams.
+
+       The iterative process includes:
+
+       4. Iterate over:
+            a. ZAP any previous images from this step
+            b. IMAGR on APPEND with NFIELDS and the UNClean box
+               surrounding the time variable source.  Use an OUTNAME
+               to differentiate the output images from those of
+               TDSTEP1 and TDSTEP3.
+            c. CALIB on APPEND with these images - always use APPEND
+               as the input data set since we need to build a total
+               correction SN table.
+            d. Flag as needed
+          Then TACOP the final net SN table to the single-source
+          input file created in step 1.  TAPPE the final FG table to
+          the previous FG table of the single-source file.
+
+       5. TDSTEP5 initially deletes the APPEND file if needed and any
+          target image files with class 'TRGT*'.  It then loops over
+          the time ranges doing:
+            a. SPLIT to make 'ISPLIT' containing all data for time
+               range (i)
+            b. UVSUB the final model produced in step 4 (and contained
+               in adverbs NMAPS and IN2NAME, IN2CLASS, etc.) to make
+               ISOURC containing only the target source visibilities
+            c. IMAGR on the target source, making NGAUSS images of a
+               single facet.
+            d. UVSUB the model found in (c) from ISPLIT and append the
+               result to APPEND, a data set containing all sources
+               except the target.
+            e. Rename the target images from ICL0nn to TRGTnn.
+            f. It then deletes IUVSUB, ISPLIT, ISOURC, and all beams.
+
+        Repeat 4 and 5 until done.  Result is 1 set of images of the
+        time independent full field, plus 1 set of target source
+        images as a function of time.
+----------------------------------------------------------------

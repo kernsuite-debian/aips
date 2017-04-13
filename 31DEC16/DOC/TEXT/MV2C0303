@@ -1,0 +1,211 @@
+@@
+The Basic IO-Control Common
+
+
+     All IO is controlled through a common called /DCHCOM/.  This
+common contains a variety of parameters which describe the local
+configuration, the local devices, etc. and contains the tables actually
+used to drive most IO operations.  The current structure of this common
+is:
+
+   NVOL    I*2      Number of disk drives available to AIPS
+   NBPS    I*2      Number of bytes per disk sector
+   NSPG    I*2      Number of disk sectors per allocation granule
+   NBTB1   I*2      Number bytes in FTAB / non-FTAB device
+   NTAB1   I*2      Max number of non-FTAB devices open at once
+   NBTB2   I*2      Number bytes in FTAB / slow IO device
+   NTAB2   I*2      Max number of slow IO devices open at once
+   NBTB3   I*2      Number bytes in FTAB / fast IO device
+   NTAB3   I*2      Max number of fast IO devices open at once
+   NTAPED  I*2      Number of tape drives available to AIPS
+   CRTMAX  I*2      Number lines / CRT terminal page
+   PRTMAX  I*2      Number lines / printer page
+   NBATQS  I*2      Number batch AIPSs in system
+   MAXXPR  I*2(2)   Number of plotter dots / page in X, Y
+   CSIZPR  I*2(2)   Number of plotter dots / character in X, Y
+   NINTRN  I*2      Maximum # simultaneous interactive AIPSs
+   KAPWRD  I*2      # words of array processor memory
+   NCHPFP  I*2      # characters / floating point
+   NWDPFP  I*2      # words / floating point
+   NWDPDP  I*2      # words / double-precision floating point
+   NBITWD  I*2      # bits / word
+   NWDLIN  I*2      # words in a POPS input line
+   NCHLIN  I*2      # characters in a POPS input line
+   NTVDEV  I*2      # television display devices available
+   NTKDEV  I*2      # graphics display devices available
+   BLANKV  I*2      Integer magic value => blanked pixel
+   XPRDMM  I*2      Printer points per milimeter
+   XTKDMM  I*2      Graphics points per milimeter
+   NTVACC  I*2      Number POPS programs allowed access to TV devices
+   NTKACC  I*2      Number POPS programs allowed access to graphics
+   DSPARE  I*2(1)   Reserved for expansion
+   DEVTAB  I*2(50)  Device type code numbers
+   FTAB    I*2(*)   IO driving tables
+
+This common is initialized by ZDCHIN.  The call to ZDCHIN should be the
+first thing each task does when it begins.
+
+     The use of some of these parameters is quite obvious.  Non-Z
+routines need to test the user-specified disk and tape volume numbers
+against those allowed (i.e. 1 - NVOL, 1 - NTAPED, resp.).  Display
+routines need to handle paging and plot scaling via CRTMAX, PRTMAX,
+MAXXPR, CSIZPR, etc.  The batch preparation routines require the reques-
+ted batch queue to be in the range 1 - NBATQS.  Array processor
+routines have an obvious use for KAPWRD.  NINTRN controls the
+availability of interactive AIPSs and the NPOPS values used by batch
+versions.  NTVACC and NTKACC control the availability of interactive
+devices to the various interactive AIPSs.  NCHPFP, NWDPFP, NWDPDP,
+and NBITWD are used to handle character strings and addressing in data
+structures, while NWDLIN and NCHLIN assist the POPS processor.
+Finally, DSPARE is there to give us a little more room to add
+parameters without changing the addresses of DEVTAB and FTAB.
+
+     The other parameters are less obvious.  We assume that actual disk
+is done one sector at a time in slow IO modes and must begin at the
+beginning of a sector and encompass an integer number of sectors in a
+fast I/O transfer.  The parameter NBPS gives the number of bytes in
+each disk sector and is used to set sizes of files, loops in slow I/O
+tarnsfers, and positioning in fast IO transfers (among other things).
+Disk space allocation is assumed to be in increments of "granules",
+where a granule is one or more sectors.  All disk space allocation and
+deallocation requests are rounded to units of granules.  NSPG gives the
+number of sectors per granule and is used to do this rounding and to
+determine the actual size of each file.  On the MODCOMP, NBPS=256 and
+NSPG=42, while on the VAX, NBPS=512 and NSPG=11 (on RP06) or 16..
+
+     DEVTAB is a table with an entry corresponding to each of the
+allowed logical unit numbers ("LUN" = 1-50).  Its contents are created
+and used basically by Z routines and, hence, is determined by the local
+hardware configuration and IO control requirements.  Our conventions
+have been:
+
+   DEVTAB(LUN) = 0   LUN is for disk file requiring IO control area in
+                     FTAB.  Multi-record IO is possible.
+   DEVTAB(LUN) = 2   LUN is for device requiring IO control area in
+                     FTAB.  Multi-record IO not allowed (e.g. tapes)
+   DEVTAB(LUN) = 4   LUN is for TV device requiring special IO routine
+                     and normal IO control area in FTAB.
+   DEVTAB(LUN) = 1   Device not requiring IO control area in FTAB.
+                     IO done by Fortran (terminals, printer/plotter).
+                     VAX does Fortran opens, Modcomp allocates these
+                     at task build time.
+   DEVTAB(LUN) = 3   Similar to 1.  Vax uses this code to defer opens
+                     from ZOPEN to ZTOPEN for text files.  Modcomp
+                     does not use this value.
+
+MINIT is one of the few non-Z routines which looks at DEVTAB.  For fast
+files ("map files" in the previous nomenclature), multi-row reads are
+allowed where buffer size permits, but only if DEVTAB(LUN) is zero.
+To allow multi-record reads on disks normally requires a different disk
+"geometry" when the file is created and opened than would be used if
+multi-sector transfers will not be performed.  This is the purpose of
+the MAP parameter for ZCREAT.  Any file created with MAP false must use
+ZFIO for IO operations and any file created with MAP true must use ZMIO
+(e.g. via MINIT and MDISK).
+
+     The IO is controlled via tables stored in FTAB.  The parameters
+NBTB1, NBTB2, and NBTB3 describe the number of bytes required per entry
+in the FTAB for three kinds of IO.  The first is for DEVTAB = 1 or 3 in
+our system and we use 1 word just to indicate that the file is open.
+The second is for devices, requiring an IO control block, that will do
+slow ("wait=mode") IO.  The third is for IO control blocks and pointer
+blocks for fast ("double-buffer, quick-return") IO.  The parameters
+NTAB1, NTAB2, and NTAB3 specify the maximum number of entries of each
+type which can be in use at one time.  These parameters are the call
+arguments to ZDCHIN, the routine which initializes /DCHCOM/.  Routines
+which use this common declare it by
+             INCLUDE 'DDCH.INC'
+             INCLUDE 'CDCH.INC'
+but the DDCH declares FTAB to have dimension 1.  Thus, main programs
+must replace the DDCH with
+             INTEGER*2 FTAB(n)
+             INCLUDE 'IDCH.INC'
+where n = (NBTB1*NTAB1 + NBTB2*NTAB2 + NBTB3*NTAB3)/2 or more.  The
+MODCOMP requires larger tables than the VAX.  Thus, all of our programs
+will come with FTAB at least large enough for the Modcomp.  Note,
+however, that this problem does, in a sense, make all main programs
+machine dependent.
+
+     FTAB is structured as NTAB1 entries of length NBTB1 followed by
+NTAB2 entries of length NBTB2 followed by NTAB3 entries of length NBTB3
+bytes.  The standard structure for each of these three types of entrie
+is :
+   FIELD  TYPE         DESCRIPTION
+
+Type 1:
+     1     I*2      Logical unit number ( 0 implies empty)
+
+Type 2:
+     1     I*2      Logical unit number ( 0 implies empty)
+     2     I*2(n)   IO control block for slow IO
+
+Type 3:
+     1     I*2      Logical unit number ( 0 implies empty)
+     2     I*2      Number of "major" rows / transfer
+     3     I*2      Number times current buffer has been accessed (<=
+                    field 2)
+     4     I*2      Number of major rows remaining to be done
+     5     I*2      Offset of first pixel in window from start of
+                    buffer
+     6     I*2      Number of pixels to increment for start next major
+                    row
+     7     I*2      Buffer number to use for IO (-1 for single buffer)
+     8     I*2(2)   Block offset in file for next operation (pseudo I*4)
+     9     I*2      Block increment in file for each operation
+    10     I*2      Number of bytes / transfer
+    11     I*2      IO op code: 1 write 2 read
+    12     I*2      Bytes per pixel
+    13     I*2      Number actual rows / major row
+    14     I*2      Counter of rows inside a major row
+    15     I*2      Number of points per row
+    16     I*2(m)   IO control block for fast IO : buffer 1
+    17     I*2(m)   IO control block for fast IO : buffer 2
+
+
+     Map files are structured to allow reads/writes to begin on disk
+sector boundaries.  If map rows are short, then there are an integer
+number of rows per sector.  If they are longer, then there are an
+integer number of sectors per row.  Each 2-dimensional plane of an 
+image begins on a sector boundary.  The term "major" row above refers
+either to a true row (if they are the longer kind) or to a sector
+containing more than one true row.
+
+
+     On the MODCOMP, the IO blocks are called UFTs and have structure:
+
+   WORD       DESCRIPTION
+     1     IO status: i.e. buffer busy, error returns, etc.
+     2     Logical file name (CAN-coded)
+     3     File format & options (Z1400 => binary, random access)
+     4     Device position index (slow), address of DPI (fast)
+     5     Actual byte count
+     6     Pointer to assign list
+     7     Extended options (Z8800 => fast IO, 32-bit DPI ; 0 => slow ;
+            Z4000 => registers for byte count, buf addr. for TV & text
+     8     Mapping info
+     9     Buffer address (except for TV and text files)
+    10     Byte count requested (except for TV and text files)
+   11-12   Device position index (I*4 for fast IO only)
+
+Words 1, 5, 6, and 8 are set by the IO system and word 3 (slow IO) or
+words 11-12 (fast IO) are set by our routines and reset by the IO
+system.  On the Modcomp, NBTB1 = 2, NBTB2 = 22, and NBTB3 = 80.
+
+     On our VAX, the IO control blocks have been structured as:
+
+  FIELD    TYPE      DESCRIPTION
+    1       I*2      IO channel number
+    2       I*2      Event flag number
+    3       I*2(4)   IO status block
+
+Fields 1 and 3 are set by the IO system.  The IO channel number is the
+value returned from the macro call to $ASSIGN or from an RMS open using
+the UFO option.  All QIO operations, and all our IO except for text
+files and terminals is done with QIO, require this number.  The event
+flag number is the number of the event flag to be used for synchroniza-
+tion of the IO on the assigned channel.  The event flags are set by our
+programs and each entry in the FTAB (types 2 and 3) has its own event
+flag number which remains fixed whether or not a file is using that
+entry.  The IO system returns four words of information in the IO
+status block.  The first of these is the IO completion status.  On the
+VAX, NBTB1=2, NBTB2=14, and NBTB3=56.

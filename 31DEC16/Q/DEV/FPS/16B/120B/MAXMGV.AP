@@ -1,0 +1,136 @@
+"****** MAXMGV = MAXIMUM MAGNITUDE ELEMENT OF A VECTOR /COMMO= REL 3.1, SEP 79
+        $TITLE MAXMGV
+        XADC   $EQU 1           "COND.ASSEMBLY PARAMETER FOR ADC/APFTN ENTRY
+        $ENTRY MAXMGV, 4
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"SCAN FOR MAX ABS. VALUE
+"               ---ABSTRACT---
+"THIS SCANS FOR THE MAXIMUM ABSOLUTE VALUE IN A VECTOR.  THE OUTPUT
+"IS THE ABSOLUTE VALUE, NOT THE ACTUAL ELEMENT.  THE FIRST INDEX
+"AT WHICH IT IS FOUND IS OUTPUTTED ONE MEMORY LOCATION AFTER THE
+"ANSWER, AND IN SP(17).
+"               ---STATISTICS---
+"LANGUAGE:      AP-120B ASSEMBLER
+"EQUIPMENT:     AP-120B WITH EITHER MEMORY
+"SIZE:          22. LOCATIONS
+"
+"     ---HISTORY---
+"ORIGINAL:  DEC 75  S. CAMLEY
+" REV 2.0:  DEC 77  R.S. NORIN    NOW ALSO STORES ADDRESS OF MAX IN SP(17)
+" REVISED:  AUG 78  L. TARVESTAD  NOW RETURNS CORRECT MAXMG ADDR WHEN I>1
+" REVISED:  APR 79  W.H.INSKEEP--INSTEAD OF RETURNING ADDRESS, NOW RETURNS
+"                       INDEX OF MAX IN SP(17) AND FLOAT(INDEX) IN MD (C+1).
+" REVISED:  AUG 79  D. DAVIS  FIXED BUG IN USE OF FIRST MEMORY FETCH
+" REVISED:  SEP 79  R.S. NORIN     EXITS PROPERLY WHEN N=0
+"
+"               ---USAGE---
+"S-PAD PARAMETERS:
+"REGISTER #  MNEMONIC   MEANING
+" 0             A       BASE ADDRESS OF VECTOR
+" 1             I       INCREMENT FOR A
+" 2             C       ADDRESS OF ANSWER
+" 3             N       # OF ELEMENTS OF VECTOR A
+"               ---SCRATCH---
+"S-PAD:         0-4,17
+"DATA PAD:      DPX(0-31.), DPY(0-31.), DPA
+"               ---ALGORITHM---
+"THIS UTILIZES AN UNUSUAL 2-CYCLE LOOP WHICH ASSUMES THAT THE OLD
+"MAXIMUM WILL REMAIN THE MAX UNTIL PROVEN OTHERWISE, BY WHICH TIME
+"DATA FOLLOWING WHAT SHOULD HAVE BEEN THE NEW MAX HAS ALREADY BEEN
+"COMPARED WITH THE OLD MAX.  AT THIS POINT, THE PROGRAM BRANCHES TO
+"TRADE, WHICH RE-INSTATES THE NEW MAX AND COMPARES THE ALREADY-COMPARED
+"DATA FOLLOWING IT.  THEN IT GOES BACK TO  THE LOOP.
+"S-PAD PARAMETERS:
+A = 0
+I = 1
+C = 2
+N = 3
+"THE FOLLOWING ARE NOT PARAMETERS:
+INDEX = 4
+NSAVE = 17
+" . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+" *** CONDITIONAL ASSEMBLY ***
+        $IF XADC=1
+        $SUBR FMXMGV,4                         "AUTO-DIRECTED-CALL ENTRY
+        $EXT RESLVE
+        BITMAP  $EQU  12
+        $PARAM  4 , P1(#2,#4)/R/IP, P2/I/IP,
+                    P3(2)/R/OP,
+                    P4/I/IP
+FMXMGV: LDSPI 17;DB=BITMAP
+        JSR RESLVE
+        $ENDIF
+" . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+MAXMGV:   MOV A,A; SETMA                  "GET FIRST ELEMENT
+        ADD I,A; SETMA                  "GET A(2)
+        MOV N,NSAVE
+        ADD I,A; SETMA;                 "GET A(3)
+          FABS MD;                        "DO /A(1)/
+          BNE .+2               "BRANCH OVER IF COUNT NOT 0
+ZDONE:  RETURN                  "RETURN WHEN N=0
+        FABS MD;                        "DO /A(2)/
+          DEC N
+        ADD I,A; SETMA;                 "GET A(4)
+          DPX<FA;                       "STORE /A(1)/ IN MAX
+          FADD
+        FABS MD;                        "DO /A(3)/
+          DPY<FA                        "STORE /A(2)/
+        ADD I,A; SETMA;                 "GET A(5)
+          FSUB DPY,DPX;                 "COMPARE /A(2)/,MAX
+          INCDPA                        "DPA=DPA+1
+        FABS MD;                        "DO /A(4)/
+          DPY<FA;                       "STORE /A(3)/
+          DPX<DPX(-1);                  "MOVE UP MAX
+          MOV N,INDEX
+        ADD I,A; SETMA;                 "GET A(6)
+          FSUB DPY,DPX;                 "COMPARE /A(3)/,MAX
+          INCDPA                        "DPA=DPA+1
+LOOP:   FABS MD;                        "DO /A(L+1)/
+          DPY<FA;                       "STORE /A(L)/
+          DPX<DPX(-1);                  "MOVE UP MAX
+          BFGT TRADE;                   "TEST IF SHOULD HAVE CHANGED MAX
+          DEC N
+        ADD I,A; SETMA;                 "GET A(L+3)
+          FSUB DPY,DPX;                 "COMPARE /A(L)/,MAX
+          INCDPA;                      "DPA=DPA+1
+          BNE LOOP                      "TEST IF DONE
+"PROGRAM REACHES HERE WHEN THROUGH WITH ALL ELEMENTS
+          BR DONE                       "GO STORE ANSWERS
+"PROGRAM BRANCHES HERE WHEN SHOULD HAVE CHANGED MAX
+TRADE:  DPX<DPY(-2)                     "PUT /A(L-2)/ IN MAX
+        FSUB DPY(-1),DPX                "COMPARE /A(L-1)/,MAX
+        FADD ZERO,FA;                   "/A(L+1)/ IN ADDER
+          MOV N,INDEX;
+          BR LOOP + 1
+"PROGRAM BRANCHES HERE TO STORE ANSWERS
+DONE:   SUB INDEX,NSAVE; DPX<SPFN       "COMPUTE INDEX,N,C
+        LDSPI N; DB=27.                 "FLOAT INDEX
+        FADD ZERO,MDPX; MOV N,N         "
+        FADD; MOV C,C;SETMA; MI<DPX(-1) "STORE MAX
+        INCMA; MI<FA; RETURN            "STORE FLOAT (INDEX)
+        $END

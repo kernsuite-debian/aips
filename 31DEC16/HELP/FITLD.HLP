@@ -1,0 +1,454 @@
+; FITLD
+;---------------------------------------------------------------
+;! Reads FITS files to load images or UV (IDI or UVFITS) data to disk
+;# Task Tape FITS
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-2003, 2007-2010, 2012-2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FITLD     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FITLD:  Task to store an image or UV data from a FITS tape
+INTAPE            0.0       9.0    Input tape drive # (0 => 1)
+NFILES        -9999.0    9999.0    # of files to advance on tape
+DATAIN                             Disk file name
+OUTNAME                            File name (name)
+OUTCLASS                           File name (class)
+OUTSEQ           -1.0    9999.0    File name (seq. #)
+                                      0 => highest unique number
+                                        => matching (on VLBA)
+                                     -1 => FITS tape value
+OUTDISK           0.0       9.0    Disk drive # (0 => any)
+OPTYPE                             Type of data to load,
+                                   '  ' => all types
+                                   'UV' => UV data
+                                   'IM' => images
+NCOUNT            0.0    9999.0    Number of files to load.
+DOTABLE          -1.0       1.0    True (1.0) means load tables
+                                   for images.
+DOUVCOMP         -1.0       1.0    >0 => compressed data (FITS)
+DOCONCAT         -1.0        1.0   >0 -> if VLBA correlator data
+                                   append data to existing
+                                   files, or if no appropriate
+                                   files exist create a new file
+                                   and append all data to that
+                                   file.
+DOKEEP           -1.0       1.0    > 0 -> keep fully flagged
+                                   data records
+NPIECE            0.0      90.0    Maximum uv table piece to
+                                   load (ignored for tape unless
+                                   NCOUNT = 1)
+ERROR            -1.0       3.0    >= 2 -> do not use AIPS
+                                   history in the FITS file
+                                   *****************************
+                                   Following adverbs are useful
+                                   only when reading VLBA IDI
+                                   distribution tapes.
+                                   *****************************
+CLINT                              CL entry interval (min)
+                                   0 => 1 minute.
+SOURCES                            Source list to accept.
+QUAL            -10.0              Source qualifier -1=>all
+TIMERANG                           Timerange selected
+BCHAN             0.0     8192.0   Lowest spectral channel
+                                   number to select in each IF.
+                                   0=>1
+ECHAN             0.0     8192.0   Highest spectral channel
+                                   number to select in each IF.
+                                   0=>highest
+BIF               0.0      100.0   Lowest IF number 0=>1
+EIF               0.0      100.0   Highest IF number 0=>all
+DIGICOR          -1.0        4.0   Controls the application of
+                                   the VLBA and DIFX correlator
+                                   digital correction.
+                                   0,1,3 => perform corrections
+                                   2,4 => perform cross-power
+                                     corrections, do total-power
+                                     only if zero padding used.
+                                   -1 => do NOT perform
+                                     corrections.
+                                   3,4 => do even if not VLBA
+                                   SEE HELP for more details
+REFDATE                            Reference date. 'yyyymmdd'
+                                      before or = the obs date
+                                      ' ' => the obs date
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz).
+                                   See HELP.
+FQTOL                              Frequency tolerance assigned
+                                   to SELFREQ, FITLD will select
+                                   data with freq. of SELFREQ
+                                   +/- FQTOL.
+                                   The unit of FQTOL is kHz.
+                                   <=0 => 10 kHz
+WTTHRESH                           Flagging threshold based on
+                                   weights. See HELP.
+                                   0 => no flagging
+                                   1 => will flag ALL data
+OPCODE                             Specify if wish to keep VT
+                                   (VLBA Tape Statistics) table
+                                   and other tables.  See HELP.
+                                   '  ' => do not save tables
+ANTNAME                            List antenna station names in
+                                   desired order (IDI data only)
+----------------------------------------------------------------
+FITLD
+Type: Task
+Use:  FITLD loads both maps and UV data from tape (or disc) to disc. It
+      will only load FITS files, if any other type of file exist on the
+      tape the task will fail, so users must skip over non-FITS files.
+      The aim of this task is to read, in one pass, a tape written by
+      FITTP or FITAB.  However a user may specify that all 'UV' files
+      are to be loaded, or all map files, or (default) all types of
+      FITS file.  If IMAGE extensions are present, they are written to
+      separate catalog entries, but all TABLES are attached to the
+      primary catalog entry.  They may only occur with a real or empty
+      image in the main FITS HDU.
+
+      FITLD reads standard images and uv data from FITS files and also
+      translates FITS-IDI files.  This last is normally written by
+      correlators rather than post-processing software and requires
+      additional adverbs not honored by the other portions of FITLD.
+
+      Until the end of July 1999, UV data sets written out with FITAB,
+      read back in with UVLOD or FITLD, processed, and then written out
+      with FITTP could contain AIPS history records which will define
+      the data set falsely to the standard reading tasks in AIPS.  If
+      you attempt to read a data set or image with FITLD (NOT a VLBA
+      correlator data set) and encounter error 4 (premature end of file)
+      or other failure, try reading the FITS data set with PRTTP with
+      ERROR set to 2.  If this works, use UVLOD for UV data and IMLOD
+      for images with ERROR=2.
+
+      FITLD (and IMLOD, UVLOD, PRTTP, TPHEAD) now understand and
+      interpret the standard world coordinate system keywords CDi_j
+      and PCi_j.  They are used if possible and problems reported.
+Adverbs:
+  INTAPE......The input tape drive #.  0 => 1.
+  NFILES......# of files to skip on tape before reading data.  For
+              example, 1 => start of next file, -1 => start of previous
+              file.  0 => no tape movement at all.  (AIPS verbs AVFILE
+              plus TPHEAD allow you to position and check the tape in
+              advance; be sure to reset NFILES to 0 for FITLD after
+              them.)
+  DATAIN......48-character name of the disk file from which to read a
+              FITS file.  It must be in the form
+                  <logical>:<file name>
+              or
+                  <node>::<logical>:<file name>
+              where <node> is the remote computer name, <logical> is the
+              environment variable (logical name) for the disk area in
+              which the file named <file name> is stored.  <node> is
+              usually omitted when the file is local to the current
+              computer.  If DATAIN is not found, the task will try
+              DATAIN with the character 1 appended.
+              Beginning 2003-Oct-16 FITLD can read more than one disk
+              file at a time.  In that case, they must all have the
+              same name except that the last letter(s) are the
+              sequence number 1 through NCOUNT with no leading zeros.
+              DATAIN must give the base name only, omitting the
+              sequence number.  Then either
+                    DATAIN = 'MYDATA:file_
+              or
+                    DATAIN = 'MYDATA:file_1
+              can access files in $MYDATA named file_1, file_2,
+              file_3, etc.  Note that this is similar to the pieces of
+              a FITS pieced UV-table data set, but only one UV-table
+              data set may be read at a time.
+  OUTNAME.....The output filename (name).  Standard behavior with
+              default = the original file name (FITS), the source name,
+              or 'NONE'.
+  OUTCLASS....The output filename (class).  Standard behavior with
+              default = the original map class (FITS) or a class of the
+              form 'STYP  ', where S = (I, Q, U, V) Stokes parameter of
+              the image and TYP = (BEM, CLN, MAP) for a beam, clean map,
+              or anything else.  Special combination images (OPTD et
+              al.) are also recognized.
+  OUTSEQ......The output filename (seq #).  0 => Find the lowest number
+              which produces a unique mapname.  -1 => use the sequence
+              number on the tape (if any - works only on tapes written
+              by FITTP).  SEE ALSO the remarks below under DOCONCAT.
+  OUTDISK.....The disk drive #.  0 => highest with space
+  OPTYPE......The type of data files to load, ' ' (default) => load uv
+              and images; 'UV' => load uv files only; 'IM' => load
+              images only.
+  NCOUNT......The number of consecutive files to load from tape or
+              disk.  0 -> 10000 for tape data, 0 -> 1 for disk FITS
+              files, but it is better to give a correct number to
+              allow the program to manage messages, file status, etc.
+              If you want to load only up to NPIECE pieces of a uv
+              table set, then NCOUNT must be 1 (or 0 if disk since
+              that defaults to 1).  Note that the multiple pieces of a
+              uv-table set are counted as 1 for the purposes of NCOUNT
+              (but not NFILES).
+  DOTABLE.....True (1.0) means load all tables. (FITS images only, all
+              tables are loaded for UV data and IDI files).
+  DOUVCOMP...If true (DOUVCOMP > 0) the output data is written in
+             compressed format which can result in a substantial
+             reduction in disk space needed.  This causes some loss of
+             spectral dynamic range and allows one bad channel value
+             to destroy all the good data; the numbers are stored as
+             integers of value -32767 to 32767.  Real differences in
+             weights between IFs, polarizations, and spectral channels
+             within a record are also lost.  Only used for FITS files
+             of the random-groups type (e.g. written by FITTP or CASA
+             exportuvfits) and those written in the IDI convention for
+             binary tables.  Binary tables such as those written by
+             FITAB have the compression selected by the compression
+             state of the table.  Not used for images.
+  DOCONCAT...If true (>0) and the input data are VLBA binary tables
+             (IDI directly from the correlator) then data are to be
+             appended to an existing file if possible.  Possible
+             output files can be selected by OUTNAME, OUTDISK and
+             OUTSEQ.  Use this option with CAUTION; it is REQUIRED (to
+             be true) if you wish to concatenate the data from
+             multiple files being read in the same execution of FITLD
+             for VLBA correlator data.  (UV table pieces from FITAB
+             are concatenated to each other even if DOCONCAT is false.)
+             If DOCONCAT is false and OUTSEQ is specified, FITLD will
+             fail at the start of file 2.  If DOCONCAT is false and
+             OUTSEQ is not specified, then FITLD will make separate disk
+             files for each tape file.  These disk files may be
+             concatenated later with DBCON, but perhaps only after
+             they have been MATCHed.  FITLD will write one or, if it
+             finds data that do not match in e.g. number of channels,
+             more output files.  If DOCONCAT is TRUE then FITLD will
+             look over all files matching the OUTNAME, OUTCLAS,
+             OUTSEQ, OUTDISK parameters to try to find one that it can
+             append data to.  If it does not it will create one based
+             on these name parameters.  That will generally fail if
+             OUTSEQ is specified.  Thus, for DOCONCAT true, set OUTSEQ=0.
+  DOKEEP.....> 0 -> keep any fully flagged vis records.  Otherwise
+             they are not copied from the input file.  They are
+             counted and reported in any case.
+  NPIECE.....Maximum piece number to read in a multi-piece uv-table FITS
+             data set.  0 => maximum in the data.  Note, if NCOUNT > 1,
+             NPIECE is set to 999 by FITLD.
+  ERROR......>= 2 => do not parse AIPS history cards found in the FITS
+             header.  Do not use this option until you have tried IMLOD
+             without it.  If you get mysterious errors (usually error 4
+             which implies premature end of file), then try IMLOD with
+             ERROR set to 2.  For a period of time, UV data sets written
+             out with FITAB, read back in, processed, and then written
+             out with FITTP could have so many AIPS history records in
+             their header as to cause IMLOD to read the data wrongly.
+             This can also occur when AIPS data are written to another
+             package and then brought back to AIPS.
+  *********************************************************************
+        The following adverbs apply only to FITS-IDI data files
+        which generally are written by VLB correlators rather than
+        post-processing software.
+  *********************************************************************
+  CLINT......IDI only: To define the interval between CL entries for
+             antennas for data from the VLBA correlator only.  This
+             defines the fundamental time-scale for calibration, 1
+             minute is a good value for most frequencies. Shorter
+             intervals may be relevant for high frequency programs.
+  SOURCES....IDI only: Source list.  List of sources to accept from
+             the VLBA distribution tape (or files).
+  QUAL.......IDI only: Only sources with a source qualifier number in
+             the SU table matching QUAL will be used if QUAL is not -1.
+  TIMERANG...IDI only: Range of UTC times to be read wrt the first day
+             number in the first file read. 0=>all.
+  BCHAN......IDI only: First spectral channel number to select from
+             each IF. 0=>1.
+  ECHAN......IDI only: Highest spectral channel number to select from
+             each IF.  0=>all higher than BCHAN.
+  BIF........IDI only: First IF to copy. 0=>1
+  EIF........IDI only: Highest IF to copy. 0=>all higher than BIF.
+             WARNING: IF selection will work differently in FITLD
+             where it is based on the input IF numbers and in later
+             tasks where it is based on IF numbers reordered by FITLD
+             to frequency order.  These two selections will be the
+             same only if the data from the correlator are in
+             increasing frequency order.
+  DIGICOR....IDI only: Data processed in digital correlators such as
+             the VLBA correlator and DiFX are affected by a variety of
+             phenomena that we collectively refer to as digital
+             effects. FITLD is able to apply the corrections needed to
+             scale the data to the values that would be returned by a
+             purely analogue correlator.  DIGICOR = -1 will turn off
+             the application of these correction, DIGICOR = 0 or 1
+             will apply them to both cross and total power, DIGICOR =
+             2 will apply the corrections to cross-power and only to
+             total power if zero-padding was used in the correlator.
+             The latter case is designed to deal with a situation in
+             which the total-power spectrum is dominated by multiple,
+             strong spectral lines.  In that case, if zero-padding was
+             not used, the reconstructed total-power spectrum, after
+             an FFT, is inaccurate at some level. In all continuum
+             cases DIGICOR = 1 should be the default.  In nearly all
+             line cases DIGICOR = 1 is fine. only if the Tant in the
+             line is about equal to the Tsys should DIGICOR = 2 be
+             used.  One word of caution, for data correlated prior to
+             Aug 1 1994 the correlator was incorrectly scaling the
+             data by a factor of 1.57 (i.e. PI/2) . So for that data,
+             DIGICOR can be used but a BFACTOR of 0.6369 (i.e. 1/1.57)
+             should be applied in APCAL or to the final images.
+             Unfortunately FITLD had no knowledge of the date of
+             correlation so cannot perform this correction.  The code
+             detects data from the DiFX correlator and applies a
+             different (1.0) saturation correction in that case.
+             Actually, 1.0 is used for all but the VLBA (array=VLBA
+             and correlat ' ' or 'VLBA'),
+             ****  FITLD will do corrections for arrays other than
+             ****  VLBA only if DIGICOR is set to 3 or 4.
+  REFDATE....IDI only: Reference date 'yyyymmdd' ('dd/mm/yy' accepted
+             but deprecated),  ' ' => first found
+             Better get it right - a date after the reference date in
+             the data will cause the data to fail to load.
+  SELBAND....IDI only: Bandwidth of data to be selected. If more than
+             one IF is present SELBAND is the width of the lowest
+             frequency IF required.  Units = kHz, 0=> all
+  SELFREQ....IDI only: Frequency of data to be selected. If more than
+             one IF is present SELFREQ is the frequency of the lowest
+             frequency IF required. FITLD will sort the IF channels
+             into increasing frequency order as the data are read from
+             the tape so all selection will be performed on the
+             frequency and bandwidth values of the output IF 1.
+             Units = MHz, 0=> all
+  FQTOL......IDI only: The frequency tolerance used in selecting data
+             using SELFREQ. Data whose output IF 1 frequency lies in
+             the range SELFREQ +/- FQTOL will be read.  Units = kHz,
+             =< 0 => 10kHz
+  WTTHRESH...IDI only: Weight based flagging threshold. If WTTHRESH
+             > 0 the weights for each visibility are examined.  If
+             weights for all IFs are =< WTTHRESH the visibility record
+             is flagged. The flagging is permanent, i.e. the record is
+             not copied to the output file.
+             If a weight of some IFs (not all) =< WTTHRESH such
+             visibilities are recorded, but the weight of these IFs is
+             put to zero (flagged).  Input weights lie between 0 and
+             1. If you wish to apply weight based flagging a suggested
+             value for WTTHRESH is 0.8. A value of 0 switches off the
+             flagging.
+  OPCODE.....IDI only: By default, the input tables that are
+             translated into AIPS tables are all removed and the large
+             VT (VLBA Tape Statistics) table is neither translated nor
+             saved.  If you wish to keep the former and/or latter enter:
+             'VT'   => Keep VT tables, not the rest
+             'ALL'  => Drop VT tables, keep rest
+             'VALL' => Keep VT and other tables
+  ANTNAME....With FITS-IDI files, the antennas acquire antenna numbers
+             in the order in which they are encountered in reading
+             the input files.  To select a specific order (to force
+             the same antenna numbers with different data sets), you
+             may specify the antenna/station names in the desired
+             order.  The special string VLBA is converted to 10 names
+             'BR', 'FD', 'HN', 'KP', 'LA', 'MK', 'NL', 'OV', 'PT',
+             and 'SC'.  Any antenna not in the list will be added to
+             the end of the list as it is encountered.
+----------------------------------------------------------------
+FITLD: Task to load FITS format data
+Documentor: Chris Flatters
+Related Programs: FITTP, FITAB, IMLOD, UVLOD, TAMRG
+
+           -----------------------------------------
+
+Disk file reading: DATAIN
+
+To read multiple disk files in one pass of FITLD, the file names must
+all be predictable from the user supplied value of DATAIN.  This
+requirement has led to the requirement that they be named with a
+consecutive postfix number beginning with 1.  It may seem onerous to
+have to do this, so we suggest using link files.  Thus 4 disk files of
+consecutive VLBA correlator data may be linked to a simple name in the
+local directory ($MYWORK) by
+
+primate<142>$ ln -s /home/euro/aipsdvlp/WB/AO-0/32400001.FITS Lorant_1
+primate<143>$ ln -s /home/euro/aipsdvlp/WB/AO-0/32410001.FITS Lorant_2
+primate<144>$ ln -s /home/euro/aipsdvlp/WB/AO-0/32420001.FITS Lorant_3
+primate<145>$ ln -s /home/euro/aipsdvlp/WB/AO-0/32430001.FITS Lorant_4
+
+Then, inside AIPS, one sets
+      NCOUNT = 4; DATAIN = 'MYWORK:Lorant_
+where you should note (a) DATAIN= is the last command on the line and
+is typed with no close quote so that the case is preserved, (b) the
+number 1 may be left off the name (FITLD will append it), and (c) the
+environment vaiable $MYWORK must be known before AIPS is started and
+is typed with a colon following but no $.
+
+           -----------------------------------------
+
+VLBA CALIBRATION TRANSFER
+
+FITLD will load flags, gain curves, system temperature data, and
+pulse-cal data from VLBA format FITS files. These data will be
+loaded into version 1 of the FG, GC, TY, and PC tables
+respectively.
+
+If several input files are concatenated into one AIPS file then
+the FG, GC, TY, and PC tables will contain the calibration data
+from all of the inputs files that were concatenated. This may
+lead these tables containing duplicated records.
+
+I recommend that you remove all of the duplicate records in the
+GC, TY, and PC tables after you have loaded all of the data for
+a given experiment using the procedure MERGECAL (see HELP
+MERGECAL).
+
+KNOWN DEFICIENCIES WITH RESPECT TO INTERFEROMETRY DATA
+INTERCHANGE CONVENTIONS
+
+Reference dates.
+
+FITLD assumes that the reference date for the data loaded from
+FITS-IDI files is the first reference date encountered in any
+of the tables in the file. If the file conforms the the table
+ordering conventions in AIPS Memo 102 then this should be the
+reference date for the ARRAY_GEOMETRY table for the first
+array. This is normally the correct reference date.
+
+If any table has a reference date (RDATE) earlier than that
+chosen by FITLD or if data occur before 0h on the chosen
+reference date then AIPS may not be able to handle the data
+output by FITLD.
+
+It is also possible for problems to occur if the first table
+in the file that has an RDATE keyword is not an ARRAY_GEOMETRY
+table and the value of that keyword differs from the RDATE of
+of the first ARRAY_GEOMETRY table since the reference date
+will not then be the same as the reference date for subarray
+1 as is assumed in some parts of AIPS.
+
+This adverb has been removed and made always true.  It is turned off
+for correlators other than the VLBA.
+  DELCORR....This parameter determines whether the second order
+             amplitude corrections caused by delay decorrelation
+             in the VLBA correlator can be applied after fringe
+             fitting or not. These corrections are necessary for
+             obtaining extremely high dynamic range images. If
+             they are not applied excellent images can still be
+             obtained. The corrections are applied when a CQ
+             table is attached to the data, the CQ table
+             contains information required to perform the
+             correction - see AIPS Memo 90 by Athol Kemball for
+             more details. Under some circumstances (e.g.
+             spectral averaging in the correlator on data that
+             contains narrow spectral lines) the assumptions
+             under which the 2nd-order corrections can be
+             applied are false. In that case the CQ table should
+             not be generated.
+             DELCORR = -1 => do not generate CQ table
+             DELCORR >= 0 => generate CQ table.

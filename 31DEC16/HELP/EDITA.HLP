@@ -1,0 +1,503 @@
+; EDITA
+;---------------------------------------------------------------
+;! Interactive TV task to edit uv data based on TY/SY/SN/CL tables
+;# TASK UV CALIBRATION EDITING TV-APPL INTERACTIVE OOP AP
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1996-2000, 2004, 2006-2008, 2010, 2012, 2014-2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+EDITA     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+EDITA: uv-data editor based on system gains or temperatures
+INNAME                             Input UV data (name)
+INCLASS                            Input UV data (class)
+INSEQ                              Input UV data (seq. #)
+INDISK                             Input UV data disk drive #
+INEXT                              Input table type:
+                                      (TY, SY, SN, CL)
+INVERS                             Input table file version no.
+DODELAY          -1.0       2.0    > 0 -> use delays/rates too
+                                   = 2 => edit MB delay only
+FREQID           -1.0              Frequency ID; 0 => 1
+SUBARRAY          0.0              Subarray number 0 => 1.
+FLAGVER                            Flag table version
+OUTFGVER          0.0              Output FG table version
+TIMERANG                           Time range to include
+BIF                                First IF to include
+EIF                                Last IF to include
+ANTENNAS                           Antennas to include/exclude
+SOLINT            0.0              Times within SOLINT (min) are
+                                   treated as equal.
+DETIME            0.0              Break interval (min)
+DOHIST          -10.0       1.0    Record flags in history file
+DOTWO            -1.0       1.0    True => do second observable
+                                   plot of main baseline
+EXPERT           -1.0       1.0    > 0 start in expert mode
+CROWDED          -1.0       1.0    > 0 => allow plots with all
+                                   polarizations and IFs
+DO3COL           -1.0       2.0    > 0 => do CROWDED with
+                                   multiple colors; =2 always
+REASON                             Initial reason string
+ANTUSE            0.0      90.0    Initial displayed antennas
+BADDISK          -1.0      1000.0  Disks to avoid for scratch.
+----------------------------------------------------------------
+EDITA
+Type:  Task
+Use:   To edit uv data by examining system temperature, SysPower, or
+       gain solution table data interactively.  The chosen observable,
+       i.e,. system temperatures or the differences between the
+       current system temperatures and a running mean from TY tables,
+       power differences, power sums, power ratios (=Tsys) or
+       differences of these from a running mean from SY tables, or
+       antenna gain amplitudes, phases, delays, and rates from SN or
+       CL tables, for an antenna is displayed as a function of time in
+       an edit window.  You may view the entire time range or select
+       more detailed time ranges interactively.  Optionally, under
+       control of adverb DOTWO, a second observable for the same
+       antenna may be displayed over the same time range in a window
+       above the edit window.  Data in the primary observable for 0 to
+       10 other antennas may be displayed over the same time range in
+       windows above these on the TV screen.  This display is
+       controlled interactively.  A menu-like control interface is
+       available to select the data antenna and time range to be
+       edited and to select various forms of editing.  An "expert
+       mode" allows you to enter single-letter menu selections from
+       the keyboard (xterm) while this expert mode is enabled.
+
+       EDITA creates a Flag Command file attached to the input UV data
+       file.  If one already exists - due to a prior power failure or
+       program failure - it will be used.  This is a bit dangerous and
+       should be done only if the data selection adverbs have the values
+       they had when the FC file was created.
+Adverbs:
+  INNAME.....Input UV data file (name).       Standard defaults.
+  INCLASS....Input UV data file (class).      Standard defaults.
+  INSEQ......Input UV data file (seq. #).     0 => highest.
+  INDISK.....Input UV data file disk drive #. 0 => any.
+  INEXT......Table type: TY (system temperature), SY (EVLA SysPower),
+             SN (gain solution), and CL (calibration) are supported.
+             The task will use the TANT columns of a TY table if they
+             are valid and will use the TSYS columns otherwise.  FILLM
+             writes the TANT columns with more-or-less calibrated
+             antenna temperatures for data taken after May 1996.  SY
+             tables are provide with EVLA data - at least data read
+             from the ASDM by obit (e.g. with BDF2AIPS).  The
+             CalDevice (CD) table is also used to provide the Tcals.
+  INVERS.....Input table file version number, 0 -> current highest.
+             The input file is not changed, but may be sorted.
+  DODELAY....> 0 AND <= 1.5 => use delays and rates as well as
+                      amplitudes and phases in the displays and editing
+                      process (for CL and SN)
+             > 1.5 => use multi-band delays (only) in the displays and
+                      editing process (for CL and SN)
+             <=  0 => do not display or edit upon delays and rates
+  FREQID.....Frequency ID to edit.  0 => 1.
+  SUBARRAY...Subarray number to edit.  0 => 1.
+  FLAGVER....specifies the version of the flagging table to be applied
+             to the data on input.     0 -> highest, -1 -> none.
+             If the specified input flag table already exists, it is
+             applied to the table data after they are read but before
+             they are displayed.  Any points flagged thereby will not be
+             displayed.  At the end, the flags are written into a flag
+             table for both single-source and multi-source data sets.
+  OUTFGVER...Flag table version to be used on output for both single-
+             and multi-source data sets.  If OUTFGVER is <= 0 or
+             greater than FGmax (the previously highest FG version
+             number), then a new FG table will be created for the new
+             flags with version FGmax+1.  This new table will also
+             contain the flags applied on input (if any) from FG
+             version FLAGVER.  If OUTFGVER specifies a pre-existing FG
+             version, then the input flags are not copied even if
+             OUTFGVER and FLAGVER are not equal.
+  TIMERANG...Time range of the data to be edited. In order:
+             Start day, hour, min. sec, end day, hour, min. sec. Days
+             are relative to the reference date.
+  BIF........The lowest numbered IF to include.   0 => 1.
+  EIF........The highest numbered IF to include. 0 =>highest.
+             Note: not all data sets will have IFs.
+  ANTENNAS...A list of antenna numbers to include.  0 => all.
+  SOLINT.....Samples within SOLINT (minutes) of the first sample in each
+             time interval will be considered part of that interval,
+             i.e., times with SOLINT of each other are treated as equal.
+             0 => 1/6000 (i.e. 0.01 sec) which is fine in most cases.
+  DETIME.....Samples more than DETIME (minutes) from the previous will
+             be considered to imply a break in the time sequence and
+             will be assigned a time interval after a gap of intervals
+             or 2 intervals if the sample is more than 2 * DETIME later.
+             < SOLINT => max (2, 5*SOLINT) minutes.  DETIME is used as
+             the initial estimate of the scan length as well - this may
+             be changed interactively.
+  DOHIST.....> 0 => record task execution and flagging info in the
+             history file (this can be a lot!).  <= 0.0 means to omit
+             the flagging info and <= -9.5 means to omit the execution
+             information as well.
+  DOTWO......> 0 (true) means to do the secondary plot of a second
+             observable (Tsys diff, amplitude, phase, etc) from the
+             primary antenna.  <= 0 means to plot only the primary
+             observable used for the editing.  True is recommended.
+  EXPERT.....> 0 => the task begins in "expert mode" in which commands
+             are entered with single characters at the keyboard rather
+             than by TV menu selection.  You can switch in and out of
+             expert mode interactively after the task begins without
+             regard for the value of EXPERT.  If the task begins in
+             EXPERT mode on CL or SN tables, it starts with the
+             amplitudes plotted from 0 to maximum, phases from -180 to
+             180, delays from -1000 to 1000 ns and rates from -1000 to
+             1000 mHz.  With all tables in EXPERT mode, it starts with
+             the ALL IF and ALL POL flags = .NOT.CROWDED rather than
+             false.  These choices may be changed interactively.
+  CROWDED....If true (> 0), the task will be allowed to plot and edit
+             all IFs and/or all polarizations at once.  Otherwise,
+             only one polarization and one IF are plotted at a time
+             and much of the editing is based only on the values of
+             that polarization/IF.
+  DO3COL.....If CROWDED > 0 and DO3COL > 0, use 3 grey-scale image
+             planes to plot the data in colors so as to differentiate
+             between IFs and polarizations.  When one IF and
+             polarization is plotted, the graphics plane is used
+             unless DO3COL > 1.5.
+  REASON.....The initial reason for flagging recorded in the FG table.
+             ' ' => task name, date and time.  This can be changed
+             interactively.
+  ANTUSE.....Lists the antennas to appear in the initial display:
+             antenna ANTUSE(1) is the initial edit antenna and
+             ANTUSE(2) through ANTUSE(11) are the comparison antennas.
+             The default is equivalent to ANTUSE=1,2,3 (or whatever
+             are the 3 lowest numbered antennas).
+  BADDISK....This array contains the numbers of disks on which it is
+             desired that scratch files not be located.
+------------------------------------------------------------------------
+
+     EDITA is a TV graphic editor for uv data using system temperature
+(TY), EVLA SysPower (SY), gain solution (SN) and calibration (CL)
+tables.  It works with the XAS-TV display graphics (and image) planes
+to allow you to flag uv data based on values in the selected table.
+
+     EDITA attempts to read the entire table into the pseudo-AP memory
+when if starts up.  If it cannot fit all the data, it attempts to read
+just one IF at a time.  In that case, when you switch IFs, EDITA reads
+in the next IF.  EDITA will tell you as it starts whether "All data will
+reside in memory" or "Will do only one IF in memory at a time".  The
+SWITCH ALL IF option will not appear in the latter case.
+
+     There are 5 parts to EDITA's display:
+(1) A menu of operations displayed in two columns, one each at the left
+and right sides of the screen.  When the menu is displayed, move the
+cursor to the desired item and press buttons A, B, or C.  To get on-line
+help in the message window about a given option, move the cursor to the
+desired menu item and press button D.
+(2) A plot at the bottom of the screen in a bright color (usually) of
+the data which may be actively edited at present.  It is of the chosen
+type for the selected antenna, polarization(s), and IF(s) and is
+limited in time range by the current frame (which can be all or a
+portion of the total time range).  Flagged data are shown in a
+different color.  The time range of the frame may be made small to
+expand the time axis, but may also be made so large as to cause
+serious crowding of the plotted data points.  (Increase your XAS
+window width to increase the plot scale.)
+(3) A plot above the edit area plot in the same bright color of the data
+from the selected antenna, polarization(s), and IF(s).  This plot is
+in a second observable (e.g. if amplitude is in the edit plot, phase
+is often the second observable).  For TY tables the two observables
+are Tsys and the difference between Tsys and a running mean of Tsys
+(scaled by that mean so that everything is on a similar scale).  Data
+in this second area may not be used for editing but should be helpful
+in choosing which data to delete in the edit area.  Flagged data are
+shown in a different color.  This plot may be suppressed by adverb
+DOTWO.
+(4) 0-10 plots of data of the current data type, polarization(s), and
+IF(s) for a list of 0-10 other antennas are shown above the second
+plot.  They are shown for comparison using another color, while
+flagged data are shown in a different color.
+(5) Several text areas also appear including (a) the start and end times
+for the current frame's time axis, (b) the selected data type, IF, and
+polarization at the bottom of the screen, (c) the antenna shown in each
+plot at the top right of each plot, (d) the current all-IF,
+all-polarization, and all-antenna flags, (e) the y-axis tick values on
+each of the frame plots, and (f) while interactively setting time and/or
+value ranges, the time and/or value to which you are currently pointing
+and the associated source name.
+
+     You may change the size of the XAS window at any time.  EDITA will
+not allow it to become too small, but will adjust its display for all
+reasonable sizes.
+
+     The left-hand menu can contain
+-------------------
+| FLAG TIME       |  To delete one time at a time.
+| FLAG TIME RANGE |  To delete one or more time ranges.
+| FLAG BELOW      |  To delete all displayed times with data below a
+                        cutoff value.
+| FLAG ABOVE      |  To delete all displayed times with data above a
+                        cutoff value.
+| FLAG AREA       |  To delete one or more areas in the data-value -
+                        time plane.
+| FLAG POINT      |  To delete one sample at a time using both
+                        horizontal and vertical cursor position.
+| FLAG QUICKLY    |  To delete samples using only mouse clicks
+| ENTER AMPL RNG  | (SN) To select the display range for amplitude
+                        plots.  Use 0 -1 for 0 to antenna maximum and
+                        0 0 for min to max.
+| ENTER PHASE RNG | (SN) To select the display range for phase plots.
+| ENTER DELAY RNG | (SN) To select the display range for delay plots.
+| ENTER RATE RNG  | (SN) To select the display range for rate plots.
+| ENTER TSYS RNG  | (TY) To select the display range for system
+                        temperature plots.  Use 0 -1 for 0 to antenna
+                        maximum and  0 0 for min to max.
+| ENTER TDIF RNG  | (TY) To select the display range for plots of the
+                        difference between Tsys and its running average
+                        divided by the average.
+| ENTER PDIF RNG  | (SY) To select the display range for power
+                        difference plots.  Use 0 -1 for 0 to antenna
+                        maximum and  0 0 for min to max.
+| ENTER PSUM RNG  | (SY) To select the display range for power sum
+                        plots.  Use 0 -1 for 0 to antenna maximum and
+                        0 0 for min to max.
+| ENTER PGAIN RNG | (SY) To select the display range for PostGain
+                        plots.
+| ENTER TSYS RNG  | (SY) To select the display range for power sum
+                        divided by power difference time Tcal (=Tsys)
+                        plots. Use 0 -1 for 0 to antenna maximum and
+                        0 0 for min to max.
+| ENTER PD/P RNG  | (SY) To select the display range for plots of the
+                        difference between Pdif and its running average
+                        divided by the average.
+| ENTER PS/P RNG  | (SY) To select the display range for plots of the
+                        difference between Psum and its running average
+                        divided by the average.
+| ENTER PG/P RNG  | (SY) To select the display range for plots of the
+                        difference between Pgain and its running average
+                        divided by the average.
+| ENTER TS/T RNG  | (SY) To select the display range for plots of the
+                        difference between Psum/Pdif/2*Tcal (= Tsys)
+                        and its running average divided by the average.
+| SET SCAN LENGTH | (TY) To set the averaging time used to determine
+                        the running average in seconds.
+| LIST FLAGS      |  To list all flags now in the Flag Command table.
+| UNDO FLAGS      |  To undo one of the flag operations in the FC table
+| REDO FLAGS      |  To reapply all remaining flags after one or more
+                        have been undone (see note below)
+| SET REASON      |  To set the 24-character "reason" string to be put
+                        in the uv-data flag table
+| USE EXPERT MODE |  To control the task from the keyboard instead of
+                        the menu.
+| HOLD TV LOAD    |  To stop updating the TV display with every change
+                     of parameter; change several, then select
+| DO TV LOAD      |  To update the TV display now and with each change
+                     of display parameter.
+| REPLOT          |  To do the current plot over again, recomputing
+                        the differences from the running mean if
+                        appropriate.
+| EXIT            |  To exit EDITA, writing the data back to the output
+                     SN table and moving the FC table to a uv-data FG
+                     table
+| ABORT           |  To exit EDITA, deleting the output SN table and the
+                     FC table
+-------------------
+
+     The right-hand menu can contain
+-------------------
+| NEXT POL/IF     |  To switch to viewing the next correlator,
+                        switching to the other polarization and, if
+                        needed, incrementing the IF.
+| SWITCH POLARIZ  |  To switch to viewing and editing the other
+                        polarization (can cycle through all).
+| SWITCH ALL POL  |  To switch functions from applying to one
+                        polarization to applying to both polarizations
+                        or vice versa.
+| ENTER IF        |  To select which IF is viewed and edited.  (SN) This
+                        can cause the current IF to be written to disk
+                        if all IFs did not fit in memory.  0 -> all.
+| SWITCH ALL IF   |  To switch functions from applying to one IF, to
+                        applying to a range of IFs, or to applying to
+                        all IFs (in sequence).
+| SWITCH ALL TIME |  To switch FLAG ABOVE and FLAG BELOW between all
+                        times and the time range of the frame
+| SWITCH ALL SOURC|  To switch between flagging the current source and
+                        all sources.
+| SWITCH ALL ANT  |  To switch functions from applying to one antenna to
+                        applying to all antennas or vice versa.
+| ENTER ANTENNA   |  To select the antenna to be displayed at the top
+                        and in the edit area and to be edited.
+| ENTER OTHER ANT |  To select up to 10 other antennas to be displayed;
+                        enter 10 numbers, 0's are then ignored (to plot
+                        5 enter the 5 plus 5 0's)
+| NEXT ANTENNA    |  To select an antenna one higher than the currently
+                        selected antenna
+| PLOT ALL TIMES  |  To display and edit data for all times.
+| SELECT FRAME    |  To select a window into the current data
+                        interactively.
+| NEXT FRAME      |  To select the next time range window.
+| PREVIOUS FRAME  |  To select the previous time range window.
+| TV ZOOM         |  To alter the display zoom used while in the flag
+                        functions.
+| OFF ZOOM        |  To turn off any zooming.
+| SHOW TSYS       | (TY) To display and edit system temperatures
+| SHOW TSYS/<T>-1 | (TY) To display and edit the differences between
+                        system temperature and its running mean
+| SHOW PDIF       | (SY) To display and edit power differences
+                         (Pon-Poff)
+| SHOW PSUM       | (SY) To display and edit power sums (Pon+Poff)
+| SHOW PGAIN      | (SY) To display and edit power post gains (Pgain)
+| SHOW TSYS       | (SY) To display and edit Psum/Pdif/2*Tcal = Tsys
+| SHOW PDIF/<P>-1 | (SY) To display and edit the differences between
+                         power difference and its running mean
+| SHOW PSUM/<P>-1 | (SY) To display and edit the differences between
+                         power sum and its running mean
+| SHOW PGAIN/<P>-1 |(SY) To display and edit the differences between
+                        Pgain and its running mean
+| SHOW TSYS/<T>-1 | (SY) To display and edit the differences between
+                         Psum/Pdif/2*Tcal = Tsys and its running mean
+| SHOW ALSO PDIF  | (SY) To display power differences (Pon-Poff) in
+                         the secondary window.
+| SHOW ALSO PSUM  | (SY) To display power sums (Pon+Poff) in the
+                         secondary window.
+| SHOW ALSO PGAIN | (SY) To display power post gains in the secondary
+                        window.
+| SHOW ALSO TSYS  | (SY) To display Psum/Pdif/2*Tcal = Tsys in the
+                         secondary window.
+| SHOW ALSO DPDIF | (SY) To display the difference between the power
+                         difference and its running mean in the
+                         secondary window.
+| SHOW ALSO DPSUM | (SY) To display the difference between the power
+                         sum and its running mean in the secondary
+                         window.
+| SHOW ALSO DPGAIN |(SY) To display the difference between the power
+                        post gain and its running mean in the
+                        secondary window.
+| SHOW ALSO DTSYS | (SY) To display the difference between Psum/Pdif/2
+                         * Tcal = Tsys and its running mean in the
+                         secondary window.
+| SHOW AMPLITUDE  | (SN) To display and edit amplitudes.
+| SHOW PHASE      | (SN) To display and edit phases.
+| SHOW DELAY      | (SN) To display and edit delays.
+| SHOW RATE       | (SN) To display and edit rates.
+| SHOW ALSO AMPL  | (SN) To display amplitudes in the secondary window.
+| SHOW ALSO PHASE | (SN) To display phases in the secondary window.
+| SHOW ALSO DELAY | (SN) To display delayss in the secondary window.
+| SHOW ALSO RATE  | (SN) To display rates in the secondary window.
+-------------------
+
+     The menus will not show all of these options every time.  The HOLD
+TV LOAD option is shown until invoked, and then is replaced with the DO
+TV LOAD.  When that is invoked, the HOLD TV LOAD option reappears.  TheD
+DELAY and RATE options appear only if the DODELAY adverb was true.  The
+SWITCH POLARIZ and SWITCH ALL POL options appear only if there are two
+polarizations in the TY or SN/CL table.  The ENTER IF option appears
+only if there is more than one IF in the table and the SWITCH ALL IF
+option appears only if there is more than one IF and all IFs fit in the
+program memory.  The options marked (SN) appear only when SN/CL tables
+are used and those marked with (TY) appear only when TY tables are used.
+The only SHOW and SHOW ALSO options to appear are for those not already
+displayed.
+
+     With TY editing, plots of the difference between the system
+temperature and its running mean divided by the running mean can be
+particularly sensitive to short term disturbances while ignoring slow
+changes due to gradually changing elevation and the like.  The running
+mean is not carried between sources and, as a result, is not normally
+carried across scan boundaries.  Similar comments apply to SY editing
+with the Pdif and Psum values.
+
+     Note that value-dependent flagging (FLAG BELOW, ABOVE, AREA) use
+the values currently plotted to make a list of value-independent flag
+commands (i.e., a single time for the specified antennas, IFs,
+polarizations, etc.).  When a value-dependent FLAG operation is undone
+(UNDO FLAGS) or redone (REDO FLAGS), it is these value-independent flags
+which are undone or redone.  You may have to undo more commands and then
+repeat FLAG commands to get the results you could have gotten by doing
+the now desired value-dependent command in the first place.  You need
+also to be careful with the SWITCH ALL ANT setting with these
+value-dependent commands.  If one antenna is set, then the commands only
+apply to the current antenna.  If all antennas is set, the commands
+apply to all antennas.  The first two set a clip level, below or above
+which data are deleted, based on the value of the observable in each
+antenna independently.  The FLAG AREA command, however, only looks at
+the values of the observable in the main edit antenna and flags those
+samples from all applicable antennas.
+
+     Be careful when choosing EXIT versus ABORT.  The former applies the
+flag commands to a flag table attached to the input uv data, the latter
+causes the flag commands to disappear without a trace.  After EXIT, of
+course, one may use, edit, or ignore the output flag (FG) table.  For
+single-source files, it may be necessary to run SPLIT to apply the FG
+table to the data since only some tasks know how to apply FG tables
+(those with FLAGVER as an adverb).
+
+     The colors used by EDITA are those of the various graphics planes
+when it begins to run.  You may change them with the AIPS verb GWRITE to
+more desirable colors.  The planes are:
+   Plane     Default RGB      Use
+     1     1.00  1.00  0.00   Main editing and secondary windows
+     2     0.06  1.00  0.00   Comparison antenna data windows
+     3     1.00  0.67  1.00   Menu highlight
+     4     0.00  1.00  1.00   Edit and frame window boundaries
+     5     1.00  0.18  0.18   Flagged data in all windows
+     6     0.60  0.60  1.00   Menu foreground
+     7     1.00  0.80  0.40   unused
+You may wish to change the colors to ones that you can see better.
+When CROWDED and DO3COL are invoked together, TV channels 14-16 are
+used for a 3-color display to help you see which IF/polarization is
+which.  The colors range from red to blue starting with IF BIF,
+polarization 1, then polarization 2, then IF 2 polarization 1, and so
+on.  When you select a single IF and polarization, graphics plane 1 is
+used unless you set DO3COL > 1.5.  In that case each correlation is
+plotted in its unique color whether in a single display or a crowded
+one.  When displaying one IF and two polarizations, the colors are
+chosen so that polarization 1 appears in a red/orange color and
+polarization 2 in a green/blue color.
+
+     In "expert" mode, you are prompted with a set of 4-character codes.
+You type in the letter within that code that is shown in upper case
+(left-justified with a carriage return) to get the desired function.
+The expert functions allowed are
+
+      Code  Prompt  Full menu OP name
+         T   Time   FLAG TIME
+         R   Rang   FLAG TIME RANGE
+         B   Belo   FLAG BELOW
+         A   Abov   FLAG ABOVE
+         E   arEa   FLAG AREA
+         O   pOin   FLAG POINT
+         Q   Quik   FLAG QUICKLY
+         L   List   LIST FLAGS
+         U   Undo   UNDO FLAGS
+         C   nCor   NEXT POL/IF
+         N   Nant   NEXT ANTENNA
+         F   Fram   SELECT FRAME
+         M   aMpl   SHOW AMPLITUDE    (SN)
+         P   Phas   SHOW PHASE        (SN)
+         D   Dely   SHOW DELAY        (SN)
+         S   Srat   SHOW RATE         (SN)
+         S   tSys   SHOW TSYS         (TY)
+         D   tDif   SHOW TSYS - <T>   (TY)
+         D   tDif   SHOW PDIF         (SY)
+         S   pSum   SHOW PSUM         (SY)
+         Y   tsYs   SHOW TSYS         (SY)
+         X   eXit   EXIT EXPERT MODE
+         H   Help   THIS HELP LIST
+
+although some may be suppressed depending on what is currently
+displayed.
+------------------------------------------------------------------------

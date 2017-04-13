@@ -1,0 +1,265 @@
+; HGEOM
+;---------------------------------------------------------------
+;! interpolates image to different gridding and/or geometry
+;# Task Catalog Analysis
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1996, 2000, 2005, 2010
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+HGEOM     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+HGEOM     Task to make an image consistent with another image
+INNAME                             Input image (name)
+INCLASS                                        (class)
+INSEQ           0.0      9999.0                (seq. #)
+INDISK          0.0         9.0                (disk unit #)
+IN2NAME                            Second input image (name)
+IN2CLASS                                              (class)
+IN2SEQ          0.0      9999.0                       (seq. #)
+IN2DISK         0.0         9.0                   (disk unit #)
+OUTNAME                            Output image (name)
+OUTCLASS                                       (class)
+OUTSEQ         -1.0      9999.0                (seq #)
+OUTDISK         0.0         9.0                (disk unit #)
+BLC             0.0      4096.0    Bottom left corner of image
+                                     0=>entire image
+TRC             0.0      4096.0    Top right corner of image
+                                     0=>entire image
+IMSIZE          0.0      4096.0    Output image size in pixels
+APARM                              (1)=terp.ord., (2)=zero flag
+                                   (3,4) = new reference pixel
+                                     = (0,0) => center in output
+----------------------------------------------------------------
+HGEOM
+Type: Task
+Use:  HGEOM will compute a non-linear geometric transformation of an
+      input image using Everett interpolation (bilinear, bicubic, or
+      biquintic).  The transformation is implicitly defined by the
+      headers of the two pictures.  In short, HGEOM "makes this
+      picture look like that picture".  In other words, it transforms
+      the first picture so that its geometry as described by the
+      header is consistent with that of the second "template" picture.
+      HGEOM is therefore useful for data comparison and will probably
+      grow into a mosaicing task.  HGEOM uses the 'scrolling buffer'
+      concept of how to do geometric transformations.  Blanks will
+      appear in the output wherever the corresponding input pixel is
+      outside the first image or blanked and the edges and blanked
+      pixels expand by the width of the interpolation fucntion.
+      Blanks will also appear if the internal buffer is exhausted but
+      dynamic memory should ameliorate this.  Warning messages are
+      printed when pixels are blanked.
+   =====================================================================
+      We recommend use of OHGEO instead of HGEOM.  The latter propogates
+      blanks and edges onto good areas by the width of the interpolation
+      function, while OHGEO can even fill in small blanked regions and
+      extrapolate a little.
+   =====================================================================
+Adverbs:
+  INNAME.......Input map name.            Standard defaults.
+  INCLASS......Input map class.           Standard defaults.
+  INSEQ........Input map seq no.          0 => highest.
+  INDISK.......Input map disk:            0 = any.
+  IN2NAME......Input template map name.   Standard defaults.
+  IN2CLASS.....Input template map class.  Standard defaults.
+  IN2SEQ.......Input template map seq no. 0 => highest.
+  IN2DISK......Input template map disk:   0 = any.
+  OUTNAME......Output map name.           Standard defaults.
+  OUTCLASS.....Output map class.          Standard defaults.
+  OUTSEQ.......Output map seq no.       0 => highest unique.
+  OUTDISK......Output map disk.      0 => highest with room.
+  BLC..........The bottom left-hand pixel of the input image which
+               becomes the bottom left corner of the input subimage.
+               The value (0,0) means (1,1).
+  TRC..........The top right-hand pixel of the input image which
+               becomes the top right corner of the subimage.  The
+               value (0,0) means take the top right hand corner of the
+               image.
+  IMSIZE.......Output image size in pixels [1=columns, 2=rows]
+               Default is second input image size. The output size is
+               independent of the input size.  If IMSIZE is all 0 and
+               APARM(3) and APARM(4) are zero, then the reference
+               pixels are taken from the 2nd image.
+  APARM........Transformation parameters:
+               1 = Order of Everett interpolation formula
+                  [range 1-7: 1=bilinear, 3=bicubic,
+                   5=biquintic, 7=biseptic] 0 => 3.
+                   Higher orders will produce more accurate
+                   interpolations although oddities may appear when
+                   the output cell size is significantly smaller than
+                   the input cell size.  See extensive discussion in
+                   EXPLAIN file.
+               2 = zero-flag. If > 0.0, zeroes are used wherever
+                   blanks would normally be created in the output
+                   image.  Else "magic value" blanks are used.
+               3 = X reference pixel in output pixels;
+               4 = Y reference pixel in output pixels;  If BOTH
+               APARM(3) and APARM(4) are zero, but IMSIZE is not, then
+               the numeric center of the input (sub)image is placed at
+               the numeric center of the output image.  If IMSIZE is
+               all 0 and both APARM(3) and APARM(4) are zero, then the
+               reference pixels are taken as the reference pixels of
+               the 2nd image.
+----------------------------------------------------------------
+Explanation of various details of HGEOM
+(DCW, 11 October 1984)
+(Modified  by W. Cotton Feb, 1993)
+
+On the Relation of Input Image Size to Output Image Size:
+
+The adverb IMSIZE specifies the dimensions of the output image.  If it
+is set to zero then the default applies and the output image is the
+same size as the second input. But if it is nonzero it means EXACTLY
+what it says: the output will have dimensions specified by IMSIZE
+regardless of what the dimensions of the input image happen to be.
+Suppose the input image is 800-square and BLC and TRC are zero (i.e.,
+all of the image). If IMSIZE is 100-square then the output is
+100-square.  On the other hand, if IMSIZE is bigger than the input,
+say 1000-square, the result is that the input maps to the output and
+regions which are outside the input image will be blank in the output.
+Note that the portion of the input which is used is delimited by BLC
+and TRC completely independently of IMSIZE.
+
+The pixel position of the "reference pixel" is specified by the
+APARM(3) and APARM(4) adverbs.  If BOTH are 0 AND IMSIZE is NOT 0,
+then the input image center (after application of BLC and TRC) is
+mapped to the numeric center of the output image.  If APARM(3),
+APARM(4), and IMSIZE are all zero, then APARM(3) and APARM(4) are set
+to the reference pixels of the second image (and IMSIZE is set to the
+size of the second image).  The pixel values given in APARM(3) and
+APARM(4) are those in the output image.  Things like BLC, TRC and
+IMSIZE are ignored when one or both are non-zero.
+
+A Discussion of Blanking in HGEOM:
+
+Output pixels are computed as a weighted sum of the input pixels in
+the neighborhood of the computed location in the input (the
+interpolation weights depend on the fraction of the pixel spacing). If
+one of the input pixel values in the sum is blanked, i.e., indefinite
+in value, then the whole sum, i.e. the output pixel, is blanked. If
+APARM(2) is true, then instead of blank a zero is delivered as the
+output pixel value. As a result, if an isolated pixel in the input is
+blank it will produce blanks (or zeroes) in a region in the output
+image the same size as the interpolating kernel (4x4 pixels for
+bicubic, 8x8 for biseptic). This is not nice, but all suggested cures
+considered so far have other difficulties.
+
+There is a special case implemented for the edges of the input image.
+Here HGEOM "reflects" the pixels near the boundary out into the terra
+incognita and uses them for interpolation. This means that pixel 1 is
+copied into the pixel 0 position, pixel 2 is copied into pixel -1,
+etc. The effect of this algorithm, implemented on all four edges, is
+that first derivatives of the interpolant are zero at all boundaries.
+NOTE: "Boundary" in this case also means the window defined by BLC and
+TRC.
+
+If the output image is larger than the transformation of the input
+window then the extra area will be blanked (or zeroed).
+
+
+Regarding the Everett Interpolation Formula:
+
+This program computes where in the input image each output pixel
+appears. This location is generally at some arbitrary fractional pixel
+position in x and y, surrounded by four input pixels. The program then
+interpolates in the pixel values surrounding the position. For
+APARM(1)=1  it uses linear interpolation, first in x (twice) and then
+in y. This is called "bilinear" interpolation, and is the default
+choice.
+
+If APARM(1)=3 two pixels on each side in x and y are used, sixteen
+pixels total. A cubic polynomial is fitted through the four pixels in
+each of the four rows in x, and evaluated at the computed x-position.
+Then a cubic is put through those four values (in y) and evaluated.
+This is "bicubic" interpolation.  For APARM(1)=5 we use a 6x6 array,
+36 pixels total; this is "biquintic" interpolation. For APARM(1)=7, we
+have 8x8, 64 pixels, "biseptic" interpolation.
+
+
+Regarding the Numerical Accuracy of Interpolation:
+
+The accuracy of interpolation increases with the order of the
+polynomial, but of course so does the cost of computation. As the
+polynomial order increases the interpolating function approaches ever
+more closely to the sinc function, the perfect bandlimited
+interpolator, as a limit. Bicubic is good enough for many ordinary
+purposes. Biquintic will probably be good enough even for high dynamic
+range data like optical CCD imagery and self-calibrated VLA maps. The
+point is, if we want very accurate results we want the "noise" of
+interpolation errors to be less than the observational noise in the
+data at all spatial frequencies of interest.
+
+The interpolation is done by computing a set of interpolating weights
+which are a function of the fractional pixel position where the answer
+is desired. The answer is then computed by multiplying the weights by
+the data. This is a convolution. It follows that an interpolator of a
+given order has a corresponding transfer function. I.e., in the
+terminology of aperture synthesis, it acts somewhat like a peculiar,
+probably "bumpy" taper function in the u-v plane. This function is
+always going to be less than unity in the neighborhood of the Nyquist
+frequency of the map. The size of this "neighborhood" where the
+transfer function is significantly different from unity is smaller for
+higher order polynomials. It follows that maps which are well sampled,
+say three or four pixels per beam, are easier to interpolate
+accurately.
+
+
+How to Evaluate the Numerical Errors of Interpolation:
+
+DCW is not aware of any proper quantitative treatment of the
+interpolation accuracy issues anywhere in the literature of image
+processing. This situation is not as bad as it seems because for
+critical work there are two simple tests which can be used to estimate
+the interpolation error:
+
+Test1: compute a small change, reverse it, then difference input and
+output.  Use COMB to subtract the second output from the input. The
+difference is all interpolation noise. If that noise level (due to TWO
+interpolations) is small enough to suit you then you know that the
+noise of the first answer is even lower (only one interpolation).
+Actually, this test is excessively conservative because the transfer
+function of interpolation is SQUARED by the double calculation (NOTE:
+any multiple application of interpolation to data will square, cube,
+etc., the transfer function of data. Mostly one loses high spatial
+frequencies in the data, but errors creep into the lower spatial
+frequencies, too.)
+
+Test2: compute a small change with one order of interpolation, compute
+again with increased order, then difference the two results.  Use COMB
+to subtract the the first answer from the second. The difference is an
+estimate of the error of bicubic interpolation for your image. An even
+more accurate estimate of the error would be obtained by using
+APARM(1)=7 (biseptic) for the second computation. Although this test
+does not inspire the degree of conviction which Test1 can by
+reproducing the input image, it more than makes up for this by giving
+an estimate of the interpolation error of a SINGLE operation.
+
+NOTE: in performing tests such as are suggested above it will make
+sense to use BLC and TRC to select a small region of the input image
+(say, 100-square) which contains interesting structure whose details
+need to be preserved. This will save time and make it reasonable to
+perform both Test1 and Test2, and to use biseptic interpolation for
+Test2. For example, one could perform Test1 using biseptic
+interpolation in order to be convinced that it's results are accurate.
+Then perform Test2 for bicubic and/or biquintic and compare them to
+the biseptic computation.

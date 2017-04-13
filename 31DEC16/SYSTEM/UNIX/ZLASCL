@@ -1,0 +1,302 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2000, 2003-2004, 2006, 2009
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: ZLASCL file [file ...]
+#-----------------------------------------------------------------------
+# This script prints a file on the selected printer.  The first argument
+# is the filename to be printed, the second is the page length from
+# AIPS.  The latter is only used for PostScript printers.
+#
+# When AIPS opens the "plotter", it creates a temporary file such as
+# /tmp/ZLASC2.XXXXXX where XXXXXX is a unique extension.  When closed,
+# ZLASC2.C runs this script via a unix pipe.
+#
+# This script parses the first line of the file to be printed, and sends
+# the file either to a Postscript printer or a QMS printer depending on
+# what was found.  It also knows about color postscript.  Printer
+# information is set in the $NET0/PRDEVS.LIST file and is defined only
+# via the $SYSUNIX/PRDEVS.SH shell script; it will either define the
+# device name, type and description for a specific printer or for all.
+# ----------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+#                                       $PLOTTER not used for now...
+trap 'rm -f $PLOTTER/ZLWIO.$$ $PLOTTER/ZLASIO.$$; exit 1' 1 2 3 15
+#                                       initialization
+printed=false
+#                                       Check for sanity
+if [ ${LPDEV-.} = . ] ; then
+  echo "no printer (LPDEV) chosen, cannot print anything"
+  exit 1
+fi
+#                                       Get printer information
+#                                       Revised and simplified scheme
+printer="$LPNAM"
+printype="$PRTYPE"
+printext="$LPDESC"
+#                                       Not yet used here...
+printopt="$LPOPT"
+#                                       Print and status commands
+#                                       Is this SYSV or Berkeley?
+printcmd=""
+case $LPNAM in
+   /dev/null|NULL|null|NONE|none)
+   echo "null printer ($LPNAM: $LPDESC)"
+   echo "I hope you really meant this to be deleted!"
+   exit 0
+;;
+esac
+chcmd=""
+case $ARCH in
+   SUN*|IBM|*LINUX*|LNX64|ALPHA|ULTRIX|FREEBSD|MAC*)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpr ] ; then
+#                                       -h means no header
+#                                       -s means make a symlink
+#                                       -P is for specifying printer
+            printcmd="lpr -h -s -P"
+            break
+         fi
+      done
+      if [ "$printcmd" = "" ] ; then
+         echo "Cannot find lpr in the search PATH; nothing printed"
+         echo "On architecture $ARCH, $SYSUNIX/ZLASCL expects lpr!"
+         echo "(PATH is $PATH)"
+         exit 1
+      fi
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpq ] ; then
+#                                       -P is for specifying printer
+            chcmd="lpq -P"
+            break
+         fi
+      done
+      ;;
+   SOL*|SUL|SGI|HP|HP2)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lp ] ; then
+#                                       -d is for specifying printer
+            printcmd="lp -d"
+            break
+         fi
+      done
+      if [ "$printcmd" = "" ] ; then
+         echo "Cannot find lp in the search PATH; nothing printed"
+         echo "On architecture $ARCH, $SYSUNIX/ZLASCL expects lp!"
+         echo "(PATH is $PATH)"
+         exit 1
+      fi
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpstat ] ; then
+            chcmd="lpstat "
+#                                       Common Unix Printing System
+            if [ "$CUPS_SERVER" != "" ] ; then
+               chcmd="lpstat -p"
+            fi
+            break
+         fi
+      done
+      ;;
+   *)
+      echo "$SYSUNIX/ZLASCL does not know"
+      echo "about your architecture ($ARCH); please fix it"
+      ;;
+esac
+#                                       For each file, check its type
+nfiles=0
+for file in $* ; do
+#
+   if [ ! -f $file ] ; then
+      echo "Cannot find $file, so I cannot print anything.  So sorry."
+      continue
+   fi
+   firstline=`head -n 1 $file`
+   case $firstline in
+#                                       PostScript, check for CMYK
+      %!*)
+#                                       This round-about test is needed
+#                                       to cope with a particularly
+#                                       nasty IBM bug which loses the
+#                                       status returned by a program
+#                                       invoked by a shell script that
+#                                       is in turn invoked from a
+#                                       FORTRAN 77 program.  Still?
+         count=`grep '^%%Extensions:' $file | grep 'CMYK' | wc -l`
+         if [ $count = 0 ] ; then
+            filetype="PS"
+         else
+            filetype="PS-CMYK"
+         fi
+         ;;
+#                                       QUIC, so assume QMS or TALARIS
+      \^PY\^*)
+         filetype="QMS"
+         ;;
+      *)
+#                                       Should NEVER happen!
+         filetype="TEXT"
+         ;;
+   esac
+#                                       Special case: preview
+   case $printype in
+#                                       Postscript previewer
+      PREVIEW)
+         if [ "$filetype" != "PS-CMYK" -a "$filetype" != "PS" ] ; then
+            echo "don't know how to preview $filetype output"
+            exit 1
+         fi
+         if [ "$printer" = pageview ] ; then
+#                                       Sun NeWS-specific pageview
+#                                       Need LD_LIBRARY_PATH and
+#                                       OPENWINHOME defined
+            if [ ${OPENWINHOME-.} != . -a \
+                 ${LD_LIBRARY_PATH-.} != . ] ; then
+               $OPENWINHOME/bin/pageview $file &
+            else
+               echo "OPENWINHOME or LD_LIBRARY_PATH undefined!"
+               echo "Cannot run pageview without these variables!!"
+               exit 2
+            fi
+         elif [ "$printer" = ghostscript -o "$printer" = gs -o \
+                "$printer" = ghostview -o "$printer" = gv ] ; then
+#                                    Look for ghostview or gs
+            gs=""
+            for i in `echo $PATH | sed -e 's/:/ /g'` ; do
+               [ -s $i/$printer ] && gs=$i/$printer && break
+            done
+#                                       Failsafe, if not found
+            if [ "$gs" = "" ] ; then
+               echo "No $printer found in PATH, check for alternate..."
+               for i in `echo $PATH | sed -e 's/:/ /g'` ; do
+                  [ -s $i/ghostview ] && gs=$i/ghostview && break
+                  [ -s $i/gv ] && gs=$i/gv && break
+                  [ -s $i/gs ] && gs=$i/gs && break
+                  [ -s $i/ghostscript ] && gs=$i/gs && break
+               done
+            fi
+            if [ "$gs" = "" ] ; then
+               echo "no $printer or alternate found in your PATH"
+               echo ' - cannot preview; sorry!'
+               exit 2
+            else
+               echo "Shedding $gs to view output..."
+               ($gs $file &)
+            fi
+         fi
+      ;;
+#                                       Custom program or script; do not
+#                                       mess with the file type.
+      REMOTE)
+         OLDIFS=$IFS
+         IFS=$IFS:
+         found=no
+         for i in $PATH ; do
+            [ -f $i/$printer ] && found=yes && break
+         done
+         IFS=$OLDIFS
+         if [ $found = no ] ; then
+            echo "Cannot find program $printer in your PATH"
+            echo "so nothing will be printed"
+         else
+            echo "Running program $printer on output..."
+            cat $file | $printer
+            printed=true; nfiles=`expr $nfiles + 1`
+         fi
+      ;;
+      *)
+#                                       All other non-preview printers.
+#                                       See if printer is right type
+         if [ "$printype" = "$filetype" ] ; then
+            $printcmd$printer $file
+            printed=true; nfiles=`expr $nfiles + 1`
+#                                       Make exceptions for PS on PSCMYK
+         elif [ \( "$printype" = "PS-CMYK" \) -a \
+                \( "$filetype" = "PS" \) ] ; then
+            echo "Warning!  Monochrome file on color PS printer!"
+            $printcmd$printer $file
+            printed=true; nfiles=`expr $nfiles + 1`
+         else
+#                                       No, so look for an alternative.
+            if [ $LPDEVS -gt 1 ] ; then
+               n=0
+               found=no
+               LPDEV=""
+#                                       First see if config file exists
+               if [ -f $NET0/PRDEVS.LIST ] ; then
+                  new=`cat $NET0/PRDEVS.LIST | \
+                       awk '($2 == "'$filetype'") {print $0}' | head -n 1`
+                  if [ "$new" != "" ] ; then
+                     printer=`echo $new | awk '{print $1}'`
+                     printext=`echo "$new" | \
+                        awk '{for (j=4; j<=NF; j++) {printf " %s", $j}}'`
+                     found=yes
+                  fi
+#                                       No it didn't; give up
+               else
+		  echo "No PRDEVS.LIST found in NET0: area"
+		  echo "(NET0=$NET0)"
+		  found=no
+               fi
+               if [ "$found" = no ] ; then
+                  echo \
+                  "no $filetype printer, cannot print graphics"
+                  exit 3
+               fi
+               echo "You tried to print a $filetype file on"
+               echo "a $printype printer!  This will not work!"
+               echo "Instead I will use the $printext."
+               $printcmd$printer $*
+               printed=true; nfiles=`expr $nfiles + 1`
+            else
+               echo \
+               "no $filetype printer, cannot print graphics"
+               exit 4
+            fi
+         fi
+      ;;
+   esac
+   if [ "$printed" = true ] ; then
+      echo "graphics sent to the $printext"
+#                                       IBM's still have lpq, but it
+#                                       doesn't work on printer "lp"???
+      if [ "$ARCH" = "IBM" ] ; then
+         chcmd="lpq -P$printer"
+         [ "$printer" = "lp" ] && chcmd="lpq"
+      else
+         chcmd="$chcmd$printer"
+      fi
+      case $printype in
+         REMOTE|PREVIEW) ;;
+         *) $chcmd ;;
+      esac
+   fi
+done
+case $nfiles in
+   0) echo "No files printed";;
+   1) echo "One file printed";;
+   *) echo "Total of $nfiles files printed";;
+esac
+exit 0

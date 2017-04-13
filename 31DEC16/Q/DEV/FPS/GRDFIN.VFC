@@ -1,0 +1,171 @@
+      DEFINE GRDFIN(U,ROW,M,LROW,TYPE)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Finish gridding uv data.
+"# AP-appl
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+      LOCAL ROW1,STCNT,STWT,MO2,SYM,REND,REND1,LROW1,STCNT2,STWT2
+"
+"     GRDFIN Does various tasks assiciated with completion of gridding
+"     a row.  If U is within 1/2 support of 0 the symmetric row is
+"     conjugated, flipped and added.  Next
+"     any taper is applied followed (for IPOL maps only) by the
+"     addition of the weighting function to the gridded visibilities
+"     to produce the beam map.  Finally rows are rotated so that
+"     zero column (assumed LROW/2+1) goes to the first column.
+"     If U=0 the space for the next row down is used.
+"
+"     CALLING SEQUENCE - CALL GRDFIN(U,ROW,M,LROW,TYPE)
+"                        U = U in cells (non-negative)
+"                        ROW = Base address of Grid row of interest
+"                        M = Number of rows kept in the AP.
+"                        LROW = Length of row (no. reals)
+"                        TYPE = 1 for IPOL,IBEM maps
+"                               2 for Q,U maps
+"                               3 for V maps.
+"
+"     Expects necessary constants in following AP locations:
+"           0 = COS(PHASE0)           to shift map center
+"           1 = SIN(PHASE0)
+"           2 = COS(DELPHR)           for rotating down rows
+"           3 = SIN(DELPHR)
+"           4 = COS(DELPHC)           for rotationg down columns
+"           5 = SIN(DELPHC)
+"           6 = 1.0
+"           7 = 0.0
+"
+"     Programmer = W. D. Cotton, July 1980.
+"
+"
+"           SET ADDRESSES
+"
+      SP09 = LROW + LROW
+      STCNT = ROW + SP09
+      STWT = STCNT + 1
+      STCNT2 = STCNT + 2
+      STWT2 = STWT + 2
+      MO2 = M / 2
+      LROW1 = LROW - 1
+      ROW1 = ROW + 2
+"
+"     CHECK IF TYPE = 2
+"
+      IF TYPE = 2 GOTO TYPE2
+"
+"          CHECK IF NEAR ORIGIN
+"
+      IF TYPE = 3 GOTO HIGH
+      IF U > MO2 GOTO HIGH
+"
+"          NEAR ORIGIN, ADD SYMMETRIC POINTS
+"
+      SP02 = SP09 + SP09
+      SP03 = U + U
+      SP05 = SP02 * SP03
+      SYM = ROW - SP05
+      REND = SYM + SP09
+"           IF U=0 MOVE 0 ROW 1 SLOT LOWER AND WORK FROM THERE.
+      IF U > 0 GOTO NOT0
+      SYM = ROW - SP02
+      REND = SYM + SP09
+      LROW1 = SP09
+      CALL VMOV(ROW,1,SYM,1,LROW1)
+      CALL VMOV(STCNT,1,REND,1,LROW1)
+      LROW1 = LROW - 1
+NOT0: REND = REND - 2
+      CALL CVJADD(ROW1,2,REND,-2,ROW1,2,LROW1)
+      CALL CVJADD(ROW,2,SYM,2,ROW,2,1)              "FIRST CELL
+      REND = REND + SP09
+"               ADD COUNTS
+      CALL VADD(REND,-2,STCNT2,2,STCNT2,2,LROW1)
+      SYM = SYM + SP09
+      CALL VADD(SYM,2,STCNT,2,STCNT,2,1)
+"               ADD WEIGHTS
+      REND = REND + 1
+      CALL VADD(REND,-2,STWT2,2,STWT2,2,LROW1)    "WEIGHTS
+      SYM = SYM + 1
+      CALL VADD(SYM,2,STWT,2,STWT,2,1)
+HIGH: ROW1 = ROW + 1
+      IF TYPE = 3 GOTO FLIP
+"
+"
+"         FORM CONJUGATE ROW FOR IBEM MAPS.
+"
+"
+"        ADD WEIGHTS TO IMAGINARIES
+"
+      CALL VMOV(STWT,2,STCNT,2,LROW)       "MOVE WEIGHTS TO STCNT
+      CALL VSUB(ROW1,2,STCNT,2,STCNT,2,LROW)"SUB. IMAG FROM CONJ. WT.
+      CALL VADD(STWT,2,ROW1,2,ROW1,2,LROW) "ADD WT. TO IMAG
+      CALL VMOV(STCNT,2,STWT,2,LROW)       "MOVE CONJ. IMAG TO CORRECT LOC.
+      CALL VMOV(ROW,2,STCNT,2,LROW)        "COPY REAL TO CONJ. ROW.
+"
+"         ROTATE ZERO TO FIRST COLUMN
+"
+      SYM = STCNT + LROW
+      CALL VSWAP(STCNT,1,SYM,1,LROW)
+FLIP: SYM = ROW + LROW
+      CALL VSWAP(ROW,1,SYM,1,LROW)
+"
+"           ROTATE MAP CENTER
+"
+      CALL PHSROT(ROW,2,ROW,2,0,2,LROW)    "ROTATE ROW
+      IF TYPE = 3 GOTO LABEL               "VPOL MAPS FINISHED
+      CALL VNEG(1,2,1,2,2)                 "CONJ. PHASE ROTATION
+      CALL PHSROT(STCNT,2,STCNT,2,0,2,LROW)"ROTATE CONJUGATE ROW
+"           REVERSE CONJUGATE ROW.
+      CALL VRVRS(STCNT2,2,LROW1)           "REVERSE REALS.
+      CALL VRVRS(STWT2,2,LROW1)            "REVERSE IMAGS.
+      CALL VNEG(1,2,1,2,2)                 "UNDO CONJ. OF PHASE
+LABEL: CALL PHSROT(0,2,0,2,4,6,1)          "ROTATE PHASE0 FOR NEXT ROW
+      GOTO S999
+"
+"
+"          DO Q AND U MAPS.
+"
+"          USE ROW FOR QPOL  AND STCNT FOR UPOL
+"
+"          FIRST ROTATE ZERO TO FIRST COLUMN
+"
+TYPE2:  SYM = STCNT + LROW
+        CALL VSWAP(STCNT,1,SYM,1,LROW)      "SWITCH UPOL
+        SYM = ROW + LROW
+        CALL VSWAP(ROW,1,SYM,1,LROW)        "SWITCH QPOL
+"
+"          ROTATE MAP CENTER
+"
+      CALL PHSROT(ROW,2,ROW,2,0,2,LROW)     "ROTATE QPOL
+      CALL VNEG(1,2,1,2,2)                   "NEGATE PHASE
+      CALL PHSROT(STCNT,2,STCNT,2,0,2,LROW) "ROTATE UPOL
+      CALL VNEG(1,2,1,2,2)                   "UNNEGATE PHASE
+      CALL PHSROT(0,2,0,2,4,6,1)            "ROTATE PHASE0 FOR NEXT ROW
+"            FLIP VIS2 ROW
+        CALL VRVRS(STCNT2,2,LROW1)
+        STCNT2 = STCNT2 + 1
+        CALL VRVRS(STCNT2,2,LROW1)
+S999:   END

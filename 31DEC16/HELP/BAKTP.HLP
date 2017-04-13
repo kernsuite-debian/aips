@@ -1,0 +1,244 @@
+; BAKTP
+;---------------------------------------------------------------
+;! writes all files of a catalog entry to tape in host format
+;# Task Catalog Tape
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+BAKTP     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+BAKTP:  Task to write maps or uv data with host backup format
+DOALL          -1.0         1.0    1 (T) do all, -1 (F) do 1st.
+INNAME                             Image name(name).
+INCLASS                            Image name(class).
+INSEQ           0.0      9999.0    Image name(seq. #).
+INDISK          0.0         9.0    Disk drive #.      0 => any
+INTYPE                             File type.     Blank => any
+OUTTAPE         0.0         2.0    Tape drive #.  0 => 1
+OPCODE                             'BACK' or ' '; 'INIT' tape.
+----------------------------------------------------------------
+BAKTP
+Type: Task
+Use:  BAKTP writes one or more map and/or uv data files and
+      their extensions onto magtape using the local host
+      machine-dependent backup format (BACKUP on VMS, tar on
+      Unix). The 1st image or all images that match the input
+      parameters can be written. The tape is left following the
+      last file written. BAKTP tapes are reloaded with task
+      BAKLD. NOTE: execution of 'INIT' option of BAKTP is
+      mandatory before first use of a tape with the 'BACK'
+      option.
+Adverbs:
+  DOALL......True (> 0) means do all files matching the input
+             parameters, false (<= 0) means do the 1st match
+             only.
+  INNAME.....The input image name (name).  Standard defaults.
+  INCLASS....The input image name (class). Standard defaults.
+  INSEQ......The input image name (seq. #). 0 => any if DOALL
+             is true, 0 => highest if DOALL is false.
+  INDISK.....The input disk unit #. 0=> search all disks in
+             order for file meeting the other criteria.
+  INTYPE.....The input data type (MA or UV or ' ' for either)
+  OUTTAPE....The output tape unit #.  0=> 1.
+  OPCODE.....'BACK' or ' ' does the backup operation.
+             'INIT' initializes a tape for BAKTP operation.
+----------------------------------------------------------------
+Explanation notes for BAKTP:         (DCW, 21Jul,03Aug,20Nov86)
+
+1. BAKTP adopts a conservative stance with regard to DOEOT: it
+ALWAYS searches for the End-Of-Information (double-EOF) BEFORE
+writing a new file to tape. This policy avoids inadvertent
+overwriting (destroying) of previously backed-up data. It does
+have the effect of requiring that tapes be initialized to have
+a well-defined EOI before first use, and therefore the 'INIT'
+opcode is provided to perform this function. The 'INIT'
+operation MUST be done as the first operation on any new BAKTP
+tape. It overwrites (destroys) any information previously
+existing on the tape. Because of the 'INIT' operation and
+DOEOT=TRUE action, it is entirely feasible and appropriate to
+execute BAKTP more than once, even on different occasions, to
+accumulate multiple data files on a BAKTP tape.
+
+2. A BAKTP saveset contains ALL of the file objects, data plus
+extensions, which are associated with an AIPS catalog slot.
+That is, all plot files, all slice files, all clean-component
+files, etc., associated with a map or visibility file, or
+anything else that is a part of a slot, will be written as a
+group to the tape. The only condition is that the files must
+have physical names which are computable by the AIPS library
+routine ZPHFIL, i.e. they must have a two-letter 'file type'
+code.
+
+3. BAKTP writes tape using very long blocks (30720 bytes),
+which have a blocking efficiency of 94% at 6250bpi. Compared to
+the old "short-block" FITS format, efficiency is about 50%
+better (only  2/3rd as much tape used per unit data moved) and
+more than 10x fewer tape operations are done per unit data
+moved (and per unit CPU-time used).
+
+4. Note that the tar tapes written by BAKTP on Unix systems are
+MACHINE-DEPENDENT even though the tar format itself, which
+BAKTP uses, is inherently machine-independent. E.g., a tar
+written by the Convex C-1 can be read by BAKLD executing on a
+VAX under Unix, but the floating and integer data formats will
+be incompatible, so that headers and data probably cannot be
+usefully transferred between these two architectures with
+BAKTP/BAKLD (use FITTP/IMLOD instead). It might be true that
+data structures for non-byte-flipped IEEE-floating-point
+machines would be compatible (e.g., all 68000s are equivalent,
+and the Alliant acts like a 68000), but this must always be
+tested, as compiler differences may make data structures
+different even though underlying hardware architectures are
+identical.
+
+=============================================================
+A question for BAKTP users:
+
+Should BAKTP offer an "AUTOZAP" adverb? The idea would be that
+BAKTP would delete slots as soon as it is confident that their
+data are safely on tape. Users are invited to express their
+opinion in the form of a 'gripe'.
+
+=============================================================
+Weaknesses, Deficiencies, Known Bugs, etc.:
+
+1. Error return checking is minimal in the current version of
+BAKTP. That is, in many places the code currently assumes that
+underlying subsystems have worked correctly. A wide variety of
+pathological conditions (e.g. total exhaustion of disk space,
+or total inability to create a new subprocess) may not be
+properly handled in the current code.
+
+1.5 Current BAKTP does not prevent program AIPS or other AIPS
+tasks from accessing, or even modifying, the files currently
+being written to tape. Until this weakness is corrected users
+should avoid tampering with the files BAKTP is writing. Current
+BAKTP emits a harmless message about the data file being closed
+which is related to this problem.
+
+2. The present code under VMS gives some semblance of working
+even when the tape drive has not yet been MOUNTed by AIPS. This
+appears to be a deficiency of VMS---the VMS ZOPEN Z-routine
+gives an "OK" return on unmounted tapes.
+
+3. VMS BAKTP gives a BACKUP warning message about an access
+conflict because the main program has the MA/UV data file open
+during execution. This message is harmless and will be
+eliminated eventually.
+
+4. The present version of BAKTP on the Convex appears to be
+slow. Partly this is that it IS a bit slow, and partly it is an
+illusion, and partly it is due to the fact that, unlike BACKUP
+on VMS, Unix 'tar' does not execute with any special
+privilege---rather, it contends for the CPU with everybody
+else. Probably the performance can be upgraded eventually by
+replacing 'tar' and 'dd' with a custom tape writing module. The
+slowness 'illusion' is due to the fact that the high tape
+blocking efficiency means that BAKTP does fewer tape operations
+and moves less tape per unit data than does FITTP. BAKTP will
+perform better whenever there is significant timesharing
+loading on the Convex if it runs under AIPS1 or AIPS2, which
+give their tasks 'elevated priority'.
+
+6. The present Unix BAKTP tape format makes no provision for
+error recovery. VMS BACKUP does error recovery by periodically
+writing an extra block which conveys a longitudinal parity
+check over a group of blocks. The default group size is 10
+(i.e., the blocking efficiency of VMS BAKTP is really only
+about 90*94%). In addition, VMS BACKUP includes a CRC (Cyclic
+Redundancy Check) code in each block to strengthen the error
+detection. These features permit VMS BACKUP to recover from a
+wide variety of tape errors, and this extra security for
+valuable data files is well worth the 10% efficiency cost. The
+Unix BAKTP, which currently simply uses 'tar' and 'dd' to write
+tape, has no special tape error detection/correction capability
+at all, and it would be a good thing to add these features to a
+future version of Unix BAKTP. Note that the 6250 GCR (Group
+Coded Recording) physical format has a rather strong (random
+noise) error detection/correction capability on its own, and so
+probably Unix BAKTP tapes are more secure when recorded at
+6250bpi than at 1600bpi.
+
+===============================================================
+Technical details of VMS and Unix implementations (DCW,21Nov86):
+
+This discussion is provided mainly to satisfy the curiosity of
+technically-knowledgeable users, and perhaps to help them
+report misbehavior of the programs in a more meaningful way. It
+is not intended that users, or programmers, should build other
+programs, or should manipulate BAKTP tapes, based on assuming
+the completeness or invariance of this description of the
+format of BAKTP tapes. DCW reserves the right to modify the
+format without warning, especially for the Unix implementation.
+Users can assume one thing: future versions of BAKLD will still
+read, if at all possible, any tapes currently produced by BAKTP
+on their architecture/OS combination.
+
+1. INIT operation: For VMS the result is an ANSI labelled tape
+with VSN=AIPBAK (i.e., all VMS BAKTP tapes have this label) and
+a dummy saveset (named BAKINI.BCK) with the tape positioned
+near the logical EOI; for Unix the result is currently simply a
+double-EOF at BOT and the tape is positioned at BOT.
+
+2. BACK operation: For VMS the result is a BACKUP saveset, and
+BACKUP automatically searches for EOI before writing it. All of
+the savesets written by BAKTP have the same name (BAKAIP.BCK),
+so that the tape can only be positioned by file ordinal, and
+all are written with BLOCK=30720 and with the default
+GROUP-SIZE (10 blocks). For Unix the result is a blocked 'tar'
+tape---in the present implementation the output of tar, with a
+block size of 512 bytes, is piped through 'dd' to produce a
+blocking factor of 60 (30720 bytes/block). The Unix blocked tar
+'savesets' are delimited by single tapemarks; the Unix BAKTP
+calls library routine FNDEOT to position the tape at EOI
+(between the final double-EOT) before doing any writing. Under
+both VMS and Unix the tape is left positioned 'in the
+neighborhood' of EOI at completion of BAKTP; it is best not to
+inquire too closely into exactly where the tape is and exactly
+how these OS utilities (BACKUP and 'dd') function if you want
+to preserve your sanity.
+
+3. Saveset contents: the logical contents of an entire slot are
+written by a wild-card operation. Thus, neither BAKTP nor BAKLD
+knows anything about AIPS file types or extensions; neither
+program distinguishes between MA and UV files in any way. The
+file names on tape are exactly the physical names of the disk
+files in the slot on the BAKTP host system. An extra file is
+included in the saveset; its name is 'BAKAIP.TXT' and its
+purpose is to convey a plain-text statement of the AIPS user
+number, AIPS data version, the BAKTP host system name,
+BAKTP-execution date, and the date and AIPS
+type/name/class/sequence of the saveset. This information
+facilitates operation of BAKLD, because BAKLD cannot predict
+the physical file names in any saveset, but can assume that all
+savesets contain a file called 'BAKAIP.TXT', whose text format
+is invariant. NOTE: all statements made above in this paragraph
+are true for both the Unix and VMS implementations of
+BAKTP/BAKLD. A minor, and irrelevant, logical difference in the
+implementations is that Unix BAKTP tapes give only the physical
+names of the files, whereas VMS BAKTP tapes also include the
+full directory path on the host system (this path is ignored by
+BAKLD).

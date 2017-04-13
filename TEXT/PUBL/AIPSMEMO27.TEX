@@ -1,0 +1,901 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\documentstyle [twoside]{article}
+\input psfig
+\newcommand{\memnum}{27}
+\newcommand{\memtit}{Non-linear Coordinate Systems in \AIPS}
+\title{\memtit \\ Reissue of November 1983 version \\}
+\title{
+%   \hphantom{Hello World} \\
+   \vskip -35pt
+   \fbox{AIPS Memo \memnum} \\
+   \vskip 28pt
+   \memtit \\
+   Reissue of November 1983 version \\}
+\author{Eric W. Greisen\thanks{National Radio Astronomy Observatory}}
+%
+%
+\newcommand{\AIPS}{{$\cal AIPS\/$}}
+\newcommand{\POPS}{{$\cal POPS\/$}}
+\newcommand{\eg}{{\it e.g.},}
+\newcommand{\ie}{{\it i.e.},}
+\newcommand{\daemon}{d\ae mon}
+\newcommand{\boxit}[3]{\vbox{\hrule height#1\hbox{\vrule width#1\kern#2%
+\vbox{\kern#2{#3}\kern#2}\kern#2\vrule width#1}\hrule height#1}}
+%
+\newcommand{\sign}{\hbox{sign}}
+\newcommand{\Vobs}{V_{\hbox{\scriptsize OBS}}}
+\newcommand{\vobs}{v_{\hbox{\scriptsize OBS}}}
+\newcommand{\V}{{\hbox{\scriptsize V}}}
+\newcommand{\s}{{\hbox{\scriptsize S}}}
+\newcommand{\G}{{\hbox{\scriptsize G}}}
+\newcommand{\GAL}{{\hbox{\scriptsize GAL}}}
+\newcommand{\CEL}{{\hbox{\scriptsize CEL}}}
+\newcommand{\da}{\Delta\alpha}
+%
+\parskip 4mm
+\linewidth 6.5in
+\textwidth 6.5in                     % text width excluding margin
+\textheight 8.81 in
+\marginparsep 0in
+\oddsidemargin .25in                 % EWG from -.25
+\evensidemargin -.25in
+\topmargin -.5in
+\headsep 0.25in
+\headheight 0.25in
+\parindent 0in
+\newcommand{\normalstyle}{\baselineskip 4mm \parskip 2mm \normalsize}
+\newcommand{\tablestyle}{\baselineskip 2mm \parskip 1mm \small }
+%
+%
+\begin{document}
+
+\pagestyle{myheadings}
+\thispagestyle{empty}
+
+\newcommand{\Rheading}{\AIPS\ Memo \memnum \hfill \memtit \hfill Page~~}
+\newcommand{\Lheading}{~~Page \hfill \memtit \hfill \AIPS\ Memo \memnum}
+\markboth{\Lheading}{\Rheading}
+%
+%
+
+\vskip -.5cm
+\pretolerance 10000
+\listparindent 0cm
+\labelsep 0cm
+%
+%
+
+\vskip -30pt
+\maketitle
+\vskip -30pt
+\normalstyle
+
+\begin{abstract}
+\AIPS\ has been revised recently to support several projective
+geometries and a non-linear velocity axis.  The present memorandum
+contains a description of the FITS-like nomenclature used to describe
+these coordinates and of the algebra implemented to compute their
+values.  The use of Galactic as well as Celestial coordinates is
+explicated.  A guide to the routines in \AIPS\ which implement these
+constructs is given.
+
+{\bf Added January 1993: One typographical correction of the old memo
+and one substantial difference between this memo and the 1993 proposed
+FITS conventions are footnoted where appropriate.}
+\end{abstract}
+
+\section{Introduction}
+
+A variety of non-linear coordinate systems are in widespread use in
+astronomy.  Both \AIPS\ and the FITS standard, on which the \AIPS\
+format is based, suffer from considerable ambiguity in the description
+of such coordinates.  I have developed a self-consistent method to
+label such coordinates and have implemented some of them in \AIPS.
+This memorandum describes the algebra, the header parameters, and the
+commons used in this implementation.
+
+\section{Velocity and Frequency}
+
+Velocity and frequency are frequently used as approximately equivalent
+axes. The \AIPS\ verb {\tt ALTDEF} allows the user to provide the
+parameters for an alternative velocity definition of the frequency
+axis.  The verb {\tt ALTSWTCH} switches the main header and
+alternative axis descriptions.  \AIPS\ currently supports three axis
+types of this kind: `{\tt FREQ....}' regularly gridded in frequency,
+`{\tt VELO....}' regularly gridded in velocity, and `{\tt FELO...}'
+regularly gridded in frequency but expressed in velocity units in the
+optical convention.  The reverse of `{\tt FELO....}' has not been
+implemented since I do not expect it to arise.  The observed velocity,
+$V$, is the sum of the projected velocity of the observer with respect
+to some inertial system, $\Vobs$, and the projected velocity of the
+astronomical object with respect to that system, $V_\s$. The
+``{\tt....}'' above are four characters which document the choice of
+inertial system.  Currently `{\tt -LSR}', `{\tt -HEL}', and `{\tt
+-OBS}' are implemented for Local Standard of Rest, heliocentric, and
+geocentric systems, but more codes could be added easily.
+
+Since astronomical velocities are sometimes large, we should use a
+proper set of relativistic formul\ae.  For {\it true} velocities,
+denoted by lower case letters, the relativistic sum of two velocities
+is
+\begin{equation}
+   v =  \frac{v_\s + \vobs}{1 + v_\s\vobs / c^2} \, , \label{eq:vsum}
+\end{equation}
+while the Doppler shift is given by
+\begin{equation}
+   \nu\,^\prime = \nu\left( \frac{c - v}{c + v} \right)^{1/2} \, .
+\end{equation}
+For some reason, astronomers do not normally use a true velocity.
+Instead, there are two conventions used to express the relationship of
+frequency and velocity: the ``optical'' and the ``radio''.  In the
+radio convention,
+\begin{displaymath}
+    V = -c\, (\nu\,^{\prime} - \nu_0 ) / \nu_0
+\end{displaymath}
+or
+\begin{equation}
+   \frac{V}{c} = 1 - \left( \frac{c - v}{c + v} \right)^{1/2} \, ,
+        \label{eq:Vradio}
+\end{equation}
+which reverses to
+\begin{equation}
+   \frac{v}{c} = \frac{2cV + V^2}{2c^2 - 2cV + V^2} \, .
+       \label{eq:vradio}
+\end{equation}
+Substituting equation~\ref{eq:vsum} in equation~\ref{eq:Vradio} and
+replacing $v_\s$ and $\vobs$ with appropriate versions of
+equation~\ref{eq:vradio}, we obtain after a lot of manipulation,
+\begin{displaymath}
+    V = V_\s + \Vobs - V_\s \Vobs / c \, .
+\end{displaymath}
+But we have observed at regular frequency spacings in our rest frame,
+so
+\begin{displaymath}
+    V = - \frac{c}{\nu_0}\, \left(\nu_R + \delta_\nu(N-N_\nu)
+           - \nu_0\right) \, ,
+\end{displaymath}
+where $c$ is the speed of light, $\nu_0$ the rest frequency, $\nu_R$
+the reference frequency, $\delta_\nu$ the increment in frequency per
+pixel, $N$ the pixel, and $N_\nu$ the frequency reference pixel.
+If the velocity of the object with respect to the reference frame $V_R$
+is given for a velocity reference pixel $N_{\V}$, then
+\begin{eqnarray*}
+   V\,^{\prime} & = &\Vobs + V_R - \Vobs V_R / c \\
+                & = & - \frac{c}{\nu_0} \left( \nu_R +
+                        \delta_\nu(N_\V-N_\nu) - \nu_0 \right) \,.
+\end{eqnarray*}
+Noting that
+\begin{eqnarray*}
+   V_\s  & = & \frac{V - \Vobs}{1 - \Vobs / c} \\
+   \Vobs & = & c \frac{V\,^{\prime} - V_R}{c - V_R}
+\end{eqnarray*}
+and, doing a lot of substitutions and manipulations, we find that
+\begin{displaymath}
+    V_\s = V_R + \delta_\V \left(N - N_\V\right) \, ,
+\end{displaymath}
+where
+\begin{eqnarray*}
+   \delta_\V &\equiv & -\delta_\nu \left( c-V_R \right) / \nu_x \\
+   \nu_x     &\equiv &\nu_R + \delta_\nu \left( N_\V - N_\nu \right)\,.
+\end{eqnarray*}
+
+In the optical convention, the definition of velocity is
+\begin{eqnarray*}
+  \frac{V}{c} & = & - \frac{\nu\,^{\prime} - \nu_0}{\nu\,^{\prime}} \\
+              & = & \left( \frac{c + v}{c - v} \right)^{1/2} - 1
+\end{eqnarray*}
+which reverses to
+\begin{displaymath}
+    \frac{v}{c} = \frac{2cV + V^2}{2c^2 + 2cV + V^2} \, .
+\end{displaymath}
+Doing a similar set of substitutions, we derive
+\begin{displaymath}
+     V = V_\s + \Vobs + V_\s\Vobs / c \, .
+\end{displaymath}
+Manipulating the velocity equations to eliminate $\Vobs$, we obtain
+\begin{displaymath}
+    V_\s = V_R + \frac{(c+V_R)(V-V\,^{\prime})}{c+V\,^{\prime}}
+\end{displaymath}
+or, substituting the frequency information,
+\begin{displaymath}
+    V_\s = V_R - \frac{\delta_\nu (c+V_R)(N-N_\V)}{\nu_R +
+           \delta_\nu (N-N_\nu)} \, .
+\end{displaymath}
+For header purposes, the velocity increment is the slope of $V_\s$
+at $N_\V$
+\begin{displaymath}
+    \delta_\V = -\delta_\nu (c+V_R) / \nu_x
+\end{displaymath}
+and, for coordinate computations,
+\begin{displaymath}
+    V_\s = V_R+ \frac{\delta_{\V}(N-N_{\V})}{1+(N-N_{\V})\,
+         \delta_\nu/\nu_x} \, .
+\end{displaymath}
+
+The \AIPS\ catalog header provides storage locations for the current
+axis description:
+\begin{center}
+\begin{tabular}{ll}
+\noalign{\vskip -7pt}
+{\tt CAT8(K8CRV+J)}  & reference pixel value, $\nu_R$ or $V_R$ \\
+{\tt CAT4(K4CIC+J)}  & increment at reference pixel, $\delta_\nu$ or
+                       $\delta_{\V}$ \\
+{\tt CAT4(K4CRP+J)}  & reference pixel location, $N_\nu$ or $N_{\V}$ \\
+{\tt CAT4(K4CTP+2*J)}& axis label \\
+\noalign{\hbox{where the frequency or velocity is the
+$(J+1)^{\hbox{st}}$ axis. The alternative reference information is
+stored in}\vskip 3pt}
+{\tt CAT8(K8RST)} & rest frequency, $\nu_0$ \\
+{\tt CAT4(K4ARP)} & alternate reference pixel, $N_{\V}$ or $N_\nu$ \\
+{\tt CAT8(K8ARV)} & alternate reference value: either $V_R$ or $\nu_x$ \\
+{\tt CAT2(K2ALT)} & axis type code: 1 LSR, 2 HEL, 3 OBS plus 256
+                       if radio, \\
+\             &     0 implies no alternate axis
+\end{tabular}
+\end{center}
+
+Note that $\nu_x$ (not $\nu_R$) is stored when velocity is in the
+main axis description.  This allows \AIPS\ to recover the frequency
+increment.  For coordinate computations, the routine {\tt SETLOC}
+(to be described in more detail later) prepares the variable
+{\tt AXDENU} in the common {\tt /LOCATI/}, where
+{\tt AXDENU}$\ \equiv\delta_\nu/\nu_x=-\delta_{\V}/(c + V_R)$.
+This parameter is, of course, only used for axes labeled
+`{\tt FELO....}'.
+
+\section{Projective Coordinate Systems}
+
+%was 2.95in
+%\topfig{2.80in}{{\usefont s Figure 1.} Three projections to the
+%tangent plane.}
+
+\begin{figure}
+\centerline{\psfig{figure=coord1.eps,height=2.80in}}
+\caption{Three projections to the tangent plane}\label{fig:project}
+\end{figure}
+
+There are three projections to the tangent plane illustrated in
+Figure~\ref{fig:project} which are in frequent use in astronomy.  The
+TAN projection is common in optical astronomy and the SIN projection
+is common in radio aperture synthesis.  The ARC projection, in which
+angular distances are preserved, is used in Schmidt telescopes (to
+first order) and is also used in mapping with single dish radio
+telescopes.  Another geometry, used by the WSRT, involves a projection
+to a plane perpendicular to the North Celestial Pole.  \AIPS\ now
+supports all four of these geometries with full non-linear
+computations of the coordinate values.  The choice of geometry is
+conveyed in the last four characters of the axis type as `{\tt
+....-TAN}', `{\tt ....-SIN}', `{\tt ....-ARC}', and \hbox{`{\tt
+....-NCP}'}. The kind of coordinate is conveyed in the first four
+characters as `{\tt RA--....}', `{\tt DEC-....}', `{\tt GLON....}',
+`{\tt GLAT....}',  `{\tt ELON....}', and `{\tt ELAT....}' for
+longitude and latitude in the Celestial, Galactic, and Ecliptic
+systems.
+
+In a projected plane, the position of a point $(x,y)$ with respect to
+the coordinate reference point in an arbitrary linear system may be
+represented as
+\begin{equation}
+\begin{array}{lcl}
+  x & = &L\cos\rho+M\sin\rho \\
+  y & = &M\cos\rho-L\sin\rho \, ,
+\end{array}
+\label{eq:xy=LM}
+\end{equation}
+where $\rho$ is a rotation, $L$ is the direction cosine parallel to
+latitude at the reference pixel, and $M$ is the direction cosine
+parallel to longitude at the reference pixel.  Both the $(x,y)$ and
+$(L,M)$ systems are simple linear, perpendicular systems. If we
+represent longitude and latitude with the symbols $\alpha$ and
+$\delta$, the fun arises in solving the four problems: ({\it i}\/)\
+given $\alpha,\delta$ find $x,y$; ({\it ii}\/) \ given $x,y$ find
+$\alpha,\delta$; ({\it iii}\/)\ given $x,\delta$ find $\alpha,y$; and
+({\it iv}\/)\ given $\alpha,y$ find $x,\delta$. I will derive the
+answers, used by \AIPS, to these problems in the remainder of this
+section. The spherical coordinates are defined in
+Figure~\ref{fig:celestial}. Using $\da \equiv \alpha -
+\alpha_0$, the usual spherical triangle rules provide the basic
+formul\ae
+\begin{eqnarray}
+ \cos\theta & = &\sin\delta\sin\delta_0+\cos\delta \cos\delta_0
+                 \cos\Delta \alpha  \label{eq:cost}\\
+ \sin\theta \sin\phi & = &\cos\delta \sin\da  \label{eq:ssinp}\\
+ \sin\theta \cos\phi & = &\sin\delta \cos\delta_0-\cos\delta \sin\delta_0
+                         \cos\da \, .  \label{eq:scosp}
+\end{eqnarray}
+
+%was 3.65in
+%\topfig{3.55in}{{\usefont s Figure 2.} Celestial coordinates of
+%reference position O and source S.}
+
+\begin{figure}
+\centerline{\psfig{figure=coord2.eps,height=3.55in}}
+\caption{Celestial coordinates of reference position O and source
+           S}\label{fig:celestial}
+\end{figure}
+
+\subsection{TAN geometry}
+\subsubsection{Find $x,y$ from $\alpha,\delta$}
+\begin{eqnarray*}
+  L & = & \tan\theta \sin\phi  \\
+  M & = & \tan\theta \cos\phi
+\end{eqnarray*}
+or
+\begin{eqnarray}
+  L & = & \frac{\cos\delta\sin\da}{\sin\delta\sin\delta_0 +
+          \cos\delta \cos\delta_0 \cos\da} \nonumber\\
+  \noalign{\vskip 6pt}
+  M & = & \frac{\sin\delta \cos\delta_0-\cos\delta \sin\delta_0
+          \cos\da}{\sin\delta\sin\delta_0 +
+          \cos\delta\cos\delta_0 \cos\da} \, .
+\label{eq:LMT1}
+\end{eqnarray}
+$x$ and $y$ may then be determined by equations~\ref{eq:xy=LM}.
+
+\subsubsection{Find $\alpha,\delta$ from $x,y$}
+
+$L,M$ may be found by equations~\ref{eq:xy=LM}. Then,
+equations~\ref{eq:LMT1} may be inverted to yield
+\begin{eqnarray*}
+ \cos\da & = & \tan\delta \, \frac{\cos\delta_0 -
+        M\sin\delta_0}{M cos\delta_0+\sin\delta_0} \\
+ \noalign{\vskip 2pt}
+ \sin\da & = & \tan\delta \, \frac{L}{M
+                      \cos\delta_0+\sin\delta_0} \, .
+\end{eqnarray*}
+Then
+\begin{eqnarray*}
+ \alpha &= & \alpha_0+\tan^{-1} \left( \frac{L}{\cos\delta_0 -
+             M \sin\delta_0} \right) \\
+ \noalign{\vskip 6pt}
+ \delta & = &\tan^{-1} \left( \cos\da\, \frac{M\cos\delta_0
+             +\sin\delta_0}{\cos\delta_0-M \sin\delta_0} \right) \,.
+\end{eqnarray*}
+
+\subsubsection{Find $\alpha,y$ from $x,\delta$}
+
+Equations~\ref{eq:xy=LM} and~\ref{eq:LMT1} may be combined to yield
+\begin{displaymath}
+  \cos\rho\sin\da - (x \cos\delta_0 + \sin\delta_0\sin\rho) \cos\da
+       = x \tan\delta \sin\delta_0 - \tan\delta \cos\delta_0 \sin\rho
+       \, .
+\end{displaymath}
+Thus, if
+\begin{eqnarray*}
+  A & \equiv & \cos\rho \\
+  B & \equiv & x \cos\delta_0+\sin\delta_0\sin\rho \, ,
+\end{eqnarray*}
+then
+\begin{eqnarray*}
+  \alpha &=& \alpha_0+\tan^{-1}\left(\frac{B}{A}\right) +
+      \sin^{-1}\left( \frac{\tan\delta\,(x \sin\delta_0-\cos\delta_0
+      \sin\rho)}{\sqrt{A^2+B^2}}\right) \\
+ \noalign{\vskip 6pt}
+  y &=& \frac{\sin\delta \cos\delta_0\cos\rho - \cos\delta\sin\delta_0
+         \cos\da \cos\rho - \cos\delta\sin\da
+         \sin\rho}{\sin\delta \sin\delta_0+\cos\delta\cos\delta_0
+         \cos\da} \, .
+\end{eqnarray*}
+
+\subsubsection{Find $x,\delta$ from $x,y$}
+
+The above equation for $y$ may be inverted to yield
+\begin{eqnarray*}
+\delta & = & \tan^{-1} \left( \frac{\sin\delta_0 \cos\da
+      \cos\rho + \sin\da\sin\rho +
+      y\cos\delta_0\cos\da}{\cos\delta_0 \cos\rho
+      -y \sin\delta_0}\right) \, . \\
+\noalign{\hbox{Then,}}
+x & = &\frac{\sin\da\cos\rho + \tan\delta\cos\delta_0\sin\rho -
+      \sin\delta_0\cos\da\sin\rho}{\tan\delta\sin\delta_o +
+      \cos\delta_0 \cos\da} \, .
+\end{eqnarray*}
+
+\subsection{SIN geometry}
+\subsubsection{Find $x,y$ from $\alpha,\delta$}
+
+\begin{eqnarray*}
+  L & = & \sin\theta\sin\phi \\
+  M & = & \sin\theta\cos\phi \, , \footnotemark
+\end{eqnarray*}
+\footnotetext{{\bf 1993: }The original Memo had a typo on this
+equation, declaring $M = \sin\theta\cos\theta.$}
+or, using equations~\ref{eq:ssinp} and \ref{eq:scosp},
+\begin{eqnarray}
+ L & = &\cos\delta\sin\da    \nonumber \\
+ M & = &\sin\delta\cos\delta_0 - \cos\delta\sin\delta_0\cos
+          \da \, .  \label{eq:LMsin}
+\end{eqnarray}
+Then $x$ and $y$ may be determined by equations~\ref{eq:xy=LM}.
+
+\subsubsection{Find $\alpha,\delta$ from $x,y$}
+
+Equations~\ref{eq:xy=LM} may be reversed to find $L$ and $M$ from $x$ and
+$y$.  Using equation~\ref{eq:LMsin},
+\begin{displaymath}
+  \cos^2\delta\cos^2\da=\cos^2\delta-L^2=(\sin\delta\cos
+       \delta_0-M)^2/\sin^2\delta_0
+\end{displaymath}
+or, with trigonometric substitutions,
+\begin{eqnarray*}
+  \delta & = &\sin^{-1} \left( M\cos\delta_0 + \sin\delta_0
+               \sqrt{1-L^2-M^2} \, \right) \\
+   \alpha & = &\alpha_0+\tan^{-1} \left( \frac{L}{\cos\delta_0
+               \sqrt{1-L^2-M^2}-M\sin\delta_0}\right) \, .
+\end{eqnarray*}
+
+\subsubsection{Find $\alpha,y$ from $x,\delta$}
+
+Equations~\ref{eq:xy=LM} and \ref{eq:LMsin} may be combined to yield
+\begin{displaymath}
+  (\cos\delta\cos\rho)\sin\da -(\cos\delta\sin\delta_0\sin\rho)
+      \cos\da  = x - \sin\delta\cos\delta_0\sin\rho \, .
+\end{displaymath}
+Thus, if
+\begin{eqnarray*}
+  A & \equiv &\cos\rho \\
+  B & \equiv &\sin\delta_0\sin\rho \, ,
+\end{eqnarray*}
+then,
+\begin{eqnarray*}
+  \alpha & = & \alpha_0 + \tan^{-1}\left(\frac{B}{A}\right) +
+    \sin^{-1}\left( \frac{x-\sin\delta\cos\delta_0\sin\rho}{\cos
+    \delta\sqrt{A^2+B^2}}\right) \\
+\noalign{\hbox{and}}
+  y & = &M\cos\rho - L\sin\rho \\
+    & = &\sin\delta\cos\delta_0\cos\rho - \cos\delta\sin\delta_0
+    \cos\da\cos\rho-\cos\delta\sin\da\sin\rho \, .
+\end{eqnarray*}
+
+\subsubsection{Find $x,\delta$ from $\alpha,y$}
+
+From the above equation
+\begin{displaymath}
+  y = (\cos\delta_0\cos\rho)\sin\delta - (\sin\delta_0\cos\da\cos\rho
+      + \sin\da\sin\rho)\cos\delta \, .
+\end{displaymath}
+Thus, if
+\begin{eqnarray*}
+  A & \equiv &\cos\delta_0\cos\rho \\
+  B & \equiv &\sin\delta_0\cos\da\cos\rho +
+       \sin\da\sin\rho \, ,
+\end{eqnarray*}
+then
+\begin{eqnarray*}
+  \delta & = &\tan^{-1}\left(\frac{B}{A}\right) + \sin^{-1}\left(
+              \frac{y}{\sqrt{A^2+B^2}} \right) \\
+ \noalign{\vskip 4pt}
+  x & = & \cos\delta\sin\da\cos\rho + \sin\delta\cos\delta_0
+       \sin\rho-\cos\delta\sin\delta_0\cos\da\sin\rho \, .
+\end{eqnarray*}
+
+\subsection{ARC geometry}
+\subsubsection{Find $x,y$ from $\alpha,\delta$}
+
+\begin{eqnarray}
+  L & = &\theta\sin\phi \nonumber \\
+  M & = &\theta\cos\phi \label{eq:LMarc}
+\end{eqnarray}
+or, using equations~\ref{eq:ssinp}, \ref{eq:scosp}, and \ref{eq:cost},
+\begin{eqnarray}
+  L & = &\left( \frac{\theta}{\sin\theta}\right)
+          \cos\delta\sin\da \nonumber \\
+  M & = &\left( \frac{\theta}{\sin\theta}\right) (\sin\delta
+          \cos\delta_0 - \cos\delta\sin\delta_0\cos\da)
+          \label{eq:LMtarc}\\
+  \theta & = &\cos^{-1} (\sin\delta\sin\delta_0 +
+          \cos\delta\cos\delta_0\cos\da) \, . \nonumber
+\end{eqnarray}
+We note that the sign of $\theta$, ambiguous in an $\cos^{-1}$, is
+irrelevant here because it is used only in the form
+$\theta/\sin\theta$. Equations~\ref{eq:xy=LM} are then used to find
+$x$ and $y$.
+
+\subsubsection{Find $\alpha,\delta$ from $x,y$}
+
+Equations~\ref{eq:xy=LM} are reversed to determine $L$ and $M$ from
+$x$ and $y$.  Then equations~\ref{eq:LMarc} yield
+\begin{displaymath}
+   | \theta | = \sqrt{L^2+M^2}
+\end{displaymath}
+directly, while equations~\ref{eq:LMtarc} for M and $\cos\theta$, give
+\begin{eqnarray*}
+  \delta & = & \sin^{-1}\left(\frac{M\cos\delta_0}{\theta/\sin\theta} +
+           \sin\delta_0\cos\theta\right) \\
+\noalign{\hbox{and equations~\ref{eq:LMtarc} for $L$ yields}}
+   \alpha & = & \alpha_0 + \sin^{-1}\left(\frac{\sin\theta}{\theta}\,
+            \frac{L}{\cos\delta}\right) \, .
+\end{eqnarray*}
+
+Since these are fairly simple exact expressions, I do not see the need
+to use approximations as is normally done in the literature on the
+Schmidt geometry.  Since $\theta/\sin\theta$ is not susceptible to
+trigonometric identities, the ``cross-product'' problems (below) do
+not have exact solutions.  Instead, \AIPS\ implements iterative
+methods.
+
+\subsubsection{Find $\alpha,y$ from $x,\delta$}
+
+From the previous section
+\begin{eqnarray*}
+  \sin\delta & = &M\cos\delta_0\,\frac{\sin\theta}{\theta} +
+                 \sin\delta_0\cos\theta \\
+   & = &\frac{\sin\theta}{\theta} (x\sin\rho + y\cos\rho)\cos\delta_0
+         + \cos\theta\sin\delta_0 \\
+\noalign{\hbox{or}}
+  y & = & \frac{\sin\delta-\sin\delta_0\cos\theta-x\sin\rho\cos
+       \delta_0\,(\sin\theta/\theta)}{\cos\rho\cos\delta_0\,
+       (\sin\theta/\theta)} \, .
+\end{eqnarray*}
+This can be solved iteratively.  We begin by setting $y$ to $0$ and
+compute
+\begin{displaymath}
+  \theta = \sqrt{x^2+y^2}
+\end{displaymath}
+followed by the above formula for $y$.  Then we improve the estimate
+of $\theta$ and repeat.  When convergence is achieved, we may then
+compute
+\begin{displaymath}
+  \alpha = \alpha_0 + \sin^{-1}\left( \frac{\sin\theta}{\theta}\,
+      \frac{x\cos\rho - y\sin\rho}{\cos\delta}\right) \, .
+\end{displaymath}
+
+\subsubsection{Find $x,\delta$ from $\alpha,y$}
+
+This problem also requires an iterative method which is a bit messier.
+In order to restrict the main computations to terms involving
+uncertainties which are no worse than second order in $x$, an
+$\cos^{-1}$ is required.  The method begins by setting $x=0$.  Then
+\begin{eqnarray*}
+  \theta & = &\sqrt{x^2+y^2} \\
+  \delta & = &\tan^{-1}\left( \frac{\tan\delta_0}{\cos\da}
+      \right) + \sign(y) \cos^{-1}\left( \frac{\cos\theta}{\sqrt{1 -
+      \cos^2\delta_0\sin^2\da}} \right) \\
+  x & = &\frac{y\sin\rho + \cos\delta\sin\da\, (\theta/
+        \sin\theta)}{\cos\rho} \, ,
+\end{eqnarray*}
+where
+\begin{displaymath}
+  \sign(x) = \cases{\hphantom{-}1, & $x \geq 0$ \cr
+                               -1, & $x < 0$ \cr}
+\end{displaymath}
+and repeat.  The second equation above is a rewritten version of
+equation~\ref{eq:cost} and the third equation is
+equations~\ref{eq:LMtarc} for $L$ rewritten in terms of $x$ and $y$.
+
+\subsection{NCP geometry\protect\footnotemark}
+\footnotetext{{\bf 1993: }This ``geometry'' is actually a {\tt SIN}
+geometry with the North Celestial Pole as the tangent point; it is,
+therefore, deprecated in the 1993 proposal.}
+
+\subsubsection{Find $x,y$ from $\alpha,\delta$}
+
+From {\it Data Processing for the Westerbork Synthesis Radio
+Telescope}, W. N. Brouw (1971), we have
+\begin{eqnarray}
+  L & = &\cos\delta\sin\da  \nonumber \\
+  M & = &(\cos\delta_0 - \cos\delta\cos\da)/\sin\delta_0
+         \, .  \label{eq:LMncp}
+\end{eqnarray}
+
+Equations~\ref{eq:xy=LM} then provide $x$ and $y$.
+
+\subsubsection{Find $\alpha,\delta$ from $x,y$}
+
+The reverse of equations~\ref{eq:xy=LM} yield $L$ and $M$ from $x$ and
+$y$.  Then, combining equations~\ref{eq:LMncp},
+\begin{eqnarray*}
+  \alpha & = &\alpha_0 + \tan^{-1}\left( \frac{L}{\cos
+              \delta_0-M\sin\delta_0}\right) \\
+  \delta & = &\sign(\delta_0)\,\cos^{-1}\left( \frac{\cos
+       \delta_0-M\sin\delta_0}{\cos\da}\right) \, .
+\end{eqnarray*}
+
+\subsubsection{Find $\alpha,y$ from $x,\delta$}
+
+Since
+\begin{displaymath}
+  x = L\cos\rho + M\sin\rho
+\end{displaymath}
+we use equations~\ref{eq:LMncp} and rearrange to obtain
+\begin{displaymath}
+  (\cos\delta\cos\rho)\sin\da - \left(\frac{\cos\delta
+     \sin\rho}{\sin\delta_0}\right) \cos\da =
+     \left(\frac{x-\cos\delta_0\sin\rho}{\sin\delta_0}\right) \, .
+\end{displaymath}
+Thus, if
+\begin{eqnarray*}
+  A & \equiv &\cos\rho \\
+  B & \equiv &\sin\rho/\sin\delta_0 \, ,
+\end{eqnarray*}
+then
+\begin{eqnarray*}
+  \alpha & = &\alpha_0 + \tan^{-1}\left( \frac{B}{A} \right) +
+              \sin^{-1}\left( \frac{x\sin\delta_0-\cos\delta_0\sin
+              \rho}{\cos\delta\sin\delta_0\sqrt{A^2+B^2}} \right) \\
+\noalign{\vskip 2pt}
+ y & = &\cos\rho \left( \frac{\cos\delta_0 -\cos\delta\cos\Delta
+               \alpha}{\sin\delta_0} \right) -\sin\rho\cos\delta
+               \sin\da \, .
+\end{eqnarray*}
+
+\subsubsection{Find $x,\delta$ from $\alpha,y$}
+
+Substituting equations~\ref{eq:LMncp} in equation~\ref{eq:xy=LM} for
+$y$ and rearranging,
+\begin{eqnarray*}
+  \delta & = & \sign(\delta_0)\,\cos^{-1} \left( \frac{\cos\delta_0
+           \cos\rho - y\sin\delta_0}{\cos\da\cos\rho +
+           \sin\da\sin\rho\sin\delta_0} \right) \, . \\
+\noalign{\hbox{Then}}
+  x & = &\cos\rho\cos\delta\sin\da + \sin\rho\left(
+         \frac{\cos\delta_0 - \cos\delta\cos\da}{\sin
+         \delta_0} \right) \\
+ \noalign{\vskip 4pt}
+    & = &\frac{\cos\delta_0\sin\da - y\,(\sin\Delta
+         \alpha\sin\delta_0\cos\rho-\cos\da\sin\rho)}{\cos
+         \da\cos\rho + \sin\alpha\Delta\sin\rho\sin\delta_0}
+         \, .
+\end{eqnarray*}
+
+\section{Galactic Coordinates}
+
+For observers of Galactic objects, it is often more relevant to
+display their images in Galactic rather than Celestial coordinates.
+It may be shown that for any geometric projection to the tangent
+plane, the two systems are equivalent except for a change in the
+reference coordinates $\alpha_0,\delta_0$ and the rotation angle
+$\rho$.  Note that the NCP geometry does not use a tangent plane
+and, hence, cannot be in alternate coordinates.  A verb, {\tt
+CELGAL}, has been implemented in \AIPS\ to convert the catalog
+header from Celestial to Galactic coordinates and back again.  The
+mathematics used in this conversion is derived below and illustrated
+on the Celestial sphere in Figure~\ref{fig:galactic}.
+
+%\topfig{3.75in}{{\usefont s Figure 3.} Celestial and Galactic
+%coordinates of source S.}
+
+\begin{figure}
+\centerline{\psfig{figure=coord3.eps,height=3.75in}}
+\caption{Celestial and Galactic coordinates of source
+S}\label{fig:galactic}
+\end{figure}
+
+Let $\alpha_\G,\delta_\G$ be the Celestial coordinates of the North
+Galactic pole (192.25, 27.4 degrees) and $\lambda_P$ be the Galactic
+longitude of the North celestial pole (123.0 degrees).  To do the
+conversion we need only solve the spherical triangle NGP--S--NCP:
+\begin{eqnarray}
+ \sin\beta & = &\sin\delta\sin\delta_\G + \cos\delta\cos\delta_\G
+                \cos\,(\alpha-\alpha_\G) \nonumber \\
+  \cos\beta\sin\,(\lambda_P-\lambda) & = &\cos\delta\sin\,(\alpha -
+                \alpha_\G)  \label{eq:blgal} \\
+  \cos\beta\cos\,(\lambda_P-\lambda) & = &\sin\delta\cos\delta_\G -
+                \cos\delta\sin\delta_\G\cos\,(\alpha-\alpha_\G)
+\end{eqnarray}
+or
+\begin{displaymath}
+  \lambda = \lambda_P + \tan^{-1}\left( \frac{\cos\delta\sin\,
+            (\alpha-\alpha_\G)}{\cos\delta\sin\delta_\G\cos\,
+            (\alpha-\alpha_\G) - \sin\delta\cos\delta_\G} \right) \, .
+\end{displaymath}
+The reverse formul\ae\ are equally straight forward:
+\begin{eqnarray*}
+  \alpha & = &\alpha_\G + \tan^{-1}\left( \frac{\cos\beta\sin\,
+      (\lambda-\lambda_P)}{\cos\beta\sin\delta_\G\cos\,
+      (\lambda-\lambda_P) - \sin\beta\cos\delta_\G}\right) \\
+ \noalign{\vskip 3pt}
+  \delta & = &\sin^{-1} \left(\sin\beta\sin\delta_\G +
+      \cos\beta\cos\delta_\G\cos\,(\lambda-\lambda_P)\right)
+\end{eqnarray*}
+
+The proof that a rotation applies and the derivation of its value
+is messier.  Using the SIN geometry, we evaluate
+\begin{eqnarray*}
+  L\,^\prime & \equiv &\cos\beta\sin\,(\lambda-\lambda_0) \\
+     & = &\cos\beta\sin\,(\lambda-\lambda_P)\cos\,(\lambda_0
+     -\lambda_P) - \cos\beta\cos\,(\lambda-\lambda_P)\sin\,
+     (\lambda_0-\lambda_P) \, .
+\end{eqnarray*}
+Substituting from equations~\ref{eq:blgal}, expanding, and using
+\begin{displaymath}
+  \sin\,(\alpha-\alpha_\G) = \sin\da\cos\,(\alpha_0
+     -\alpha_\G)+\cos\da\sin\,(\alpha_0-\alpha_\G) \, ,
+\end{displaymath}
+we obtain
+\begin{displaymath}
+  L\,^\prime =L\,\left(\frac{\cos\delta_0\sin\delta_\G -
+     \sin\delta_0\cos\delta_\G\cos\,(\alpha_0-\alpha_\G)}{\cos
+     \beta_0} \right) + M \left( \frac{\cos\delta_\G\sin\,
+     (\alpha_0-\alpha_\G)}{\cos\beta_0} \right) \, .
+\end{displaymath}
+This is then a rotation $R$ given by
+\begin{displaymath}
+   R = \tan^{-1}\left( \frac{\cos\delta_\G\sin(\alpha_0 -
+       \alpha_\G)}{\cos\delta_0\sin\delta_\G-\sin\delta_0\cos
+       \delta_\G\cos\,(\alpha_0-\alpha_\G)} \right) \, .
+\end{displaymath}
+I have checked this using $M$ and the TAN geometry and obtain the same
+result. The sign conventions are such that
+\begin{displaymath}
+\rho_{\GAL} = \rho_{\CEL}-R \, .
+\end{displaymath}
+
+\section{The \AIPS\/\ Implementation}
+
+As in previous versions, positions are handled primarily through a
+``location'' common named {\tt /LOCATI/} and included via {\tt
+DLOC.INC} and {\tt CLOC.INC}. This common is initialized via a call to
+{\tt SETLOC} {\tt (IDEPTH)} where {\tt IDEPTH} is a five-integer array
+giving the location of the current plane on axes 3 through 7.  The
+image catalog header is required to be in common {\tt /MAPHDR/}.
+
+The contents of this common are used for the computation of positions
+and axis labeling.  Some portions of the common have, however, wider
+potential uses.  Four ``primary'' axes are identified in the common:
+the $x$-axis, the $y$-axis, and, where present, up to two of axes
+3--7. The latter are ``normally'' used solely for labeling.  However,
+when one of the $x$ and $y$ axes is a position axis (\eg\ RA,
+Glon) and the other is not, then the third primary axis is identified
+with the corresponding position axis (\eg\ Dec, Glat) and used
+in position computations.  Such an axis is often called the ``$z$''
+axis and occurs in transposed spectral line imagery among other
+places.
+
+The parameters of the common are
+\begin{center}
+\begin{tabular}{lll}
+\noalign{\vskip -7pt}
+{\tt RPVAL } & {\tt R*8(4)}  & Reference pixel values \\
+{\tt COND2R} & {\tt R*8}     & Degrees to radians multiplier =
+                                 $\pi$/180 \\
+{\tt AXDENU} & {\tt R*8}     & $\delta_\nu/\nu_x$ when a
+                                {\tt FELO} axis is present \\
+{\tt RPLOC}  & {\tt R*4(4)}  & Reference pixel locations \\
+{\tt AXINC}  & {\tt R*4(4)}  & Axis increments \\
+{\tt CTYP}   & {\tt R*4(2,4)}& Axis types \\
+{\tt CPREF}  & {\tt R*4(2)}  & $x,y$ axis prefixes for labeling \\
+{\tt ROT}    & {\tt R*4}     & Rotation angle of position axes \\
+{\tt SAXLAB} & {\tt R*4(5,2)}& Labels for axes 3 and 4 values
+                                 (4 char/fp) \\
+{\tt ZDEPTH} & {\tt I*2(5)}  & Value of {\tt IDEPTH} from {\tt
+                                 SETLOC} call \\
+{\tt ZAXIS}  & {\tt I*2}     & 1-relative axis number of $z$
+                                 axis \\
+{\tt AXTYP}  & {\tt I*2}     & Position axis code \\
+{\tt CORTYP} & {\tt I*2}     & Which position is which \\
+{\tt LABTYP} & {\tt I*2}     & Special $x,y$ label request \\
+{\tt SGNROT} & {\tt I*2}     & Extra sign to apply to rotation \\
+{\tt AXFUNC} & {\tt I*2(7)}  & Kind of axis code \\
+{\tt KLOCL}  & {\tt I*2}     & 0-rel axis number--longitude axis \\
+{\tt KLOCM}  & {\tt I*2}     & 0-rel axis number--latitude axis \\
+{\tt KLOCF}  & {\tt I*2}     & 0-rel axis number--frequency axis \\
+{\tt KLOCS}  & {\tt I*2}     & 0-rel axis number--Stokes axis \\
+{\tt KLOCA}  & {\tt I*2}     & 0-rel axis number--``primary
+                                 axis'' 3 \\
+{\tt KLOCB}  & {\tt I*2}     &  0-rel axis number--``primary
+                                 axis'' 4 \\
+{\tt NCHLAB} & {\tt I*2(2)}  & Number of characters in {\tt SAXLAB}
+\end{tabular}
+\end{center}
+
+There are several sets of codes here which need additional
+explanation:
+\begin{center}
+\begin{tabular}{lrl}
+\noalign{\vskip -7pt}
+{\tt AXTYP} & value = 0 & no position-axis pair \\
+\           &       = 1 & $x-y$ are position pair \\
+\           &       = 2 & $x-z$ are position pair \\
+\           &       = 3 & $y-z$ are position pair \\
+\           &       = 4 & 2 $z$ axes form a pair \\
+{\tt CORTYP}& value = 0 & linear $x,y$ axes \\
+\           &       = 1 & $x$ is longitude, $y$ is
+                             latitude \\
+\           &       = 2 & $y$ is longitude, $x$ is
+                             latitude \\
+\           &       = 3 & $x$ is longitude, $z$ is
+                             latitude \\
+\           &       = 4 & $z$ is longitude, $x$ is
+                             latitude \\
+\           &       = 5 & $y$ is longitude, $z$ is
+                             latitude \\
+\           &       = 6 & $z$ is longitude, $y$ is
+                             latitude \\
+{\tt LABTYP}&\multicolumn{2}{l}{value = $10\ast ycode +xcode$} \\
+\           & $.code$ = 0 & use {\tt CPREF}, {\tt CTYP} \\
+\           &        = 1 & use Ecliptic longitude \\
+\           &       = 2 & use Ecliptic latitude \\
+\           &       = 3 & use Galactic longitude \\
+\           &       = 4 & use Galactic latitude \\
+\           &       = 5 & use Right Ascension \\
+\           &       = 6 & use Declination \\
+{\tt AXFUNC}& value = $-1$ & no axis \\
+\           &       = 0 & linear axis \\
+\           &       = 1 & {\tt FELO} axis \\
+\           &       = 2 & SIN projection \\
+\           &       = 3 & TAN projection \\
+\           &       = 4 & ARC projection \\
+\           &       = 5 & NCP projection
+\end{tabular}
+\end{center}
+
+The {\tt KLOC.} parameters have value $-1$ if the corresponding axis
+does not exist.  If {\tt AXTYP} is 2 or 3, the pointer {\tt KLOCA}
+will always point at the $z$ axis. In this case, {\tt SETLOC} does not
+have enough information to prepare {\tt SAXLAB(*,1)}. The string must
+be computed later when an appropriate $x,y$ position is specified.
+
+The four kinds of position computations are implemented in \AIPS\ by
+the subroutines {\tt XYPIX}, {\tt XYVAL}, {\tt FNDX}, and {\tt FNDY},
+respectively. These routines all use the location common, sort out the
+various combinations, deal with rotation where possible, and call
+lower level routines. The subroutines {\tt NEWPOS}, {\tt DIRCOS}, {\tt
+DIRRA}, and {\tt DIRDEC} actually implement the trigonometry of
+Section 3, but will seldom be of immediate interest to the general
+programmer.  The character strings used to display axis values are
+prepared normally with the new subroutine {\tt AXSTRN}. More general
+axis labeling problems are initialized with routines {\tt LABINI} and
+{\tt SLBINI}. The former calls {\tt SETLOC}, prepares the $z$-axis
+string, and revises the axis description to match the user-requested
+labeling type.  The latter calls {\tt LABINI} and then deals with the
+special problems of slices. The subroutine {\tt AU7} implements the
+verbs {\tt ALTDEF}, {\tt ALTSWTCH}, and {\tt CELGAL}.
+
+Several new FITS keywords are now written and read by \AIPS. They
+implement the new header parameters for the alternate axis
+description, the observed (pointing) position, and the coordinate
+shifts. Tentatively, these keywords are
+\begin{center}
+\begin{tabular}{lrl}
+\noalign{\vskip -7pt}
+{\tt VELREF}  & {\tt C*8} & Velocity reference systems \\
+{\tt ALTRVAL} & {\tt R*8} & Alternate reference value \\
+{\tt ALTRPIX} & {\tt R*8} & Alternate reference pixel \\
+{\tt RESTFREQ}& {\tt R*8} & Line rest frequency \\
+{\tt OBSRA}   & {\tt R*8} & Pointing position:\ RA of epoch \\
+{\tt OBSDEC}  & {\tt R*8} & Pointing position:\ DEC of epoch \\
+{\tt XSHIFT}  & {\tt R*8} & Sum of phase shifts:\ RA \\
+{\tt YSHIFT}  & {\tt R*8} & Sum of phase shifts:\ DEC.
+\end{tabular}
+\end{center}
+
+These may change when a new FITS agreement is reached.
+
+
+\section{Acknowledgments}
+
+     The author is indebted to Arnold Rots for suggesting the use of
+relativistic velocity formul\ae\ and to Campbell Wade for pointing out
+errors in the April 1983 version of this document.  The National Radio
+Astronomy Observatory (Edgemont Road, Charlottesville, VA 22901) is
+operated by Associated Universities, Inc. under contract with the
+National Science Foundation.  Original version \TeX set by Nancy D.\
+Wiener.
+
+\end{document}

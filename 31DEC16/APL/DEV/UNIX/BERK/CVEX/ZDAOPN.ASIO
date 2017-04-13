@@ -1,0 +1,154 @@
+#include <stdio.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/file.h>
+
+#define MAXPNAME 48                     /* Maximum logical device     */
+                                        /* plus file name length.     */
+#define MAXPATH 128                     /* Maximum path name length.  */
+
+zdaopn_(fcb, pname, map, excl, ierr)
+/*--------------------------------------------------------------------*/
+/*! open the specified disk file                                      */
+/*# IO-basic                                                          */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 1995                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/*  Opens a disk file for map (double buffered) or non-map (single    */
+/*  buffered) I/O and shared or exclusive use.                        */
+/*  Inputs:                                                           */
+/*     pname   C*48   Physical file name (MAXPNAME characters)        */
+/*     map     I      I/O type: 0 => non-map (single buffered)        */
+/*                              1 => map (double buffered)            */
+/*     excl    I      Usage mode indicator: 0 => shared               */
+/*                                          1 => exclusive            */
+/*  Output:                                                           */
+/*     fcb     I(*)   File control block for disk file involved       */
+/*     ierr    I      Error return code: 0 => no error                */
+/*                       2 => file not found                          */
+/*                       3 => volume/logical not found                */
+/*                       4 => exclusive use requested but not ok      */
+/*                       6 => other open error                        */
+/*  Convex version (asynchronous I/O implemented).                    */
+/*--------------------------------------------------------------------*/
+int *fcb, *map, *excl, *ierr;
+char pname[MAXPNAME];
+/*--------------------------------------------------------------------*/
+{
+                                        /* Offsets to entries in the  */
+                                        /* file control blocks        */
+   extern int Z_fcbfd, Z_fcbreq, Z_fcberr, Z_fcbxfr, Z_fcbsiz,
+      Z_fcbsp1, Z_fcbsp2, Z_fcbsp3, Z_fcbsp4;
+                                        /* # of FTAB elements per map */
+                                        /* file control block         */
+   extern int Z_mfcb;
+   extern int errno;
+   int llen, xlen, xlnb, jerr, syserr, fd, dupfd, size;
+   register int i, j;
+   char pathname[MAXPATH];
+   struct stat fstatbuf;
+/*--------------------------------------------------------------------*/
+   *ierr = 0;
+                                        /* get full file name         */
+   llen = MAXPNAME;
+   xlen = MAXPATH;
+   zpath_(&llen, pname, &xlen, pathname, &xlnb, &jerr) ;
+   if (jerr != 0) {
+      *ierr = 3;
+      }
+   else {
+      pathname[xlnb] = '\0';
+                                        /* Open the disk file         */
+                                        /* read/write.                */
+      if ((fd = open (pathname, 2)) == -1) {
+         *(fcb + Z_fcberr) = errno;
+                                        /* File doesn't exist.        */
+         if (errno == ENOENT)
+            *ierr = 2;
+                                        /* Some other open error.     */
+         else
+            *ierr = 6;
+         }
+      else {
+         *(fcb + Z_fcbfd) = fd;
+                                        /* Apply non-blocking lock.   */
+         zlock_ (&fd, pname, excl, &syserr, ierr);
+         if (*ierr != 0) {
+            *(fcb + Z_fcberr) = syserr;
+            close (fd);
+            }
+         else if (fstat (fd, &fstatbuf) == -1) {
+            *(fcb + Z_fcberr) = errno;
+            *ierr = 6;
+            close (fd);
+            }
+         else {
+                                        /* Squirrel away file size    */
+            size = fstatbuf.st_size;
+            *(fcb + Z_fcbsiz) = size;
+                                        /* If opened for double       */
+                                        /* buffered I/O, duplicate    */
+                                        /* 1st buffer file control    */
+                                        /* block entries in 2nd       */
+                                        /* buffer control block.      */
+            if (*map == 1) {
+                                        /* Get duplicate file         */
+                                        /* descriptor for 2nd buffer  */
+                                        /* (this is only necessary    */
+                                        /* for I/O wait servicing).   */
+               if ((dupfd = dup(fd)) == -1) {
+                  *(fcb + Z_mfcb + Z_fcberr) = errno;
+                  close (fd);
+                  *ierr = 6;
+                  }
+               else {
+                  *(fcb + Z_mfcb + Z_fcbfd) = dupfd;
+                                        /* Copy file size info.       */
+                  *(fcb + Z_mfcb + Z_fcbsiz) = *(fcb + Z_fcbsiz);
+                                        /* Enable asynchronous mode   */
+                                        /* for both buffers.          */
+                  if (fcntl (fd, F_SETFL, FASIO) == -1) {
+                     *(fcb + Z_fcberr) = errno;
+                     *ierr = 6;
+                     close (fd);
+                     close (dupfd);
+                     }
+                  else if (fcntl (dupfd, F_SETFL, FASIO) == -1) {
+                     *(fcb + Z_mfcb + Z_fcberr) = errno;
+                     *ierr = 6;
+                     close (fd);
+                     close (dupfd);
+                     }
+                  }
+               }
+            }
+         }
+      }
+
+   return;
+}

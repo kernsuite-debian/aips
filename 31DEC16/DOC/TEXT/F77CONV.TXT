@@ -1,0 +1,647 @@
+                        AIPS conversion to Fortran 77
+
+1) The bulk of the conversion is being done by two translation programs,
+XLATE and XEDIT although some work must be done manually.  The goal of
+this conversion is that, after preprocessing, AIPS Fortran will strictly
+conform to ANSI Fortran 77 rules.
+
+2) Pseudo I*4 is being eliminated.
+   - ZMATH4 to be changed to straight Fortran
+
+   - ZR8P4 to be changed to straight Fortran (except tape reading
+     '4IB8', '8IB4')
+
+   - Pseudo I*4 declarations & data statments to be changed.
+
+   - Following routine names to be substituted:
+     MINI3  => MINIT
+     MDISK3 => MDISK
+     MINIS3 => MINISK
+     MSKI3  => MSKIP
+     COMOF3 => COMOFF
+     FSWTC3 => FSWTCH
+
+   - Pseudo I*4 in FDVEC in TAPIO to be changed to INTEGER.
+
+   - Remove limit of 32767 in computing buffer sizes.
+
+3) CHARACTER variables have been implemented wherever possible in AIPS.
+   In cases where the rules of Fortran do not allow CHARACTER data to
+   coexist with numeric data we have implemented a HOLLERITH data type
+   which is character data in hollerith form in declared numeric variables.
+   HOLLERITH data is used only in data structures and I/O buffers.  The
+   specific uses are:
+   1) any file containing numeric data in binary form,
+   2) the I/O buffer used to read or write a file with numeric data in
+      binary form,
+   3) character data in the POPS processor,
+   4) AIPS string adverb values passed via GTPARM,
+   5) the catalog header records (CATBLK).
+
+      There are to be only two forms for storing character data in AIPS;
+   in variables declared type CHARACTER or type HOLLERITH (converted to
+   REAL by the preprocessor).  HOLLERITH strings will have 4 characters
+   per element.  HOLLERITH strings are the old unpacked strings with a
+   new name.  Packed strings are eliminated; two character per integer
+   strings are converted to HOLLERITH and 'loose' (1 character per
+   integer) are to be converted to CHARACTER variables.
+       HOLLERITH variables are neither to be DATAed nor written with an
+   'A' format.
+
+   - Routines H2CHR and  CHR2H convert between character variables and
+     AIPS Hollerith strings.
+
+    H2CHR (nchar, inptr, hol_string, character)
+    Converts nchar of HOLLERITH data starting at character inptr in
+    hol_string to character.
+       nchar and inptr are INTEGER
+       hol_string is HOLLERITH
+       character is CHARACTER
+
+    CHR2H (nchar, character, outptr, hol_string)
+    Converts nchar characters of CHARACTER data from character to
+    HOLLERITH array hol_string starting at character outptr in
+    hol_string.
+       nchar and outptr are INTEGER
+       character is CHARACTER
+       hol_string is HOLLERITH
+
+   - Encode/decode are to be changed to WRITE/READ to CHARACTER variable.
+
+
+5) The former Dnnn.INC, Cnnn.INC and Ennn.INC include files have been
+   concatenated into the Dnnn.INC file.  Task specific INCLUDEs are to
+   be included in the task source file as LOCAL INCLUDEs.  Task local
+   includes may be given at the beginning of the source file using the
+   delimiters "LOCAL INCLUDE 'name'" and "LOCAL END" both starting in column
+   1.  The name of the local includes should be task_name.INC and/or
+   Vtask_name.INC.
+
+6) Since ANSI standards define the relative size of numeric data types use
+   of NWDPFP, NWDPLI and NWDPLO are obselete; the values are defined to be 1.
+   Note that NWDPDP IS still relevant as we may wish to make DOUBLE PRECISION
+   the same as REAL on some machines (e.g. Crays).  NCHPFP is now defined
+   to be 4.
+
+7) The names of the COMMON catalogue pointers have been changed to reflect
+   the new data types:
+       KIxxx  for all INTEGERs (was K2xxx or K3xxx)
+       KRxxx  for REALs (was K4xxx)
+       KHxxx  for HOLLERITHs (was mostly K4xxx)
+       KDxxx  for DOUBLE PRECISIONs (was K8xxx)
+Similar transformations are to be made to the names used for the
+different, EQUIVALENCEd forms of the catalogue header.  All references
+to a second integer array are to be deleted and a HOLLERITH variant
+added if necessary.  Whenever possible the names of the array used to
+store the catalog header record should be CATBLK, CATR, CATH and CATD.
+
+8) All images in AIPS disk files are to be stored as REALs and the scaling
+and offset parameters in the catalogue header are to be removed.  Thus any
+scaling of images is to be removed.
+
+9) Each source code file will have 2 or more specially marked comment
+lines near the beginning of the file to give a one line description of the
+function of the routine and to assign it to one or more categories.  These
+lines will be used to generate automatic "shopping lists" of the routines
+in the AIPS system.
+
+   The functional description line (70 char max) is of the form:
+(comment delimiter)! Functional description of routine.
+Example for Fortran routine:
+C! Creates an image free of all instrumental artifacts
+
+   The file may be given one or more categories; the category declaration
+line is of the form:
+(comment delimiter)# category
+   Category is to be one of the following:
+AP-util  AP-fft  AP-appl Batch Calibration Catalog Character  Coordinates
+EXT-util  EXT-appl  FITS  Graphics  History  Include  IO-basic
+IO-util  IO-wawa  Map  Map-util  Math Modeling  Parsing  Plot-appl  Plot-util
+POPS-appl  POPS-lang POPS-util  POPS-lang  Printer  Service  System  Spectral
+Tape  Terminal  Text  TV-appl  TV-util  UV  UV-util  VLA  VLB
+Y  Y-2  Z  Z-2
+
+10)  Literals of all types in call sequences are allowed.  Vaules for 1, 2,
+'READ', 'WRIT' etc. no longer need to be declared and DATAed.
+
+11)  The name string used for WAWA I/O has  been changed to a character
+string of length 36 of the following form:
+             1:12    C*12  Name
+            13:18    C*6   Class
+            19:20    C*2   Physical type
+            21:27    I7    Sequence number
+            28:29    I2    Disk number
+            30:36    I7    User id number
+   However, application software should not directly access the contents
+of this string since it is subject to change.  Instead, the following
+routines convert to and from the WAWA name string:
+
+   H2WAWA (name, class, seq, ptype, vol, usid, namestring)
+   Converts AIPS adverb values to a namestring.
+     name(3), class(2), ptype are HOLLERITH
+     seq, vol and usid are REAL
+     namestring is CHARACTER*36
+ 
+   WAWA2A (namestring, name, class, seq, ptype, vol, usid)
+   Cracks a namestring into it's component parts.
+      namestring*36, name*12, class*6 and ptype*2 are CHARACTER
+      seq, vol and usid are INTEGER
+
+   A2WAWA (name, class, seq, ptype, vol, usid, namestring)
+   Forms a namestring from CHARACTER and INTEGER variables.
+      name*12, class*6, ptype*2 and namestring*36 are CHARACTER
+      seq, vol and usid are INTEGER
+
+
+
+
+                                XEDIT
+
+     XEDIT is a list-driven, Fortran source-editing program which can do
+many of the operations associated with updating the software to the new
+standards.  XEDIT knows some of the AIPS Fortran syntax rules and can
+reformat lines longer than 72 characters.  XEDIT is normally run on the
+output of XLATE.
+
+   XEDIT will do 3 types of operations on a source file, 1) simple
+string substitution, 2) call sequence / array reference translation and
+3) redeclaration of variables used as HOLLERITH or CHARACTER in specified
+subroutine calls or variables initialized to Hollerith values in a DATA
+statment.  In addition, the occurance of arbitrary strings can be
+logged with annotation and informative and error messages are logged when
+variables are redeclared or type conflicts are noted.  Since the function
+of XEDIT is list driven, specialized transformations can be made for special
+purposes.
+
+   Several AIPS related checks and/or changes are made to the source code
+being processed; the most important of these is that lower case Fortran
+instructions are converted to upper case.  Characters in quotes or comments
+are not converted.
+
+   There are two input files to XEDIT named XEDIT.LIS and XEDIT.STR.
+(There is a VMS procedure called XEDIT.COM to create XEDIT.LIS and run
+XEDIT).  XEDIT.LIS contains a list of Fortran file names to process; the
+names must be of the form "name.FOR" one per line.  XEDIT.STR contains the
+editing commands and is described in detail below.
+
+   There are two output files; name.NEW and name.LOG where name is the
+name of the Fortran input file.  name.NEW contains the edited version of
+name.FOR and name.LOG contains the log file.
+
+     Each subroutine or function module is processed independently.
+
+                 XEDIT editing commands
+
+   Instructions to XEDIT are read from XEDIT.STR  and are of the form:
+          'opcode' 'string1' 'string2'         all on the same line.
+
+OPCODE = 'copyright' => enters a copyright notice in each file written.
+   the contents of string1 and string2 will be concatenated.  A '@'
+   means a new line with the same indentation and comment character
+   as the first line given
+   Example
+'copyright'
+'C   COPYRIGHT 1988 Associated Universities, Inc.@ All rights reserved' ''
+causes:
+C   COPYRIGHT 1988 Associated Universities, Inc.
+C    All rights reserved
+to be entered near the beginning of each file.
+
+-----------------------------------------------------------------------
+
+OPCODE ='subs' => simple string substitution;  any occurances of
+   the string1 will be replaced by string2.  Each string may be up
+   to 50 characters. A '@' will be replaced by a line feed and the
+   indentation of the previous line.
+
+   Example
+'subs'   'MINI3'  'MINIT'
+causes any occurance of the string 'MINI3' to be replaced by 'MINIT'
+
+-----------------------------------------------------------------------
+
+OPCODE ='call' => edit subroutine call sequence/array argument.
+   This opcode causes lines containing the specified call sequence
+   or array useage to be decomposed into its component parts and
+   reassembled in relatively flexible ways.  The component parts are
+   given symbolic names and are explained below:
+   - the portion of the line before the sequence specified by string1
+     is always copied to the output line.
+   - '%' = the portion of the line following the array reference processed.
+     This should always be a null string for call sequences.
+   - '$nn' = the nnth call argument or array dimension index.
+   - '@' = new line with the same indentation as the original line.
+      If necessary a THEN ... END IF will be added if several output
+      lines are being written.
+   string1 specifies the call sequence or array reference to be modified,
+      the number of arguments (array dimensions) and the value required
+      for a match may be specified.  String1 is of the form
+     'CALL XYZ (,,,arg,)' where arg is an argument name required for a
+      match.  Commas indicate the argument number and number of arguments.
+      If the argument list is not given then no test is made on the number
+      of arguments.  If the list of arguments is given then the number of
+      arguments must match.
+         Arguments may be of the form !xxxx* where the '!' indicates
+      that the actual argument must be different from xxxx* (e.g. xyz)
+      to match and '*' indicates any number of wildcard characters
+      (* may only appear at the end).  Both '!' and '*' are optional.
+         Include a blank before the initial '(' for call sequences and
+      leave it out for array elements.  string1 may have up to 100
+      characters.
+      string1 = 'continue' means string2 is a continuation of the output
+      string pattern of the previous 'call' or 'callh' instruction.
+   string2 is of the form 'new call ($01, $02, $03, $05) %' but the
+      new line is not restricted to a call sequence.  A substituted line
+      has a maximum of 1024 characters. string2 may have a
+      maximum of 250 characters.  Up to 100 call sequence (including callh)
+      transformations may be given.
+      The optional % indicates that the rest of the line past the
+      final parenthese parsed is copied to the output.
+
+   Example
+'call'    'CALL ZMATH4 (,PLUS,ONE,)'       '$04 = $01 + 1'
+will replace
+      CALL ZMATH4 (BO, PLUS, ONE, BO)
+with
+      BO = BO + 1
+
+   Example
+'call'    'CALL HIADD (,,,)'  'HILINE = $02@CALL HIADD ($01, HILINE, $03, $04)'
+will replace
+         CALL HIADD (LUN, MSGTXT, BUFFER, IERR)
+with
+         HILINE = MSGTXT
+         CALL HIADD (LUN, HILINE, BUFFER, IERR)
+
+   or
+
+         IF (DOIT) CALL HIADD (LUN, MSGTXT, BUFFER, IERR)
+with
+         IF (DOIT) THEN
+            HILINE = MSGTXT
+            CALL HIADD (LUN, HILINE, BUFFER, IERR)
+            END IF
+
+
+   Example
+'call'    'CALL MAPSIZ (,,,)' 'CALL MAPSIZ ($01, $02, $04)'
+will replace
+      CALL MAPSIZ (NAX, NP, NB, ISIZE)
+with
+      CALL MAPSIZ (NAX, NP, ISIZE)
+
+-----------------------------------------------------------------------
+
+OPCODE ='callh (dim)' => like 'call' except for array arguments
+   only and the array is to be declared HOLLERITH.  (dim) is the
+   default dimension.
+
+   Example
+'callh(256)'   'CATR(!KR*)' 'CATH($01)%'
+will replace
+      CALL CHCOPY (N12, N1, NAME, N1, CATR(INDEX))
+with
+      CALL CHCOPY (N12, N1, NAME, N1, CATH(INDEX))
+and will cause CATH to be declared HOLLERITH and dimensioned (256).
+
+   Example
+'callh(256)'   'CATR(KH*)' 'CATH($01)%'
+will replace
+      CALL CHCOPY (N8, N1, CATR(KHTEL), N1, TELE)
+with
+      CALL CHCOPY (N8, N1, CATH(KHTEL), N1, TELE)
+and will cause CATH to be declared HOLLERITH and dimensioned (256).
+
+-----------------------------------------------------------------------
+
+OPCODE ='log' => writes any line in the log file with a substring
+   matching string1.  A "reason" code of up to 25 char is given
+   in string2 must be provided.  String1 has a maximum of
+   20 characters.
+
+   Example
+'log'  'ZMATH4'  'remove'
+will cause all occurances of the string ZMATH4 to be logged with the
+notation 'remove'.
+
+-----------------------------------------------------------------------
+
+OPCODE ='comment' is ignored; string1 and string2 must be present
+   but may contain comments.
+
+
+-----------------------------------------------------------------------
+
+
+   Each line will be operated on in the sequence described above.
+When the above processing is done, the declaration processor may
+be invoked:
+
+-----------------------------------------------------------------------
+
+OPCODE ='hollerith' => changes the declarations of local variables
+      which are the specified arguments of specified routines to
+      HOLLERITH.
+      string1 = 'routine name'      6 characters only
+      string2 = '  j  i  0  0  0'  is a list of the argument
+               numbers which are Hollerith variables.  These are
+               read with an 5I3 format.
+
+   Example
+'hollerith' 'H2CHR'   '  3'
+will cause the third argument to H2CHR to be redeclared as Hollerith.
+
+-----------------------------------------------------------------------
+
+
+OPCODE ='keep hollerith'.  A variable is normally not redeclared
+      HOLLERITH by opcode='hollerith' unless it is locally declared
+      (if it isn't locally declared then the declaration is assumed to
+      be in an INCLUDE).  A local HOLLERITH declaration can be forced
+      for a variable of a given name (if used) using this OPCODE.
+      Limit 50.
+      The dimension given is used only if the variable is not already
+      defined locally.
+      string1 = 'variable name'         6 characters only
+      string2 = 'default dimension'     blank or of form '(5)' 20 char.
+
+   Example
+'keep hollerith'  'CATH'  '(256)'
+will cause the variable CATH to be declared HOLLERITH with dimension 256
+if it is used as a hollerith variable as specified in an OPCODE='hollerith'
+command or DATA statment and is not locally declared.  If it were locally
+declared before, this command will have no effect.
+
+-----------------------------------------------------------------------
+
+
+OPCODE ='character' => changes the declarations of local variables
+      which are the specified arguments of specified routines to
+      CHARACTER.  The number of characters in the declaration statment
+      is obtained from string2.
+      string1 = 'routine name'       6 characters only
+      string2 = ' i1  j1  i2 j2  ... i5 j5'
+               is a list of the argument numbers which are
+               CHARACTER variables followed by the number of
+               characters to be declared.  (in=arg number,
+               jn = max. string size)  A negative string size will result
+               in a *(*) declaration of the size.
+               These are read with an 10I3 format.
+
+   Example
+'character' 'PRTLIN'   '  5132  6132  7132'
+will cause the 5th, 6th and 7th arguments of PRTLIN to be redeclared as
+CHARACTER*132.
+
+-----------------------------------------------------------------------
+
+OPCODE ='keep character'.  A variable is normally not redeclared
+      CHARACTER by opcode='character' unless it is locally declared
+      (the declaration is otherwise assumed to be in an INCLUDE).
+      A local CHARACTER declaration can be forced for a variable of a
+      given name (if used) using this OPCODE. Limit 50.
+      The dimension declared is given in the relevant OPCODE='character'
+      command if .ne. 0 or in string2 if it is not otherwise declared.
+      string1 = 'variable name'         6 characters only
+      string2 = 'def. decl. string'                      20 char
+
+
+   Example
+The combination:
+'call'    'CALL HIADD '  'HILINE = $02@CALL HIADD ($01, HILINE, $03, $04)'
+'character' 'HIADD'    '  2 0'
+'keep character' 'HILINE'  '*72'
+will cause HILINE to be declared CHARACTER*72 even if it is not already
+locally declared.
+
+
+
+
+
+
+                          Check list items
+
+     There is a checklist for each task and subroutine.  Each item should
+be initialed as it is done.  The final check list items are to verify that
+the conversion is (hopefully) correct.   Below is a detailed description
+of each item.
+
+     In addition to the checklist, there are numerous items which may
+need to be cleaned up for esthetic reasons but should not cause the
+software to misfunction.  For example, most tasks used MSGTXT as the array
+for history file messages.  XEDIT will declare a character variable HILINE
+and before each call to HIADD insert a line:
+      HILINE = MSGTXT
+and then change the second argument to HIADD to HILINE.  The WRITE
+statment generating the history file entry should be changed to write into
+HILINE and the HILINE = MSGTXT line removed.
+     The elimination of packed AIPS strings will result in some character
+operations which are no longer necessary.  A common example is the
+unpacking necessary to  give a message about an AIPS cataloged file which
+couldn't be found or accessed.  XEDIT will have changed the CHXPND to
+a character move which is no longer necessary (but should still work).
+
+                         General
+
+1) Run XEDIT to do most of the transformation using the standard editing
+command list.  More details of XEDIT are given above.  A version of
+XEDIT.STR specific to a given file may be generated and used if necessary.
+A copy of XEDIT.STR must be present in the directory in which the routine
+being processed resides.
+
+   The output file from XEDIT will have most of the conversion done.
+XEDIT will detect some problems that need to be fixed by hand (e.g.
+conflicting type requirments of a variable).  The most common of these are
+described separately below.  Some other problems will be caught by the
+compiler (e.g. mismatch between array dimension and number of elements in
+a DATA statment).
+
+2) Task local includes should be renamed task_name.INC for the Dxxx.INC
+file and Vtask_name.INC for any Vxxx.INC.  If there is more than one set
+of local includes use task_name2.INC etc.  Local INCLUDEs can be added to
+the front of the source code file using the form:
+LOCAL INCLUDE 'XYZ.INC'
+     (text of INCLUDE file)
+LOCAL END
+      PROGRAM XYZ
+          .
+          .
+
+   The INCLUDE is invoked by:
+      INCLUDE 'XYZ.INC'
+in the usual fashion.  Logical names (e.g. INCS:) will be ignored but will
+cause a warning from the preprocessor.
+     If the task does not already have a local common and is more than 1
+or 2 routines then it is probably easiest to make a local include.
+     Variables in the task local INCLUDEs should be redeclared as
+HOLLERITH or CHARACTER as necessary.  Note: CHARACTER variables may NOT
+appear in the same COMMON as other data types (this is a Fortran as well
+as an AIPS rule).
+
+3) The task name is set in a DATA statment into an array in each task. The
+old form of this was 3 integers with 2 characters each.  The new form is
+CHARACTER*6.  XEDIT will change the value in the DATA statment and will
+change the dimension if the name is of a form given
+in XEDIT.STR and/or the type if GTPARM is called in the same routine.  If
+the array with the task name is passed to a local subroutine, then the
+array needs to be redeclared CHARACTER*6.
+
+4) Tasks which process UV data, but do not use UVGET, should disallow
+packed uv data (Complex axis dimension 1).  After reading the catalog
+header:
+C                                       Disallow packed uv data
+      IF (CATBLK(KINAX).EQ.1) THEN
+         IRET = 9         ! or appropriate error return
+         MSGTXT = 'ERROR: I CANNOT PROCESS PACKED UV DATA, USE SPLIT'
+         CALL MSGWRT (8)
+         GO TO 999
+         END IF
+
+   Packed uv data is to be implemented after the conversion is done.
+
+5) The computation of buffer sizes should no longer include a limit of
+32767.  XEDIT will log all occurances of the string '32767'.
+
+6) The DDCH.INC common variables NWDPLI, NWDPFP and NWDPLO are defined to
+be 1 by ANSI standards.  These variables are to be removed and effectively
+replaced by the value 1.  Note NWDPDP is retained.
+   Also the use of COPY is no longer needed to extract INTEGER, REAL or
+LOGICAL from an array if it is legimate to equivalence arrays of the
+needed data types (i.e. the array is local or in COMMON)
+
+   A design error in XLATE caused a problem when COPY was used to copy a
+single long integer from a REAL array.  If a long integer was being COPYed
+from a REAL array the result of XLATE was integer = real which will cause
+incorrect results.  The problems should be indicated by NWDPFP in the
+computation of a REAL array pointer.  The fix is to declare a local REAL
+and equivalenced INTEGER; set the REAL variable to the array element and
+then use the INTEGER version.
+
+7) The names of the catalog header record(s) should be corrected if XEDIT
+has not done this correctly. (If there is only one catalog header involved
+use CATBLK, CATR, CATH and CATD for INTEGER, REAL, HOLLERITH and DOUBLE
+PRECISON).  The various names must be EQUIVALENCEd; especially make sure
+that the HOLLERITH forms are in the EQUIVALENCE; XEDIT should log cases
+when this is necessary.
+
+8) Remove scaling and offset of images read from and/or written to disk.
+Occurances of KDBSC and KDBZE (pointers in the header for the scaling
+parameters) are logged by XEDIT.
+
+9) Enter the routine description and categories on the comment lines
+added by XEDIT nead the beginning of the file.  PUTBCK will not accept
+files without this description.
+
+10) Examine each entry in the .LOG file and correct the source code as
+necessary.  Many of the items logged are covered in detail above.
+
+11) The "magic" values for undefined values for INTEGER, REAL and DOUBLE
+PRECISION will be obtained from the DDCH.INC include common variables
+BLANKV, FBLANK, and DBLANK.  Use of the string 'INDE' in a DATA statment
+initializing a numeric variable is no longer permitted (it is a violation
+of Fortran rules as well).  XEDIT will log occurances of the string 'INDE'.
+
+12) Since the relative size of integers and reals is changing in AIPS for
+most computers, check EQUIVALENCEd arrays to be sure that there was not an
+implicit assumption that a real was twice the size of an integer.  A real
+is now the same size as an integer.
+
+13)  The call sequence to many routines is changed; especially byte per
+pixel values are being removed.  If the call sequence to a routine has
+been changed then the routine should be suitably modified.
+
+                        Pseudo I*4 changes
+
+20) XEDIT should change most of the uses of Pseudo I*4.  The changes which
+are not made should cause compiler errors (e.g. using an array name as a
+scalar or too many values in a DATA statment).  Any untranslated
+occcurances of ZMATH4 are logged by XEDIT and should be fixed.
+Uses of ZR8P4, except for opcodes '4IB8' and '8IB4', should be replaced
+with Fortran assignment statments.  "ZR8P4" is logged by XEDIT as are
+"'4TO8'" and "'8TO4'".
+
+                        Character variables
+
+30) Character data is being converted to type CHARACTER wherever possible.
+The exceptions are data structures and in files with binary numeric data
+and the associated I/O buffer.  Data which is not in CHARACTER variables
+should be declared of type HOLLERITH whereever possible.
+
+   XEDIT will redeclare most variables used as CHARACTER variables but may
+not get all cases.  In addition, the declaration of CHARACTER arrays and
+the DATA statments filling them need to be done by hand.  XEDIT will leave
+a '?' after the size declaration on the CHARACTER statment for character
+arrays.  Frequently, but not always, the first dimension of the array is
+to be removed and the length of the string suitably modified.  The DATA
+statment used to initialize CHARACTER arrays will usually need most of the
+"','"s removed.  These changes need to be decided on a case by case basis.
+
+   AIPS string adverbs are passed as Hollerith data.  These should be
+converted to CHARACTER variables after the call to GTPARM, SETUP or TSKBEG
+using H2CHR.  The values passed from AIPS should be declared HOLLERITH and
+given a new name.  The old names should be declared CHARACTER and the
+ADVERB values converted using H2CHR.  (Note: this may involve changing the
+name of the first variable in the common or array passed to GTPARM)
+
+   XEDIT may not catch variables used as CHARACTERs in local subroutines.
+Check local subroutines for character variables.  If extensive use is made
+of a local routine using CHARACTER variables then a suitable command(s)
+can be added to a temporary version of XEDIT.STR and then XEDIT rerun to
+do most of the redeclarations.
+
+  XEDIT will try to parse all DATA statments to find local CHARACTER
+variables; when it fails for some reason the data statment is entered in
+the log file and any character variables may need to be redeclared.
+
+   If character data must be passed in numeric data variables it must be
+converted to and from HOLLERITH using CHR2H and H2CHR.
+
+   Hollerith variables must never be DATA initialized or WRITEn with an An
+format.  Hollerith data should be converted to or from CHARACTER variables
+using CHR2H or H2CHR if DATA or WRITE are necessary.
+
+31) All declarations of variables used for Hollerith strings should be
+declared HOLLERITH.  XEDIT will redeclare many of these cases and log
+others which may need to be done by hand.
+
+32) Clones of the paraform tasks FUDGE, TAFFY, CANDY and UVFIL carry
+history information in a common array named HISCRD.  This array should be
+converted to a character array with appropriate changes made in the
+history routine.  XEDIT will convert "HISCRD(1," to "HISCRD(" and
+redeclare HISCRD in routines in which it is declared locally. The only
+changes needed are declaring CHARACTER HISCRD(?)*64 and copying this
+information to HILINE before calling HIADD. Variable LABEL in the history
+routine should be redeclared *8.
+
+
+     The loop sending the information in HISCRD to HIADD should look like:
+         WRITE (LABEL,1010) TSKNAM
+         DO 15 I = 1,NUMHIS
+            HILINE = LABEL // HISCRD(I)
+            CALL HIADD (LUN2, HILINE, BUFF2, IERR)
+            IF (IERR.NE.0) GO TO 20
+ 15         CONTINUE
+
+ 1010 FORMAT (A6,' /')
+
+33) All AIPS HOLLERITH compares are to be done using CHCOMP.  The use of
+CHCOPY to write some of these strings means they will not always be blank
+filled and Fortran compares may fail.  Fortran compares of CHARACTER
+variables IS allowed.  XEDIT should log many Fortran compares of HOLLERITH
+or CHARACTER variables.
+
+34) Any ENCODEs or DECODEs left should be converted to READs and WRITEs.
+XLATE will have left converted ENCODEs as comments so that the number of
+characters involved can be determined.  These commented out lines should
+be removed.
+
+                               Checks
+
+90) Check that the converted routine will compile.
+
+91) Check that tasks will properly link edit.
+
+                           PUTBCK
+
+     After the routine is converted and checked it should be PUTBCK along
+with any local include files.  REMOVE any obselete include files.

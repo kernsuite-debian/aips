@@ -1,0 +1,138 @@
+          DEFINE APGRID(UV,VIS,WT,L,G,CX,CY,N2,M,LROW,CNT,TY)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Grid a row of uv data.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+          LOCAL UV1,VIS1,IWORK1,IWORK2,VIS2,VIS3,NOFLT
+"
+"     APGRID GRIDS VISIBILITY DATA THAT HAS BEEN LOADED INTO THE AP
+"     PREVIOUSLY.  DATA IS FLOATED AND THEN SCALED; A TAPER IS APPLIED
+"     TO THE WEIGHTS IF REQUESTED BEFORE GRIDDING.
+"     WHEN TAPER IS REQUESTED AND TY=2 OR 3 LOCATIONS VIS-2 AND
+"     VIS-1 ARE USED FOR WORK SPACE. IF TY=1 LOCATIONS VIS+2 AND
+"     VIS+3 ARE USED.
+"
+"                UV = BASE ADDRESS OF U,V VECTOR
+"                VIS = BASE ADDRESS OF VISIBILITY
+"                WT = BASE ADDRESS OF WEIGHTS
+"                L  = LENGTH OF VISIBILITY RECORD
+"                G  = BASE ADDRESS OF GRID
+"                CX = BASE ADDRESS OF ROW CONVOLVING FN. (Y ON SKY)
+"                CY = BASE ADDRESS OF COL. CONVOLVING FN. (X ON SKY)
+"                     CONVOLVING FNS TABULATED EVERY 1/100 CELL
+"                N2 = INT ( (NO. CELLS USED ON A ROW)/2 )
+"                M = NUMBER OF ROWS KEPT IN AP (MUST BE ODD)
+"                LROW = LENGTH OF A ROW (V)
+"                CNT =  NUMBER OF VISIBILITY POINTS.
+"                TY  =  TYPE OF VISIBILITY DATA.
+"                       1 = I MAPS
+"                       2 = Q,U MAPS
+"                       3 = V MAPS
+"                 IF TY IS NEGATIVE THEN TAPERING IS REQUESTED.
+"                 IF CNT IS NEG, DO NOT FLOAT OR SCALE.
+"
+"     EXPECTS NECESSARY CONSTANTS IN FOLLOWING AP LOCATIONS:
+"
+"           8 = -SIG(U)**2 (CELLS**2) FOR TAPER
+"           9 = -SIG(V)**2 (CELLS**2) FOR TAPER
+"          13 = UVSC SCALING FOR U,V
+"          14 = SCVIS  SCALING FOR VISIBILITIES
+"          15 = SCWT   SCALING FOR WEIGHTS
+"
+"
+"        CHECK IF NO FLOAT IS REQUESTED.
+         NOFLT = CNT
+         UV1 = UV + 1
+         IF CNT > 0 GOTO FLOAT
+         IF CNT = 0 GOTO S999
+         CNT = -CNT
+         GOTO TAPER
+"
+"        FLOAT AND SCALE DATA.
+"
+FLOAT:   CALL VFLT(UV,L,UV,L,CNT)
+         CALL VFLT(UV1,L,UV1,L,CNT)
+         CALL VFLT(VIS,L,VIS,L,CNT)
+         VIS1 = VIS + 1
+         CALL VFLT(VIS1,L,VIS1,L,CNT)
+         CALL VFLT(WT,L,WT,L,CNT)
+         CALL VSMUL(UV,L,13,UV,L,CNT)
+         CALL VSMUL(UV1,L,13,UV1,L,CNT)
+         CALL VSMUL(VIS,L,14,VIS,L,CNT)
+         CALL VSMUL(VIS1,L,14,VIS1,L,CNT)
+         CALL VSMUL(WT,L,15,WT,L,CNT)
+"
+"            TAPER THE DATA IF REQUESTED.
+"
+TAPER:   IF TY > 0 GOTO NOTAPE
+         TY = - TY
+         IF TY = 1 GOTO TYP1
+         IWORK1 = VIS - 2
+         IWORK2 = VIS - 1
+         GOTO TYP23
+TYP1:    IWORK1 = VIS + 2
+         IWORK2 = VIS + 3
+TYP23:   CALL VSQ(UV,L,IWORK1,L,CNT)
+         CALL VSQ(UV1,L,IWORK2,L,CNT)
+         CALL VSMUL(IWORK1,L,8,IWORK1,L,CNT)
+         CALL VSMUL(IWORK2,L,9,IWORK2,L,CNT)
+         CALL VADD(IWORK1,L,IWORK2,L,IWORK1,L,CNT)
+         CALL VEXP(IWORK1,L,IWORK1,L,CNT)
+         CALL VMUL(WT,L,IWORK1,L,WT,L,CNT)
+NOTAPE:  IF TY = 2 GOTO LPOL
+"
+"           IPOL AND BEAM OR VPOL MAP REQUESTED
+"
+LOOP1:   CALL APGRD1(UV,VIS,WT,G,CX,CY,N2,M,LROW)
+         SP10 = L
+         UV = UV + SP10
+         VIS = VIS + SP10
+         WT = WT + SP10
+         CNT = CNT - 1
+         IF CNT > 0 GOTO LOOP1
+         GOTO S999
+"
+"           QPOL AND UPOL MAPS REQUESTED.
+"
+LPOL:    IF NOFLT < 0 GOTO LOOP2
+         VIS2 = VIS + 2
+         VIS3 = VIS + 3
+"           FLOAT AND SCALE ADDITIONAL VISIBILITIES
+         CALL VFLT(VIS2,L,VIS2,L,CNT)
+         CALL VFLT(VIS3,L,VIS3,L,CNT)
+         CALL VSMUL(VIS2,L,14,VIS2,L,CNT)
+         CALL VSMUL(VIS3,L,14,VIS3,L,CNT)
+LOOP2:   CALL APGRD2(UV,VIS,WT,G,CX,CY,N2,M,LROW)
+         SP10 = L
+         UV = UV + SP10
+         VIS = VIS + SP10
+         WT = WT + SP10
+         CNT = CNT - 1
+         IF CNT > 0 GOTO LOOP2
+S999:    END

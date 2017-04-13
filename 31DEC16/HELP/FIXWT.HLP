@@ -1,0 +1,158 @@
+; FIXWT
+;---------------------------------------------------------------
+;! Modify weights to reflect amplitude scatter of data
+;# TASK UV CALIBRATION OOP
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1996, 1999, 2003, 2008
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FIXWT     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FIXWT:    Modify weights to reflect amplitude scatter of data.
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ              0.0      9999.0 Input UV file name (seq. #)
+INDISK             0.0         9.0 Input UV file disk drive #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ            -1.0     9999.0  Output UV file name (seq. #)
+OUTDISK            0.0        9.0  Output UV file disk unit #.
+DOUVCOMP                           Write compressed data?
+FLAGVER                            Flag table to apply.
+BCHAN              0.0      4096.0 Begin channel 0 => 1
+ECHAN              0.0             End channel
+SOLINT             0.0             Averaging interval
+DOALL             -1.0         1.0 > 0 -> find overall scaling
+                                   factor for weights
+CPARM                              Limit controls
+BADDISK                            Disk no. not to use for
+                                      scratch files.
+----------------------------------------------------------------
+FIXWT
+Task:  AIPS assumes that the weights given to UV data points are the
+       inverse square of the estimated standard deviation of the
+       amplitudes due to thermal (and other) noise. Unfortunately, not
+       all input data comforms to this requirement.  FIXWT runs a
+       filter of width SOLINT minutes over the data and calculates
+       new weights for each antenna as function of time from the
+       scatter of the visbilities.  The data must be in time order,
+       but the baselines at any given time may be in any order.
+
+       Subarray ID is ignored, so multiple subarrays may exist only if
+       they are separated in time.  Multiple sources or Frequency IDs
+       cause an integration to break.
+
+       NOTE: this task does NOT apply flagging or calibration tables
+       to the input UV data.  Run SPLIT first if that operation is
+       desired.
+Adverbs:
+  INNAME.....Input UV file name (name).    Standard defaults.
+  INCLASS....Input UV file name (class).   Standard defaults.
+  INSEQ......Input UV file name (seq. #).  0 -> highest.
+  INDISK.....Disk drive # of input UV file.  0 -> any.
+             Note that the input file must be TB sorted
+  OUTNAME....Output UV file name (name).     Standard defaults.
+  OUTCLASS...Output UV file name (class).    Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).   0 => highest unique
+  OUTDISK....Disk drive # of output UV file. 0 => highest w room
+  DOUVCOMP...If DOUVCOMP > 0 then the output data (and the
+             scratch files) will be compressed.
+  FLAGVER....specifies the version of the flagging table to be applied.
+              0 => highest numbered table.
+             <0 => no flagging to be applied.
+             Flags are applied when reading data to determine weights
+             but are not applied when reading the data to merge the
+             weights in with the visibilities.
+  BCHAN......Begin channel number. 0 -> 1
+  ECHAN......End channel number.  0 -> highest
+             The channels are separate samples of the amplitude; all
+             channels will be written to the output.
+  SOLINT.....Averaging interval (minutes).  0 -> 1.  You must have at
+             least 5 samples to compute an rms - these may be multiple
+             spectral channels or multiple times.
+  DOALL......IF <= 0, the weights are found by antenna for each SOLINT
+             (broken if source or FQ changes) and applied in that
+             form.  If > 0, the weights are found in the same way, but
+             are then compared to the existing weights to determine an
+             over-all correction factor to be applied to all weights.
+  CPARM......Values can get out of hand here so limits things as
+             (1) Minimum rms allowed (Jy): 0 -> 0.
+             (2) Maximum rms allowed (Jy): 0 -> very large
+             (3) Minimum antenna weight allowed: 0 -> 0
+             (4) Maximum antenna weight allowed: 0 -> very large
+             Note a baseline weight is a product of 2 antenna weights
+             and should be 1 / sigma**2.
+             (5) When DOALL is false, the weights are found from the
+             rms averaging over, in principle, multiple records.
+             These records may have different weights in averaged
+             data, representing different integration times.  If
+             CPARM(5) <= 0, then the output weights will be 1/rms**2
+             ignoring differences in integration time.  You may have
+             the task down-weight samples that have lower weights,
+             setting the actual weight to
+                   (WTout) * (WTin/Max(WTin))**CPARM(5)
+             where WTout is the weight based on the rms, WTin is the
+             individual sample's weight on input and Max(WTin) is the
+             maximum of WTin over the whole data set.  If the input
+             weights are of the "old" type representing a simple count
+             of 10-second records, set CPARM(5)=1.  If the input data
+             are averaged but with weights representing an estimate of
+             system temperature, set CPARM(5) to something between 0
+             and 1, e.g. 1/3.
+  BADDISK....Disk numbers on which scratch files are not to be
+             placed.
+----------------------------------------------------------------
+FIXWT:  Task to fix uv data weights
+Documentor:  Chris Flatters
+Related Programs: almost all programs operating on UV data
+
+AIPS assumes that the weight given to a uv data point is the
+statistically correct weight of unity divided by the estimated
+variance due to noise.  Various data input sources, including the VLA
+and the VLBA, do not always follow this convention, however. This can
+lead to a number of problems ranging from the relatively trivial
+problem of incorrectly plotted error bars in uv plots to more serious
+problems involving calibration and imaging, particularly where data
+from more than one array are being combined.
+
+FIXWT deals with this problem by copying its input file, assigning new
+weights, based on the actual standard deviations of the visibilities
+in the file.  It assumes that the same weights may be assigned to all
+spectral channels, but sets different weights for IFs and
+polarizations.  The weights are determined independently for each
+SOLINT integration time on the assumption that the rms squared on a
+given baseline is the product of the separate antenna rms's.  The
+weights are not assumed to be continuous over changes of source or
+frequency ID or between SOLINT intervals.  Data points will be flagged
+by setting their weights to zero in ranges where the standard
+deviation of the data cannot be determined due to insufficient data.
+
+Increasing SOLINT will give a smoother estimate of the noise.
+
+Fully flagged visibilities will not appear in the output file so INDXR
+should be run on the output file if the input was a multi-source file.
+This step can be omitted, however, if the number of visibilities in
+the output file is the same as that in the output file.
+
+

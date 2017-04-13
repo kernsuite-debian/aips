@@ -1,0 +1,100 @@
+@@
+Message log files:              MSf0000n
+
+
+A. Overview
+
+
+Function:  Message log files are used to record the input to, and
+messages from, all programs.
+
+Details:  Message files are user-owned files which record all messages
+except those with no time-variable information content (e.g. HELPs,
+interactive instructions) and those explicitly directed to the line
+printer (e.g. verbs PRTMSG and PRTHI, tasks PRTIM and PRTPL).  All
+programs at all POPS numbers use the message file of the logon user.
+
+Names:  The message file is called MSfuuu00.uuu, where uuu is the user
+number in hexadecimal notation and f is the format version code letter.
+
+
+
+B. File structure
+
+
+     Message files are sequential files consisting of 256-word records.
+Each of these physical records begins with two words of special
+information (which are used only in record 1).  The remainder of each
+physical record is devoted to 10 logical records.
+
+     The special information in word 1 of the first record is simply
+the current number of messages recorded in the file and the number
+of physical records currently in the file.  Each logical record has
+the structure
+
+    FIELD     TYPE            DESCRIPTION
+
+      1       I*4       message priority (0 - 10) + 16 * POPS number
+                           of task
+      2       I*4       message date: YY/MM/DD packed
+      3       I*4       message time: HH/MM/SS packed
+      4       H*4(2)    name of task generating message (5 HOLLERITH
+                           characters)
+      5       H*4(20)   80-character message (HOLLERITH characters)
+
+
+C. User notes
+
+
+     All programs should use this file for message display.  They do
+this with the subroutine MSGWRT described below.
+
+
+
+D. Routines and commons for writing message files
+
+
+     The subroutine MSGWRT is the only routine which should be used to
+write on these files.  It is a somewhat complicated routine and very
+fundamental to the AIPS system.  Since it is described in detail
+elsewhere, it will be described only briefly here.  It uses the common
+/MSGCOM/ as :
+
+    MSGCNT   I*4      number of messages in file (< 0 implies don't
+                         know and file is closed)
+    MSGREC   I*4      number of 256-word records in file at present
+    TSKNAM   I*4(3)   name of current task
+    NPOPS    I*4      POPS identification number
+    NLUSER   I*4      user number from logon
+    MSGSUP   I*4      if = 32000, suppress level 6 & 7 messages
+    ISBTCH   I*4      if = 32000, treat this job as a batch job
+    NACOUN   I*4      position in the accounting file this job
+
+and common /MSGSTR/ as :
+
+    MSGTXT   C*80    80-character message to be logged in file and/or
+                         displayed on terminal
+
+MSGWRT opens the message file and initializes MSGCNT, puts the message
+into the file (unless inhibited), displays the message on the terminal
+(LUN=6, unless inhibited), and closes the file updating the recorded
+message count and resetting MSGCNT.  MSGWRT will expand the file with
+no limit as needed.  It will complain to interactive users when the
+number of messages is greater than 750.
+
+
+E. Routines and commons for reading message files
+
+
+     The subroutine PRTMSG is used to print, and compress message
+files.  It takes 7 input and 3 output arguments.  The first is an
+opcode of 'PRIN' for print, 'DELE' for compress, or anything else
+for a typed summary.  The next 6 arguments define the user number,
+the POPS number (0 => all), the priority lower limit for printing,
+the task name, a time cutoff for printing or deleting, and a logical
+to request the printing to be on the CRT terminal.  The outputs are
+the number of messages printed/deleted, the number left in the file,
+and an error code.  See the precursor remarks for the details.  Note
+that messages are not deleted when they are printed - a change from
+previous practises.  The physical file is compressed after messages
+are deleted.

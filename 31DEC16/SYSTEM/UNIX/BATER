@@ -1,0 +1,435 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2003, 2010
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: BATER [NEW, OLD or TST] [DEBUG] [LOCAL]
+#-----------------------------------------------------------------------
+#  Procedure to start up an BATER session with process name BATERn,
+#  then disappear (i.e., exec without fork).
+#
+#  Inputs:
+#     OLD,
+#     NEW or
+#     TST    to select version of BATER to run (default is NEW)
+#     DEBUG  to run under the control of a debugger (user will be
+#            queried for command name of debugger to use)
+#     LOCAL  to run a local version of BATER (assumes BATER.EXE is in
+#            current working directory)
+#
+#  Generic UNIX version.
+#-----------------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Check for no arguments.
+if test "$#" = "0"
+then
+   echo "Usage: BATER [OLD, NEW, TST] [DEBUG] [LOCAL]"
+   exit 1
+fi
+ei1 () {
+  echo "BATER: $*"
+}
+
+#                                       Print out any AIPS system
+#                                       message.
+if test -s $AIPS_ROOT/AIPS.MSG
+then
+   cat $AIPS_ROOT/AIPS.MSG
+fi
+#                                       Posix.  Better way?
+if [ "$TZ" = "" ] ; then
+   ni1 () {
+           echo -n "$*"
+          }
+else
+   ni1 () {
+           echo "$*\c"
+          }
+fi
+#                                       Who am I?
+. $AIPS_ROOT/HOSTS.SH
+#
+if [ "$ARCH" = UNKNOWN -o "$ARCH" = "" ] ; then
+  ei1 "$HOST is not defined in HOSTS.LIST; cannot start AIPS."
+  exit 2
+fi
+if grep "^+  $HOST" $AIPS_ROOT/HOSTS.LIST >/dev/null 2>/dev/null ; then
+  : proceed
+else
+  ei1 "$HOST is not a valid AIPS host and cannot run AIPS."
+  exit 1
+fi
+#                                       Set default version.
+AIPS_VERSION=$TST; export AIPS_VERSION
+#                                       Parse command line arguments.
+for i
+do
+   case $i in
+
+      [Oo][Ll][Dd])
+#                                       Set default version to $OLD
+         AIPS_VERSION=$OLD; export AIPS_VERSION
+      ;;
+
+      [Nn][Ee][Ww])
+#                                       Set default version to $NEW
+         AIPS_VERSION=$NEW; export AIPS_VERSION
+      ;;
+
+      [Tt][Ss][Tt])
+#                                       Set default version to $TST
+         AIPS_VERSION=$TST; export AIPS_VERSION
+      ;;
+
+      [Ll][Oo][Cc][Aa][Ll])
+#                                       Use BATER.EXE in current
+#                                       working directory.
+         BATERLOCAL=`$LPWD`; export BATERLOCAL
+      ;;
+
+      [Dd][Ee][Bb][Uu][Gg])
+#                                       Run under control of debugger.
+         if test "$DBUGR" = ""
+         then
+            while test "$DBUGR" = ""
+            do
+               ni1 "Enter command name of debugger desired (e.g. adb): "
+               read DBUGR
+            done
+         fi
+#                                       Cycle through execution search
+#                                       path for debugger specified.
+         SEARCH=`echo $PATH | sed -e 's/:/ /g'`
+         for DIR in $SEARCH
+         do
+            if test -f $DIR/$DBUGR
+            then
+               DBUGR=$DIR/$DBUGR
+            fi
+         done
+#                                       Make sure debugger specified
+#                                       is legitimate.
+         case $DBUGR in
+
+            */*)
+#                                       Pathname.  Assume it's okay.
+               export DBUGR
+            ;;
+
+            *)
+#                                       Not found.
+               echo "No $DBUGR found in $SEARCH"
+               DBUGR=""
+#                                       Keep asking until we get a
+#                                       legitimate debugger.
+               while test "$DBUGR" = ""
+               do
+                  ni1 "Enter command name of debugger desired" \
+                     "(e.g., adb): "
+                  read DBUGR
+#                                       Make sure debugger specified
+#                                       is legitimate.
+                  for DIR in $SEARCH
+                  do
+                     if test -f $DIR/$DBUGR
+                     then
+                        DBUGR=$DIR/$DBUGR
+                     fi
+                  done
+
+                  case $DBUGR in
+
+                     */*)
+#                                       Pathname.  Must be okay.
+                        export DBUGR
+                     ;;
+
+                     *)
+#                                       Not found.
+                        echo "No $DBUGR found in $SEARCH"
+                        DBUGR=""
+                     ;;
+
+                  esac
+
+               done
+
+            ;;
+
+         esac
+#                                       Run BATER itself under the
+#                                       control of $DBUGR?
+         while test "$ANSWER" = ""
+         do
+            ni1 "Run BATER itself under the control of the" \
+               "debugger (y/n): "
+            read ANSWER
+
+            case $ANSWER in
+
+               Y | y)
+
+                  BATERDBUGR=$DBUGR; export BATERDBUGR
+               ;;
+
+               N | n)
+               ;;
+
+               *)
+
+                  ANSWER=""
+               ;;
+
+            esac
+
+         done
+
+      ;;
+
+      *)
+#                                       Argument not recognized.
+         echo "Usage: BATER [OLD, NEW, TST] [DEBUG] [LOCAL]"
+         exit 1
+      ;;
+
+   esac
+
+done
+#                                       Toggle version critical
+#                                       definitions.
+#                                       Define AIPS user environment.
+. $AIPS_ROOT/AIPSPATH.SH
+. $AIPS_ROOT/AIPSASSN.SH
+# SYSLOCAL=$AIPS_VERSION/$ARCH/$SITE/SYSTEM; export SYSLOCAL
+# SYSUNIX=$AIPS_VERSION/SYSTEM/UNIX; export SYSUNIX
+# PATH=.:"$SYSLOCAL":"$SYSUNIX":"$TPATH"; export PATH
+# LOAD=$AIPS_VERSION/$ARCH/LOAD; export LOAD
+# RUNSYS=$AIPS_VERSION/RUN; export RUNSYS
+# ERRORS=$AIPS_VERSION/ERRORS/$HOST; export ERRORS
+#
+#                                       Allocate data disks.
+ei1 "User data area assignments:"
+if [ -f "$HOME/.dadevs.$SITE" ] ; then
+   DADEVS_FILE="$HOME/.dadevs.$SITE"
+elif [ -f "$HOME/.dadevs" ] ; then
+   DADEVS_FILE="$HOME/.dadevs"
+elif [ -f "$DA00/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$DA00/DADEVS.LIST"
+elif [ -f "$NET0/DADEVS.LIST.$SITE" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST.$SITE"
+elif [ -f "$NET0/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST"
+else
+   DADEVS_FILE=""
+fi
+export DADEVS_FILE
+#                                       If have perl, do it the fast way
+pid=$$
+if [ "$AIPSTMP" = "" ] ; then
+   tmpfil=/tmp/DADEVS.$pid
+else
+   tmpfil=$AIPSTMP/DADEVS.$pid
+fi
+[ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+if [ -f $tmpfil ] ; then
+  . $tmpfil
+  rm -f $tmpfil
+else
+#                                       If not or if it broke, fall back
+  . $SYSUNIX/DADEVS.SH
+fi
+if [ "$NVOL" = "0" -o "$DA01" = "" ] ; then
+  ei1 "Cannot start AIPS because there are no defined data areas!"
+  ei1 "(check DADEVS.LIST or .dadevs files, or AIPSASSN.\*)"
+  exit 1
+fi
+#
+TVALT=TVALT03
+export TVALT
+#                                       See how many printers there are.
+lpfile=$NET0/PRDEVS.LIST
+if [ -f $lpfile ] ; then
+  LPDEVS=`grep '^[^# ]' $lpfile | grep -v '$PRINTER' | wc -l`
+  LPDEVS=`eval echo $LPDEVS`
+  export LPDEVS
+else
+#                                       We need this file!
+  ei1 "Cannot proceed: $lpfile file not found!"
+  exit 1
+fi
+#                                       Printer choice if more than one
+LPOPT=0
+if [ $LPDEVS -gt 1 ] ; then
+  n=$LPOPT
+  if [ $LPOPT -ge 1 -a $LPOPT -le $LPDEVS ] ; then
+#                                       Get single printer definition
+    : ok
+  elif [ $LPOPT -ne 0 ] ; then
+    ei1 "Sorry, there is no printer number $LPOPT (only 1 - $LPDEVS)"
+    n=0
+  fi
+  if [ $n -eq 0 ] ; then
+    spc
+    echo "You have a choice of $LPDEVS printers.  These are:"
+    spc
+    echo "    No. [ type  ] Description"
+    echo "-------------------------------------------------------------"
+    grep '^[^# ]' $lpfile | awk '{
+            skipit=0;
+            for (k=4; k<=NF; k++) {
+               if ($k ~ /\$/) skipit=1;
+            }
+            if (skipit == 0) {
+               printf("    %2d. [%7s] ", NR, $2);
+               for (j=4; j<=NF; j++) printf "%s ", $j;
+               printf("\n");
+            }
+         }'
+    echo "-------------------------------------------------------------"
+#                                       While user is mulling over this,
+#                                       figure out the default
+    ndef=`grep '^[^# ]' $lpfile | awk '{if ($3 ~ /DEF/) print NR}' | \
+     head -n 1`
+    [ "$ndef" = "" ] && ndef=1
+#                                       and any BIG printer
+    nbig=`grep '^[^# ]' $lpfile | awk '{if ($3 ~ /BIG/) print NR}' | \
+     head -n 1`
+    if [ "$nbig" != "" ] ; then
+       BIGPRINT=$nbig
+       export BIGPRINT
+#                                       Haven't tested this in all cases
+       BIGTHRESH=`grep '^[^# ]' $lpfile | \
+                  awk '{if ($3 ~ /BIG/) print $3}' | head -n 1 | \
+                  sed -e 's/BIG=\([0-9]\{1,5\}\).*/\1/'`
+    fi
+    spc
+    n=0
+    while [ $n -eq 0 ] ; do
+      ni1 "Enter your choice, or the word QUIT [default is $ndef]: "
+      read n
+      [ "$n" = "" ] && n=$ndef
+      [ $n = "QUIT" -o $n = "quit" ] && exit
+      if [ "$n" -lt 1 -o "$n" -gt $LPDEVS ] ; then
+        ei1 "Please enter a number from 1 to $LPDEVS (or QUIT)"
+        spc
+        n=0
+      fi
+    done
+  fi
+else
+  n=1
+  if [ "$LPOPT" != "" ] ; then
+    [ "$LPOPT" = 0 ] && LPOPT=1
+    if [ "$LPOPT" != "1" ] ; then
+      ei1 "Only one printer configured, cannot choose printer $LPOPT"
+    fi
+  fi
+fi
+LPDEV=$n
+LPNAM=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $1}'`
+PRTYPE=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $2}'`
+LPOPT=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $3}'`
+LPDESC=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') for (j=4; j<=NF; j++) printf "%s ", $j;}'`
+export LPDEV LPNAM PRTYPE LPOPT LPDESC
+#
+case $BATERDBUGR in
+
+   */*)
+#                                       Debug mode.
+      case $BATERLOCAL in
+
+         */*)
+#                                       Local BATER.EXE in debug mode.
+            if test -f $BATERLOCAL/BATER.EXE
+            then
+               echo "Starting up $BATERLOCAL/BATER.EXE"
+               echo "under the control of debugger $DBUGR"
+               exec $LOAD/ZSTRTB.EXE
+            else
+               echo "Can't find $BATERLOCAL/BATER.EXE"
+               exit 1
+            fi
+         ;;
+
+         *)
+#                                       System BATER.EXE in debug mode.
+            if test -f $LOAD/ZSTRTB.EXE
+            then
+                echo "Starting up `echo $AIPS_VERSION | \
+                   sed -e 's/.*\///g'` BATER"
+                echo "under the control of debugger $DBUGR"
+                exec $LOAD/ZSTRTB.EXE
+            else
+                echo "Can't find $LOAD/ZSTRTB.EXE"
+                exit 1
+            fi
+         ;;
+
+      esac
+
+   ;;
+
+   *)
+#                                       Non-debug mode.
+      case $BATERLOCAL in
+
+         */*)
+#                                       Local BATER.EXE in non-debug
+#                                       mode.
+            if test -f $BATERLOCAL/BATER.EXE
+            then
+               echo "Starting up $BATERLOCAL/BATER.EXE"
+               exec $LOAD/ZSTRTB.EXE
+            else
+               echo "Can't find $BATERLOCAL/BATER.EXE"
+               exit 1
+            fi
+         ;;
+
+         *)
+#                                       System BATER.EXE in non-debug
+#                                       mode.
+            if test -f $LOAD/ZSTRTB.EXE
+            then
+               echo "Starting up `echo $AIPS_VERSION | \
+                  sed -e 's/.*\///g'` BATER"
+               exec $LOAD/ZSTRTB.EXE
+               exec ZSTRTB.EXE
+            else
+               echo "Can't find $LOAD/ZSTRTB.EXE"
+               exit 1
+            fi
+         ;;
+
+      esac
+
+   ;;
+
+esac

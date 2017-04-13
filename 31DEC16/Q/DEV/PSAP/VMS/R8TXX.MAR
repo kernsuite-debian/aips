@@ -1,0 +1,429 @@
+        .title  r8txx
+;-----------------------------------------------------------------------
+;! VMS Pseudo AP routine: Radix 8 FFT.
+;#AP-FFT
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+
+; Radix 8 portion of a FFT routine. Written in macro for speed!
+
+;      macros defined:
+;*****************************************************************************
+ 
+        .macro  add     name,type=b,number=1
+ 
+        auto_b  = 1
+        auto_w  = 2
+        auto_l  = 4
+        auto_f  = 4
+        auto_q  = 8
+        auto_d  = 8
+ 
+        bytes= auto_'type'
+ 
+        .if equal number                ; Align.
+        count = <<count+bytes-1>/bytes>*bytes
+        .endc
+ 
+        .if not_equal number
+        count = count+<number*bytes>
+        .endc
+ 
+        .if not_blank name
+        name  = -count
+        .endc
+ 
+        .endm   add
+ 
+        .macro  auto    args
+ 
+; Macro to make temporary space on the stack.
+ 
+; This assumes that fp and sp are the same, which is true if sp
+; has not been modified since the last entry mask.
+ 
+; Offsets, relative to fp, are defined.
+; Method of use is
+ 
+;       auto    <<name1,type1,number1>, -
+;                <name2,type2,number2>, -
+;                         .
+;                <nameN,typeN,numberN>>
+; nameI     Offset relative to fp is called this. Default no offset defined.
+; typeI     Either b,w,l,f,q or d (byte,word,long,float,quad,double).
+;           Default b.
+; numberI   Number of storage elements. Default is 1. If zero is specified,
+;           then longword alignment is performed.
+ 
+count   = 0
+ 
+        .irp    list,<args>
+        add     list
+        .endr
+ 
+count   = <<count+3>/4>*4               ; Longword align.
+ 
+        subl2   #count,sp
+        .endm   auto
+;*****************************************************************************
+
+        pi2     = ^f6.283185307179586
+        p7      = ^f0.7071067811865475
+
+        .psect  $code,rd,nowrt,shr,pic,long,exe
+
+        nxtlt   = 4
+        nthpo   = 8
+        lengt   =12
+        d0      =16
+        d1      =20
+        d2      =24
+        d3      =28
+        d4      =32
+        d5      =36
+        d6      =40
+        d7      =44
+
+        .entry  r8txx,^m<r2,r3,r4,r5,r6,r7,r8,r9,r10,r11,iv>
+
+; Local storage on the stack.
+
+; k = r11
+        auto    <<j,l>,<lengt_,l>,<W,q>,-
+                <nthpo_less_1,l>,<nxtlt_less_1,l>,<,q>,-
+                <sc1,q>,<sc2,q>,<sc3,q>,<sc4,q>,<sc5,q>,-
+                <sc6,q>,<sc7,q>,<a0,q>,<a1,q>,<a2,q>,<a3,q>,-
+                <a4,q>,<a5,q>,<a6,q>,<a7,q>,<b0,q>,<b1,q>,<b2,q>,-
+                <b3,q>,<b4,q>,<b5,q>,<b6,q>,<b7,q>>
+
+        subl3   #1,@nthpo(ap),nthpo_less_1(fp)
+        movl    @lengt(ap),lengt_(fp)
+        subl3   #1,@nxtlt(ap),nxtlt_less_1(fp)
+
+        cvtlf   lengt_(fp),r0
+        divf3   r0,#pi2,r5                      ; Determine theta.
+        movf    r5,r0                           ; Get the sine.
+        jsb     g^mth$sin_r4
+        movf    r0,W(fp)                        ; Save the sine.
+        mulf3   #0.5,r5,r0                      ; r0 = theta/2
+        jsb     g^mth$sin_r4                    ; r0 = sin(theta/2)
+        mulf2   r0,r0                           ; r0 = sin(theta/2)**2
+        addf2   r0,r0                           ; r0 = 2*sin(theta/2)**2
+        mnegf   r0,W+4(fp)                      ; Save -2*sin(theta/2)**2.
+                                                ;     = cos(theta)-1.
+        movq    #^x0000408000000000,sc1(fp)     ; Initialize sc=(0.,1.)
+        clrl    j(fp)                           ; Initialize j.
+        brw     first_time
+        .align  long
+
+; Recursively determine the next value of cos(theta),sin(theta). The recursion
+; uses the rule (cos(A+B),sin(A+B))
+loop1:
+        movq    sc1(fp),r4                      ; Get scs1.
+        movq    W(fp),r2                        ; Get W.
+        mulf3   r5,r3,r1                        ; r1 = c1*wc
+        mulf3   r4,r2,r8                        ; r8 = s1*ws
+        subf2   r8,r1                           ; r1 = c1*wc-s1*ws
+        mulf3   r2,r5,r0                        ; r0 = s1*wc
+        mulf3   r3,r4,r8                        ; r8 = c1*ws
+        addf2   r8,r0                           ; r0 = s1*wc+c1*ws
+
+        addf2   r4,r0                           ; r0 = s1*wc+c1*ws + s1
+        addf2   r5,r1                           ; r1 = c1*wc-s1*ws + c1
+        movq    r0,sc1(fp)                      ; Save sc1.
+
+        mulf3   r1,r1,r3                        ; r3=c1**2
+        mulf3   r0,r0,r8                        ; r8=s1**2
+        subf2   r8,r3                           ; r3=c2=c1**2-s1**2
+        mulf3   r0,r1,r2                        ; r2=c1*s1
+        addf2   r2,r2                           ; r2=s2
+        movq    r2,sc2(fp)                      ; Save sc2
+
+        mulf3   r1,r3,r5                        ; r5=c1*c2
+        mulf3   r0,r2,r8                        ; r8=s1*s2
+        subf2   r8,r5                           ; r5=c3
+        mulf3   r3,r0,r4                        ; r4=c2*s1
+        mulf3   r2,r1,r8                        ; r8=c1*s2
+        addf2   r8,r4                           ; r4=s3
+        movq    r4,sc3(fp)                      ; Save sc3.
+
+        mulf3   r3,r3,r1                        ; r1=c2**2
+        mulf3   r2,r2,r8                        ; r8=s2**2
+        subf2   r8,r1                           ; r1=c4
+        mulf3   r2,r3,r0                        ; r0=s2*c2
+        addf2   r0,r0                           ; r0=s4
+        movq    r0,sc4(fp)                      ; Save sc4.
+
+        mulf3   r3,r5,r7                        ; r7=c2*c3
+        mulf3   r2,r4,r8                        ; r8=s2*s3
+        subf2   r8,r7                           ; r7=c5
+        mulf3   r5,r2,r6                        ; r6=c3*s2
+        mulf3   r3,r4,r8                        ; r8=c2*s3
+        addf2   r8,r6                           ; r6=s5.
+        movq    r6,sc5(fp)                      ; Save sc5.
+
+        mulf3   r5,r5,r3                        ; r3=c3**2
+        mulf3   r4,r4,r8                        ; r8=s3**2
+        subf2   r8,r3                           ; r3=c6
+        mulf3   r4,r5,r2                        ; r2=c3*s3
+        addf2   r2,r2                           ; r2=s6
+        movq    r2,sc6(fp)                      ; Save sc6.
+
+        mulf3   r5,r1,r3                        ; r3=c3*c4
+        mulf3   r4,r0,r8                        ; r8=s3*s4
+        subf2   r8,r3                           ; r3=c7
+        mulf3   r1,r4,r2                        ; r2=c4*s3
+        mulf3   r0,r5,r8                        ; r8=s4*c3
+        addf2   r8,r2                           ; r2=s7
+        movq    r2,sc7(fp)                      ; Save sc7.
+
+first_time:
+        movl    j(fp),r11                       ; Initialize k.
+loop2:
+
+; Determine A from inputs.
+
+        movq    @d0(ap)[r11],r2
+        movq    @d4(ap)[r11],r0
+        addf3   r0,r2,a0(fp)
+        addf3   r1,r3,a0+4(fp)
+        subf3   r0,r2,a4(fp)
+        subf3   r1,r3,a4+4(fp)
+
+        movq    @d1(ap)[r11],r2
+        movq    @d5(ap)[r11],r0
+        addf3   r0,r2,a1(fp)
+        addf3   r1,r3,a1+4(fp)
+        subf3   r0,r2,a5(fp)
+        subf3   r1,r3,a5+4(fp)
+
+        movq    @d2(ap)[r11],r2
+        movq    @d6(ap)[r11],r0
+        addf3   r0,r2,a2(fp)
+        addf3   r1,r3,a2+4(fp)
+        subf3   r0,r2,a6(fp)
+        subf3   r1,r3,a6+4(fp)
+
+        movq    @d3(ap)[r11],r2
+        movq    @d7(ap)[r11],r0
+        addf3   r0,r2,a3(fp)
+        addf3   r1,r3,a3+4(fp)
+        subf3   r0,r2,a7(fp)
+        subf3   r1,r3,a7+4(fp)
+
+; Determine B from A.
+
+        movq    a0(fp),r2
+        movq    a2(fp),r0
+        addf3   r0,r2,b0(fp)
+        addf3   r1,r3,b0+4(fp)
+        subf3   r0,r2,b2(fp)
+        subf3   r1,r3,b2+4(fp)
+
+        movq    a1(fp),r2
+        movq    a3(fp),r0
+        addf3   r0,r2,b1(fp)
+        addf3   r1,r3,b1+4(fp)
+        subf3   r0,r2,b3(fp)
+        subf3   r1,r3,b3+4(fp)
+
+        movq    a4(fp),r2
+        movq    a6(fp),r0
+        subf3   r1,r2,b4(fp)
+        addf3   r0,r3,b4+4(fp)
+        addf3   r1,r2,b6(fp)
+        subf3   r0,r3,b6+4(fp)
+
+        movq    a5(fp),r2
+        movq    a7(fp),r0
+        subf3   r1,r2,b5(fp)
+        addf3   r0,r3,b5+4(fp)
+        addf3   r1,r2,b7(fp)
+        subf3   r0,r3,b7+4(fp)
+
+;  Determine the outputs.
+
+        movq    b0(fp),r2
+        movq    b1(fp),r0               ; r0=br1,r1=bi1,r2=br0,r3=bi0
+
+        addf3   r0,r2,r6
+        addf3   r1,r3,r7
+        movq    r6,@d0(ap)[r11]
+
+; Start of IF block.
+
+        tstl    j(fp)                   ; Is J zero?
+        beql    10$
+        brw     else
+
+10$:    subf2   r0,r2                   ; r2=br0-br1
+        subf2   r1,r3                   ; r3=bi0-bi1
+        movq    r2,@d1(ap)[r11]
+
+        movq    b2(fp),r2
+        movq    b3(fp),r0               ; r0=br3,r1=bi3,r2=br2,r3=bi2
+ 
+        subf3   r1,r2,r6                ; r6=br2-bi3
+        addf3   r0,r3,r7                ; r7=bi2+br3
+        movq    r6,@d2(ap)[r11]
+
+        addf2   r1,r2                   ; r2=br2+bi3
+        subf2   r0,r3                   ; r3=bi2-br3
+        movq    r2,@d3(ap)[r11]
+
+        movq    b5(fp),r1
+        subf3   r2,r1,r0
+        addf2   r2,r1
+        mulf2   #p7,r0
+        mulf2   #p7,r1
+        movq    b4(fp),r2               ; r0=tr,r1=ti,r2=br4,r3=bi4
+
+        addf3   r0,r2,r6                ; r6=br4+tr
+        addf3   r1,r3,r7                ; r7=bi4+ti
+        movq    r6,@d4(ap)[r11]
+
+        subf2   r0,r2                   ; r2=br4-tr
+        subf2   r1,r3                   ; r3=bi4-ti
+        movq    r2,@d5(ap)[r11]
+
+        movq    b7(fp),r1
+        addf3   r2,r1,r0
+        subf2   r2,r1
+        mulf2   #p7!^x8000,r0           ; r0 = -p7*r0
+        mulf2   #p7,r1
+        movq    b6(fp),r2               ; r0=tr,r1=ti,r2=br6,r3=bi6
+
+        addf3   r0,r2,r6                ; r6=br6+tr
+        addf3   r1,r3,r7                ; r7=bi6+ti
+        movq    r6,@d6(ap)[r11]
+
+        subf2   r0,r2                   ; r2=br6-tr
+        subf2   r1,r3                   ; r3=bi6-ti
+        movq    r2,@d7(ap)[r11]
+        brw     endif
+        .align  long
+else:                                   ; r0=br1,r1=bi1,r2=br0,r3=bi0
+        movq    sc4(fp),r4
+        subf2   r0,r2                   ; r2=br0-br1
+        subf2   r1,r3                   ; r3=bi0-bi1
+        mulf3   r2,r5,r0                ; r0=c4*(br0-br1)
+        mulf3   r3,r4,r8                ; r8=s4*(bi0-bi1)
+        subf2   r8,r0
+        mulf3   r3,r5,r1                ; r1=c4*(bi0-bi1)
+        mulf3   r2,r4,r8                ; r8=s4*(br0-br1)
+        addf2   r8,r1
+        movq    r0,@d1(ap)[r11]
+
+        movq    b2(fp),r2
+        movq    b3(fp),r0               ;r0=br3,r1=bi3,r2=br2,r3=bi2
+
+        movq    sc2(fp),r4              ;r4=s2,r5=c2
+        subf3   r1,r2,r6                ;r6=br2-bi3
+        addf3   r0,r3,r7                ;r7=bi2+br3
+        mulf3   r5,r6,r8
+        mulf3   r4,r7,r10
+        subf2   r10,r8
+        mulf3   r5,r7,r9
+        mulf3   r4,r6,r10
+        addf2   r10,r9
+        movq    r8,@d2(ap)[r11]
+
+        movq    sc6(fp),r4              ;r4=s6,r5=c6
+        addf3   r1,r2,r6                ;r6=br2+bi3
+        subf3   r0,r3,r7                ;r7=bi2-br3
+        mulf3   r5,r6,r8
+        mulf3   r4,r7,r10
+        subf2   r10,r8
+        mulf3   r5,r7,r9
+        mulf3   r4,r6,r10
+        addf2   r10,r9
+        movq    r8,@d3(ap)[r11]
+
+        movq    b5(fp),r1
+        subf3   r2,r1,r0
+        addf2   r2,r1
+        mulf2   #p7,r0
+        mulf2   #p7,r1
+        movq    b4(fp),r2               ;r0=tr,r1=ti,r2=br4,r3=bi4
+
+        movq    sc1(fp),r4              ;r4=s1,r5=c1
+        addf3   r0,r2,r6                ;r6=br4+tr
+        addf3   r1,r3,r7                ;r7=bi4+ti
+        mulf3   r5,r6,r8
+        mulf3   r4,r7,r10
+        subf2   r10,r8
+        mulf3   r5,r7,r9
+        mulf3   r4,r6,r10
+        addf2   r10,r9
+        movq    r8,@d4(ap)[r11]
+
+        movq    sc5(fp),r4              ;r4=s5,r5=c5
+        subf3   r0,r2,r6                ;r6=br4-tr
+        subf3   r1,r3,r7                ;r7=bi4-ti
+        mulf3   r5,r6,r8
+        mulf3   r4,r7,r10
+        subf2   r10,r8
+        mulf3   r5,r7,r9
+        mulf3   r4,r6,r10
+        addf2   r10,r9
+        movq    r8,@d5(ap)[r11]
+
+        movq    b7(fp),r1               ;r1=br7,r2=bi7
+        addf3   r2,r1,r0                ;r0=br7+bi7
+        subf2   r2,r1                   ;r1=br7-bi7
+        mulf2   #p7!^x8000,r0
+        mulf2   #p7,r1
+        movq    b6(fp),r2               ;r0=tr,r1=ti,r2=br6,r3=bi6
+
+        movq    sc3(fp),r4              ;r4=s3,r5=c3
+        addf3   r0,r2,r6                ;r6=br6+tr
+        addf3   r1,r3,r7                ;r7=bi6+ti
+        mulf3   r5,r6,r8                ;r8=c3*(br6+tr)
+        mulf3   r4,r7,r10               ;r10=s3*(bi6+ti)
+        subf2   r10,r8
+        mulf3   r5,r7,r9                ;r9=c3*(bi6+ti)
+        mulf3   r4,r6,r10               ;r10=s3*(br6+tr)
+        addf2   r10,r9
+        movq    r8,@d6(ap)[r11]
+
+        movq    sc7(fp),r4              ;r4=s7,r5=c7
+        subf3   r0,r2,r6                ;r6=br6-tr
+        subf3   r1,r3,r7                ;r7=bi6-ti
+        mulf3   r5,r6,r8
+        mulf3   r4,r7,r10
+        subf2   r10,r8
+        mulf3   r5,r7,r9
+        mulf3   r4,r6,r10
+        addf2   r10,r9
+        movq    r8,@d7(ap)[r11]
+
+endif:
+        acbl    nthpo_less_1(fp),lengt_(fp),r11,loop2
+        acbl    nxtlt_less_1(fp),#1,j(fp),loop1
+        ret
+        .end

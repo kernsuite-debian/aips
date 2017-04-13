@@ -1,0 +1,132 @@
+@@
+Batch Text Files        BA10nn0m
+
+
+
+A. Overview
+
+
+
+Function:  Batch text files contain a list of 80-character lines to be
+used as input to the batch versions of AIPS.  There are logically
+two types of batch text files: the work files used by AIPS and
+BATER to prepare jobs for submission and the files actually queued
+to AIPSBn.
+
+Names:  The former have names BA100n0m where n is the queue number
+( 1 <= n <= NBATQS ) and m = 1 through NINTRN for the interactive
+AIPSs and m = 2*NINTRN + 1 for BATER.  These are permanent files
+which can grow as needed.  The latter have names BA10nn0m where nn
+is the lower two digits of the job number ( 01 <= nn <= 64 ) and m
+is the value of NPOPS used by the AIPSBm program (i.e. m = BATQUE
++ 2*NINTRN + 1 ).  These files are created by the checker version
+of AIPS and are destroyed by AIPSBm when the batch job terminates.
+
+
+
+B. Data structures
+
+
+
+     The physical records in these files are each 256 words.  The
+first four words contain special information (which is only used in
+record 1) and the rest of the record contains logical records.  On
+machines having four characters per word, there are 11 logical records
+in each physical record.  The two kinds of files use identical data and
+pointer structures.
+
+     The first four words of the first physical record contain:
+
+     (1)    User number given in the logon
+     (2)    Next available logical record number
+     (3)    Logical record number of last line in file
+     (4)    Number of 256-word records now in file
+
+The first four words of all other physical records are unused.  Each
+logical record has the structure:
+
+   FIELD    TYPE       DESCRIPTION
+
+     1      I*4     Logical record number of next line (0 if none)
+     2      I*4     Logical record number of previous line (0 if none)
+     3      I*4(n)  Text of line, where n is number of words to hold
+                    80 characters (in HOLLERITH form).
+
+
+
+C. Usage notes
+
+
+     The first line in the file is regarded as line 0 and is always
+blank and always located at logical record number 1.  Its sole purpose
+is to point to the first real line of text.  If this convention were
+not adopted, then it would not be possible to insert text in front of
+the existing text in a work file nor to delete the first line in the
+work file.  The linked list structure of these files is not necessary
+for the files processed by AIPSBn.  However, it is maintained in order
+to retain a single, somewhat simpler reading program.  In particular,
+it is used to make BATLIST and JOBLIST essentially identical.
+
+
+D. Routines and commons for reading batch text files
+
+
+     The subroutine PREAD performs all standard reads for POPS
+language processors.  If the variable IUNIT in common /IO/ is set to
+3, then the read is done from a batch text file.  The operation is
+controlled by the common /BATCH/ as :
+
+     BATLUN   I*2      logical unit number of batch text file
+     BATIND   I*2      pointer to FTAB for the open file
+     BATREC   I*2      logical record number of the last line read
+                       (<= 0 if none)
+     BATDAT   I*2(256) contents of last physical record read
+
+The program which uses PREAD for reading batch files must open the
+file setting appropriate values in BATLUN, BATIND, and BATREC.  If
+BATREC is set > 0, PREAD will assume that the contents of BATDAT are
+valid and contain the logical record referenced by BATREC.  PREAD
+will use the pointer in the current BATREC to update BATREC and to
+obtain the next line, performing a read operation only when required.
+If the pointer in the current logical record (BATREC) indicates that
+there are no more lines, then, effectively, an error (end of file)
+condition has arisen.  PREAD signals this by returning a text line
+of 'EXIT' or, for UNQUE in AIPS and BATER, 'ENDBATCH'.
+
+     The application subroutines AUB and CUB also read batch text
+files.  The verb UNQUE uses the common /BATCH/ together with PREAD
+to read the text file being unqueued.  The verbs BATEDIT, BATLIST,
+and JOBLIST use the common /BWTCH/ (see below) to read a file to
+locate the line to be editted and to locate the lines to be listed.
+
+@@
+
+
+E. Routines and commons for writing batch text files
+
+
+     The subroutine PREAD can perform a write to a batch text file of
+the line which has just been read.  It does this under control of the
+common /BWTCH/ as
+
+       BWTLUN   I*2       logical unit number of output text file
+       BWTIND   I*2       pointer to FTAB for the opened file
+       BWTREC   I*2       logical record number of the last line
+                          added to the file (0 if none)
+       WASERR   L*2       .FALSE. => do the writing
+       BWTDAT   I*2(256)  contents of physical record containing
+                          logical record BWTREC
+
+Programs using PREAD and not wishing to write a batch text file must
+set WASERR = .TRUE..  As for reading, the text file must be opened and
+the common initialized by the program which uses PREAD.  The program
+must also write the last record in BWTDAT to, and close, the file.
+It should also update the global pointers in record 1.
+
+     At present, the only program which uses PREAD for writing batch
+text files is AIPSCm.  Because of certain problems with deletion and
+insertion as well as the need to check for the "magic" character
+strings 'RUN' and 'ENDBATCH', the batch preparation routines use the
+subroutine BBUILD to write into batch work files.  BBUILD uses the
+common /BWTCH/ (except for WASERR) in a way which is similar to, but
+slightly messier than the way used by PREAD.

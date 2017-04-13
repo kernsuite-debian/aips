@@ -1,0 +1,164 @@
+      .TITLE  ZRLR64 (NVAL, NP, INB, OUTB)
+;-----------------------------------------------------------------------
+;! convert buffer of local double precision values to IEEE 64-bit float.
+;# Z Binary
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Converts from local double precision (or corresponding 64 bit
+;   precision) to 64 bit IEEE floating format.
+;
+;   The IEEE format is:
+;
+;                1         2         3         4         5         6
+;      0123456789012345678901234567890123456789012345678901234567890123
+;      seeeeeeeeeeemmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+;
+;   where sign = -1 _*_* s, exponent = eee..., mantissa = 1.mmmmm...
+;
+;   The value is given by:
+;
+;      value = sign _* 2 _*_*(exp-1023) _* mantissa
+;
+;   Note: these values have a "hidden" bit and must always be normalized
+;   The IEEE nan (not a number) values are used to indicate an invalid
+;   number; a value with all bits set is recognized as a "nan".
+;
+;   The AIPS internal format for an invalid number is the value which
+;   has the same bit pattern as 'INDE    '.
+;
+;   The IEEE special values (-0., +/- Infty) are not recognized.
+;
+;   A multiplication by a factor of 4.0 converts between VAX G and IEEE
+;   64 bit formats.
+;
+;   Inputs:
+;      NVAL   I      Number of values to convert
+;      NP     I      First location in OUTB for results
+;      INB    D(*)   Local format values
+;   Output:
+;      OUTB   D(*)   64-bit IEEE format values ('INDE    ' values are
+;                    replaced with "nan")
+;   VMS version
+;-----------------------------------------------------------------------
+                                        ; define argument list
+NVAL = 4
+NP = 8
+INB  = 12
+OUTB = 16
+                                        ;
+        .PSECT  RWDATA,LONG
+INDE:   .ASCII /INDE/
+BLNK:   .ASCII /    /
+ZERO:   .LONG  0
+;-----------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZRLR64,^M<R2,R3,R4,R5,R6,R7,R8,R9,R10>
+                                        ; Put arguments into registers
+        MOVL    @NVAL(AP),R2            ; R2 = number of values
+        MOVL    INB(AP),R3              ; R3 = Addr. of input
+        MOVL    OUTB(AP),R4             ; R4 = Addr. of output
+        MOVL    @NP(AP),R5              ; R5 = offset in OUTB
+        DECW    R5
+        MULL2   #8,R5                   ; byte offset
+        ADDL2   R5,R4                   ; Offset position in output
+        TSTW    R2                      ; Compare number of words to 0
+        BGTR    LOOP
+        JMP     EOB                     ; Return if no work to do.
+                                        ;
+                                        ; R5 = input (VAX)/output(IEEE)
+                                        ; R6 = second word input/output
+                                        ; R9 = sign
+                                        ; R8 = exponent
+                                        ; loop over data
+                                        ;
+LOOP:   MOVQ    (R3)+,R5                ; get VAX
+;                   Check for BLANK
+        CMPL    INDE,R5                 ; check R5
+        BNEQ    CHK0
+        CMPL    BLNK,R6                 ; check R6
+        BNEQ    CHK0
+        JMP     BLANK                   ; value = "nan"
+CHK0:   CMPL    ZERO,R5                 ; check for zero
+        BNEQ    GOOD
+        CMPL    ZERO,R6
+        BNEQ    GOOD
+        JMP     STORE                   ; value = zero
+;                      swap words
+GOOD:   MOVL    R5,R9                   ; use R9, R10 as work
+        EXTZV   #16,#16,R9,R10          ; Snatch word 2
+        INSV    R10,#0,#16,R5           ; put back in R5 word 1
+        EXTZV   #0,#16,R9,R10           ; Snatch word 1
+        INSV    R10,#16,#16,R5          ; put back in R5 word 2
+        MOVL    R6,R9                   ; use R9, R10 as work
+        EXTZV   #16,#16,R9,R10          ; Snatch word 2
+        INSV    R10,#0,#16,R6           ; put back in R6 word 1
+        EXTZV   #0,#16,R9,R10           ; Snatch word 1
+        INSV    R10,#16,#16,R6          ; put back in R6 word 2
+EXP:    EXTZV   #23,#8,R5,R8            ; snatch bits
+        ADDL2   #894,R8                 ; correct bias
+;                        Prepare mantissa & sign
+        EXTZV   #31,#1,R5,R9            ; save sign
+        ASHL    #-3,R6,R6               ; shift  lower bits
+        EXTZV   #0,#3,R5,R7             ; transfer last 3 bits
+        INSV    R7,#29,#3,R6
+        ASHL    #-3,R5,R5               ; shift msbs
+        INSV    R9,#31,#1,R5            ; replace sign
+        INSV    R8,#20,#11,R5           ; insert exponent
+;                   swap bytes and words
+        MOVL    R5,R9                   ; use R9, R10 as work
+        EXTZV   #8,#8,R9,R10            ; Snatch byte 2
+        INSV    R10,#16,#8,R5           ; put back in R5 byte 3
+        EXTZV   #0,#8,R9,R10            ; Snatch byte 1
+        INSV    R10,#24,#8,R5           ; put back in R5 byte 4
+        EXTZV   #24,#8,R9,R10           ; Snatch byte 4
+        INSV    R10,#0,#8,R5            ; put back in R5 byte 1
+        EXTZV   #16,#8,R9,R10           ; Snatch byte 3
+        INSV    R10,#8,#8,R5            ; put back in R5 byte 2
+        MOVL    R6,R9                   ; use R9, R10 as work
+        EXTZV   #8,#8,R9,R10            ; Snatch byte 2
+        INSV    R10,#16,#8,R6           ; put back in R6 byte 3
+        EXTZV   #0,#8,R9,R10            ; Snatch byte 1
+        INSV    R10,#24,#8,R6           ; put back in R6 byte 4
+        EXTZV   #24,#8,R9,R10           ; Snatch byte 4
+        INSV    R10,#0,#8,R6            ; put back in R6 byte 1
+        EXTZV   #16,#8,R9,R10           ; Snatch byte 3
+        INSV    R10,#8,#8,R6            ; put back in R6 byte 2
+        JMP     STORE                   ; finshed word
+;                        BLANKED value
+BLANK:  MOVL   #-1,R5                   ; R5=all 1's
+        MOVL   #-1,R6                   ; R6=all 1's
+STORE:  MOVQ    R5,(R4)+                ; Store new value.
+                                        ; Check for loop
+        SOBGTR  R2,SHIT                 ; loop
+                                        ;
+EOB:    RET
+SHIT:   JMP     LOOP                    ; (limited branch range)
+        .END
+
+
+

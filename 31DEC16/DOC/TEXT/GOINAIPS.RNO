@@ -1,0 +1,830 @@
+.req "goinaips.inc"
+.blank 5
+.C;^&Going AIPS:\&
+.c;^&A Programmers Guide to the NRAO\&
+.c;^&Astronomical Image Processing System\&
+.! set reference release date
+.set date 17,2,87
+.blank 3
+.c;W. D. Cotton and a cast of AIPS
+.blank
+.c;Version  $$day $$month $$year
+.! set actual date of modification
+.set date 17,2,87
+.blank 3
+.c; VOLUME 1
+.blank 5
+.lm+7
+.rm-7
+.c;ABSTRACT
+.blank 2
+This manual is designed for persons wishing to write programs using
+the NRAO Astronomical Image Processing System (AIPS). It should be
+useful for a wide range of applications from making minor changes in
+existing programs to writing major new applications routines.  All
+basic aspects of AIPS programming are dealt with in some detail.
+.blank 2
+.lm-7
+.rm+7
+.c;AIPS programmers contributing to this manual:
+.blank
+John Benson - VLBI
+.break
+Bill Cotton - Array processors and applications routines
+.break
+Eric Greisen - Head knocker, TVs and AIPS
+.indent 5
+system integration
+.break
+Kerry Hilldrup - UNIX, CRAY COS implementation
+.break
+Fred Schwab - Mathematics, critic
+.break
+Craig Walker - Gadfly and VLBI
+.break
+Don Wells - Hardware implementations and
+.indent 5
+image processing techniques
+.page
+.req "gavol1.rnt"
+.req "gavol2s.rnt"
+.ch Introduction
+.hl1 Scope
+
+This document is intended for programmers who are familiar with
+general programming practices and Fortran in particular and who are
+familiar with the common techniques for manipulating astronomical
+data.  This manual is intended to be used in conjunction with the AIPS
+manual, especially volumes 2 and 3 and should be of use to casual as
+well as serious programmers wishing to program using the AIPS system.
+^&Going AIPS\& is not intended to be an exhaustive description of the
+functions and subroutines available in AIPS, but rather to illustrate
+general techniques.
+
+.hl1 Hey You, Read This
+
+This manual is designed for a wide variety of users, ranging from
+those wishing to add 1 line of code to an existing task to the poor
+soul who has to assume the care and feeding of AIPS in the case all
+the current AIPS programmers are hit by a truck.  While the weight of
+this manual would tend to bring on attacks of massive depression or
+homicidal mania in the lighter users from the above mentioned range,
+it should be noted that, for many purposes, only a small fraction of
+the material in this manual is necessary in order to program in the
+AIPS system. The following table suggests courses of action for
+various situations.
+.list,"-"
+.list element
+"I want to get my data into AIPS."
+
+There are a number of skeleton tasks which make this relatively
+straightforward - frequently requiring several hours of effort.  See
+the chapter on the skeleton tasks and ignore the rest of this manual
+unless you run into problems.
+.list element
+"I just want to do something simple to my data."
+
+See the chapter on skeleton tasks.  There are two tasks, FUDGE and
+TAFFY, which read uv data or an image, pass the data to a
+user-provided subroutine and write what comes back into a new file.
+All of the messy stuff is already taken care of.
+.tp 10
+.list element
+"I have this idea."
+
+This requires a bit more understanding about how AIPS works. Read the
+rest of this chapter, the chapter on the skeleton tasks, the chapter
+on tasks, and the chapter on disk I/O.  Depending on the application,
+several other chapters may be relevant.  Then find an existing task
+that is closest to your need and start from there.  For a great many
+purposes the skeleton tasks are a good place to start. There is also a
+chapter describing various high level utility routines such as making
+images from uv data or subtracting model values from uv data.
+.list element
+"I have lots of ideas."
+
+Find a comfortable chair, open a six pack of beer and start reading.
+.list element
+"We just bought the Whizbang 8000 computer and want to run AIPS on
+it."
+
+     Read all of this manual, then give us a call.
+.list element
+"Why didn't you _%_#_&_(_*_&_! see that _#_&_*_@_!_^_% truck."
+
+     Read it all, then write the parts left out.  Lots of luck.
+.end list
+.hl1 Philosophy
+
+The NRAO Astronomical Image Processing System (AIPS) is designed to
+give the astronomer an integrated system of flexible tools with which
+to manipulate a wide variety of astronomical data.  To be of maximum
+benefit to the general astronomical community and to increase the
+useful lifetime of the software, the AIPS system has gone to great
+lengths to isolate the effects of the particular computer and
+installation on which it is run.  Needless to say, this portability
+requirement makes the programmer's life more difficult.
+
+The routines which depend on the host machine or operating system are
+denoted by using a "Z" as the first character of the name; these are
+referred to as the "Z routines".  No other "standard" routines should
+depend on the host machine or operating system to work properly.
+Routines which depend on the particular television display device are
+denoted with names beginning with a "Y"; these are the "Y routines".
+Routines which depend on the computing hardware (e.g., array
+processors, vector processors, or lack thereof) have names beginning
+with a "Q".
+
+It has been argued that it is not worth the additional effort to
+isolate the machine dependencies.  We are all aware of usable packages
+that have died because they were strongly tied to a particular
+computer.  VAXes are currently losing their position of dominance in
+the astronomical computing community and those with a sufficiently
+long memory will recall that IBM 360s and 370s and CDC Cybers had a
+similar stranglehold during the 60s and early 70s.  By not tying
+ourselves to a particular computer or even vendor, we have the freedom
+to buy hardware from the vendor who offers the most cost effective
+models. This strategy should allow the AIPS system to last longer than
+previous systems, so we can spend more time investigating new
+algorithms and less time patching or recoding old programs every time
+we change computer.
+
+In addition to isolating machine dependencies, we advocate modular
+program structure.  By this we mean that the main program should be
+relatively short and should basically call routines each of which has
+a well defined and limited function.  Modular coding is especially
+important for machines on which most programs must be overlaid
+(hopefully a dying species), but it also makes the code easier to
+debug, easier to maintain, and  very importantly, easier from which to
+steal pieces. Routines which may be of use in other applications
+should be coded in as general a form as possible and placed in the
+appropriate AIPS subroutine library.  This may take longer in the
+short run, but should pay off in the long run.
+
+Another philosophical feature of AIPS is that the programs should run
+as quickly as possible without making the code too difficult to
+maintain.  This is frequently a matter of judgment, but, in general,
+tricks and excessive cleverness should be avoided.
+
+Since many of the most expensive AIPS tasks are I/O limited, the AIPS
+I/O system has been designed  for maximum performance.  In general,
+this means that I/O is done in a double buffered mode, in as large
+blocks as possible, with fixed logical record size and programs work
+directly out of the I/O buffers.  This makes many of the features of
+the I/O system, which are normally hidden from the programmer, much
+more obvious and allows the I/O to run as fast as the computer can
+manage.
+
+The AIPS philosophy has always been that it should always be possible
+to determine what has been done to a data set.  For this purpose,
+every permanent cataloged data file has an associated history file in
+which a permanent record is kept of the processing done to the data in
+that file. It is the responsibility of the programmer to insure the
+integrity of the history.  In addition to the history files, most
+communications between the user and AIPS or tasks are logged in a file
+which can be printed.
+
+.hl1 An Overview of the AIPS System
+
+The AIPS system consists of several distinct parts.  First and most
+obvious to users is the program called AIPS.  This program, based
+around the People Oriented Parsing System ( >POPS ), interacts with
+the user, performs many of the display functions, does some
+manipulation of data and initiates other programs which run
+asynchronously from AIPS.  Functions built into AIPS are called verbs,
+the asynchronous programs are called tasks, and both are controlled by
+the values of parameters in the POPS processor known as adverbs.  A
+third type of program in the AIPS system is the stand-alone utility
+program which is mostly of interest to the AIPS system manager.
+
+.hl2 Tasks
+
+Communication between the AIPS program and the tasks it spawns is
+fairly limited.  When a task is initiated from AIPS an external file
+is read which specifies the number and order of adverbs whose values
+are sent to the task.  These values, along with some "hidden" values,
+are written into a disk (TD) file.  AIPS then initiates the requested
+task and begins looping, waiting for the task to either disappear or
+put a return code into the TD file. The task reads the TD file and
+depending on the value of a logical "hidden" adverb (>DOWAIT in AIPS
+and RQUICK in the task) may immediately restart AIPS by returning the
+return code.  The task then does the requested operation and before
+stopping, sends AIPS the return code if this was not done previously.
+
+.index TD file
+.index TC file
+AIPS may communicate with a task after it has started running via the
+task communication (TC) file.  A list of adverbs which are to be sent
+to the task is defined in the inputs file; in addition, other
+instructions such as "quit" may be sent.  The task must read the TC
+file at relevant points.  It is the responsibility of the programmer
+to check the TC file and take appropriate actions.
+
+
+Tasks are used for operations which either require much computer
+memory or CPU time or both, whereas verbs are used for operations
+which take no longer than a few seconds to finish.  Since the tasks
+run asynchronously from AIPS, the user may  do other things while one
+or more tasks are running.  Since there is a minimal interaction
+between AIPS and tasks, programming tasks is much simpler than
+programming verbs; AIPS does not need to be modified to install a new
+task.  Tasks may communicate directly to the user.
+
+.hl2 Verbs
+
+Verbs are the functions built into the AIPS program itself. Many of
+these involve the display of images and most of the interactive
+features of the AIPS system.  >POPS is a programming language itself,
+and complicated combinations of tasks and verbs may be assembled into
+POPS procedures.  Verbs, but not tasks, may change the value of POPS
+adverbs.
+
+The AIPS program is very modular and most verbs are implemented via a
+branch table contained in an external file.  Most of the adverbs are
+called from subroutines with names like AU1, AU2, AU5C etc.  A table
+read from an external text file determines the subroutine and a
+function number for each function.  The values of adverbs are
+contained in a common.
+
+.hl2 Data Files
+
+Data is kept in files which are cataloged in AIPS.  At present we have
+two kinds of data (more are possible): images and uv data. The
+internal structure is much like that of a >FITS format tape except
+that the data is normally in floating point format.  Associated with
+each main data file may be up to 10 types of auxiliary information
+files with up to 255 versions of each type.  The basic information
+about the main data file and the existence of the auxiliary files
+(called extension files) is kept in a catalog file.  Bookkeeping and
+other information is kept in the first record of most of the extension
+files.  One example of the extension file is the HIstory file in which
+a record of the processing of the data is automatically logged by the
+AIPS tasks.
+
+.tp 13
+.hl2 I/O
+
+The AIPS system has three basic types of files and three types of I/O
+to access them.  The main data files which are assumed to contain the
+bulk of the data are accessed in a double buffered mode with large
+blocks being transferred.  The extension files are read by single
+buffered transfers of 256 integers.  Both types are intrinsically
+random access; however, in practice the main data file access is
+sequential, but the extension file access is frequently random.  For
+the main data file, I/O tasks usually work directly from the I/O
+buffer.
+
+A third type of file is the text file.  At the moment AIPS only reads
+text files.  The files are used mostly for documentation although the
+file which defines the list of adverbs to be sent to a task is a text
+file.  More details about the I/O routines can be found in the chapter
+on I/O.
+
+.hl1 Style
+.hl2 Precursor Comments
+
+Precursor comments are the principal form of detailed programmer
+documentation in the AIPS system. These are comments placed
+immediately following the PROGRAM, SUBROUTINE, or FUNCTION statement
+which explain the purpose and methods of the routine, the input and
+output arguments, any use of variables in commons, and any special
+coding techniques or limitations in the transportability of the
+routine. Precursor comments do not need to be verbose, but they must
+explain most things which a programmer must know about calling the
+routine. Routines must have acceptable prologue comments before they
+will be accepted into the AIPS system. As a simple example, consider:
+
+.tp 10
+.literal
+
+             SUBROUTINE COPY (N, KFROM, KTO)
+       C----------------------------------------------------------
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+       C   COPY copies integer words from one array to another.
+       C   Inputs:  N      I*2     number of words to be copied
+       C            KFROM  I*2(N)  source array
+       C   Outputs: KTO    I*2(N)  destination array
+       C----------------------------------------------------------
+             INTEGER*2  N, KFROM(1), KTO(1)
+       C----------------------------------------------------------
+       C                                        no copy: N <= 0
+             IF (N.LE.0) GO TO 999
+                DO 10 I = 1,N
+                   KTO(I) = KFROM(I)
+        10         CONTINUE
+       C
+        999  RETURN
+             END
+
+.end literal
+
+.hl2 Body Comments
+
+"Body" comments are placed at strategic locations throughout the body
+of the code.  They act as sign posts to alert the reader to each
+logical block of code and also to clarify any difficult portions.
+Ideal places for body comments are prior to DO loops and IF clauses.
+Body comments within a routine must all begin in the same column and
+that column should be near column 41.  Body comments (and precursor
+comments) should be typed in lower case letters.  This helps to
+separate visually the comments from the program text (which must be
+all in upper case_!_!_!).
+
+.hl2 Indentation
+
+Another powerful tool to illustrate to the reader the logical
+structure of a routine is indentation.  By indenting statements to
+indicate that they belong together, one can enhance greatly the
+readability of one's programs.  Each step of indentation shall be
+three (3) spaces, beginning in column 7.  Numbered CONTINUE statements
+should be employed to enhance the indentation pattern.  DO loops and
+IF clauses are prime candidates for indentation.  As an example,
+consider:
+.tp 15
+.literal
+
+C                                        Multiply by transform matrix
+      DO 10 I = 1,3
+         VEC(I) = 0.0
+         DO 10 J = 1,3
+            VEC(I) = VEC(I) + TMATX(I,J)*VEC0(J)
+ 10         CONTINUE
+C                                        Unit vector to polar
+C                                        Case at pole
+      IF ((X.NE.0.0) .OR. (Y.NE.0.0)) GO TO 20
+         ALPHA = 0.0
+         DELTA = 0.0
+         GO TO 30
+ 20   CONTINUE
+         ALPHA = ATAN (X, Y)
+         DELTA = SQRT (X*X + Y*Y)
+ 30   PDIST = ATAN2 (Z, DELTA)
+C                                        Swap to increasing order
+      IF (A.LT.B) GO TO 40
+         C = A
+         A = B
+         B = C
+ 40   Z = Z ** (B-A)
+.end literal
+
+
+.hl2 CONTINUE Statements
+
+All DO loops end with CONTINUE statements rather than some executable
+statement.  This enhances legibility as well as preventing compilation
+errors on those statements which are not allowed, by some compilers,
+to be the last statement in a DO loop.  A branch other than those
+caused by DO loops should be to executable statements.
+
+
+.hl2 Statement Numbers
+
+The use of GO TO statements is the cause of most logic errors in
+programming. However, with the use of standard indentation and
+statement numbering schemes, errors can be reduced and readability
+enhanced.  Statement numbers must increase through the routine and
+should be integer multiples of 5 or 10.  They should not exceed 999.
+Format numbers should have 4 digits with the low order 3 giving the
+nearest preceding statement number to the first statement using that
+format. All statement numbers are left justified beginning in column
+2.
+
+Statement numbers can help to clarify the logical structure of a
+routine.  Let us consider the common example of a routine which begins
+with some setup operations (e.g., file opening), then does operation
+set A or B or C or D, and then does some close down operations (e.g.,
+file closing) before returning.  Where possible, such a routine should
+use statement numbers 5 - 95 for the setup, 100 - 195 for set A, 200 -
+295 for set B, 300 - 395 for set C, 400 - 495 for set D, and 900 - 995
+for the close down.
+
+.hl2 Blanks
+
+Blank spaces can improve the readability of the routine as can
+parentheses.  Blanks should surround equals signs and separate
+multiple word statements.  Parentheses are a great help in compound
+logical expressions.  For example,
+.literal
+               A = B
+               DO 10 I = 1,10
+               GO TO 999
+               CALL KPACK (IX, IY)
+               IF ((A.GT.B) .AND. (C.LE.D)) GO TO 20
+.end literal
+.hl2 Modular Code
+
+Modularity  in program design is a very important asset for many
+reasons.  Complicated tasks become clearer, to coder and reader alike,
+when constructed from a logical sequence of smaller operations
+performed by subroutine call.  Such well-ordered tasks are far easier
+to design, to understand, and to make work correctly than vast
+monolithic single programs.  Furthermore, the small operation
+subroutines will often turn out to be fairly general and useful to
+many other tasks as well.  Programmers will have to remember that
+their tasks will have to run not only in the "unlimited" address space
+of 32-bit virtual computers, but also in the very limited address
+space of 16-bit computers. The task should be designed in a modular
+way to allow it to be overlaid on the "smaller" machines. Although
+this consideration is, we hope, diminishing, programmers must remember
+that page faulting is extremely expensive on most virtual memory
+computers.
+
+.hl2 Portability
+.index data structures
+
+The code of AIPS is intended to achieve a very high degree of
+portability between computers.  Programmers for the system must be
+aware of this requirement and avoid the easy assumptions about such
+matters as word and character lengths.  The basic common /DCHCOM/
+contains parameters giving the number of bits/word, words/floating
+point, words/double precision floating point, and characters/floating
+point.  These must be used, rather than simple equivalence statements,
+when dealing with "data structures" (arrays containing a mixture of
+integer, character, and floating point variables).  One may use DATA
+statements to assign two characters to an integer and four characters
+to a real and then use formats A2 and A4, respectively, to print them.
+However, one cannot regard these variables as being fully packed with
+characters.  The technique one must use to handle data structures,
+such as the map catalog data block described later in this manual,
+goes as follows:  One equivalences integer, real, and double precision
+arrays to the full structure.  Then one computes, using the parameters
+in /DCHCOM/, the subscripts needed with the three types of arrays to
+extract the desired quantities.  The routine VHDRIN performs this
+computation for catalog blocks, storing its results in the common
+/HDRCOM/. Programmers will find this routine instructive.  There are a
+wide variety of service routines to manipulate characters and to
+compute addresses.
+
+All of the things mentioned in this chapter should be used in
+moderation.  One can bury good code in a plethora of inane comments.
+One can inundate statements with parentheses or spread them out with
+blanks until they are no longer legible.  Vastly elaborate indentation
+and numbering schemes can confuse rather than aid the reader.  The
+creation of large numbers of very short, special purpose subroutines
+will overburden linkage editors and AIPS's bookkeeping schemes.  (In
+this regard, AIPS already contains a wide range of useful utility
+subroutines.  Programmers should check to see if a function is already
+available before creating additional subroutines.)  Basically,
+programmers should use good common sense in applying the standards
+described in this chapter.
+
+.hl1 Language
+
+
+The magnitude of the AIPS project and the desire to achieve
+portability of the software require a high degree of standardization
+in the programming language and style.  One must code in a language
+which can be compiled on all machines.  One must follow strict rules
+in statement ordering and location so that simple preprocessors may,
+when necessary, locate and modify the standard code.  Everyone must
+type code in the same way so that all programmers will be able to read
+it with as little effort and confusion as possible.  All experienced
+programmers develop a personal typing style which they prefer.  To
+them, the rules given in this chapter may seem arbitrary, capricious,
+and unworkable.  Nonetheless, they are the rules to be followed when
+coding for the AIPS system.  Routines which do not meet these
+standards will not be accepted.  This project is too important and too
+large to allow compromise at this level.  Also, we have found these
+rules to be fairly comfortable - after we got used to them.
+
+.hl2 FORTRAN
+
+The programming language will be ANSI standard FORTRAN, except for the
+addition of INCLUDE, ENCODE, and DECODE statements and the use of a
+minimum number of local assembly language (or C) Z routines when
+absolutely required.  I cannot review the entire language here, but I
+urge programmers to reread a basic reference.  (Do not read your local
+VAX FORTRAN manual.  Use a fundamental reference such as IBM's Fortran
+Language manual.)  In particular, I remind programmers that the names
+of commons, variables, functions, and subroutines must begin with a
+letter and contain no more than six (6) characters.  In AIPS, program
+names may have no more than five characters because of the need to
+append the value of NPOPS. Comments are introduced by placing the
+capital letter C in column 1 of the card.  No in-line comments are
+allowed.  Continuation statements are formed by placing a non-blank
+character in column 6 of the card.  In AIPS, this character shall be
+an asterisk (_*).  There may be no more than 19 continuations of a
+single statement.  Only card columns 1 - 72 are used, even in
+comments.  Executable statements at the first level of indentation
+begin in column 7.  TAB characters must not be left in the code after
+it is typed and edited. The three non-standard statements have the
+forms:
+
+.list
+.tp 10
+.list element
+INCLUDE 'INCS:<name_> '
+
+where INCLUDE begins in column 7, the first single quote is in column
+15, the <name_> is a left justified character string of no more than 8
+characters, and the second single quote follows <name_> with no
+blanks.  The conventions for <name_> will be described later.  The
+statement causes the file called <name_> to be inserted in the routine
+in place of the INCLUDE statement. The INCS: indicates the standard
+include area or search path.
+
+.tp 10
+.list element
+ENCODE ( <nchar_> , <format_> , <array_> )   <list_>
+
+where <nchar_> is the total number of characters to be encoded,
+<format_> is the format number, <array_> is the variable into which
+the data are to be encoded, and <list_> is an optional list of the
+variables whose values are to be encoded.  The value of <nchar_> may
+exceed the actual number of characters to be encoded, but may not
+exceed the number of characters which will fit in <array_>. ENCODE
+performs a formatted write into memory.
+.tp 10
+.list element
+DECODE ( <nchar_> , <format_> , <array_> ) <list_>
+
+where <nchar_> is the total number of characters to be decoded,
+<format_> is the format number, <array_> is the variable from which
+the data are to be decoded, and <list_> is the list of variables to
+receive the decoded values.  DECODE performs a formatted read from
+memory.
+.end list
+
+.hl2 Statement Order
+
+Statements must be ordered as follows.  The PROGRAM, FUNCTION, or
+SUBROUTINE statement must occupy the first line and must begin in
+column 7.  Then come the precursor comments, the declaration
+statements, the body of the program, the format statements, and the
+END statement.  Each of these segments will be separated by a comment
+delimiter line (i.e., C followed by 71 or so minus signs).  The last
+line of the body of the routine must have the statement number 999 and
+be a STOP (for programs) or RETURN (for functions and subroutines)
+statement.  There must be no other STOP or RETURN statement in the
+routine.
+
+Many computer systems allow declaration statements to occur in almost
+any order.  However, some of the simpler compilers do not. Therefore,
+in AIPS, we will use the following order:
+.list
+.tp 10
+.list element
+Data type and dimension statements: INTEGER_*2, INTEGER_*4,
+LOGICAL_*2, REAL_*4, REAL_*8 and COMPLEX in any order.  We prohibit
+DIMENSION, INTEGER(see below), REAL, DOUBLE PRECISION, INTEGER_*3,
+LOGICAL_*1, LOGICAL_*4, REAL_*6, COMPLEX_*8, and COMPLEX_*16
+statements and any use of these statements for data initialization.
+Note: the use of COMPLEX arithmetic is discouraged as many compliers
+do not correctly compile statements involving complex arithmetic.
+Also, INTEGER is to be used to declare variables to be used for
+variable dimension statements.  This INTEGER statement should appear
+before the statement using the variable dimension.
+
+PARAMETER statements should be included with (usually before) the
+declaration statements.
+
+.tp 10
+.list element
+Common statements: COMMON.  We prohibit use of the COMMON statement to
+give the types and dimensions of variables. Use of blank common must
+be reserved for cases where dynamic memory allocation is needed and
+the blank common can be changed in size.
+
+.tp 10
+.list element
+Equivalence statements: EQUIVALENCE.
+
+.tp 10
+.list element
+Data initialization statements: DATA.  We prohibit the use of DATA
+statements to initialize variables in commons (as do the FORTRAN
+standards and many compilers). Character data must be typed correctly.
+Thus, although
+.literal
+           INTEGER*2  IC(2)
+           DATA  IC /'IAMC'/
+.end literal
+will work on many computers, we prohibit it.  The use of octal and
+hexadecimal numbers in data statements is strongly discouraged.
+
+.tp 10
+.list element
+Function definitions.
+.end list
+
+.hl2 INCLUDEs
+
+INCLUDE statements are used in AIPS primarily to provide a fixed and
+uniform set of declarations for commons and data structures. The
+naming conventions for such INCLUDEs is 'INCS:accc.INC' , where INCS:
+is a logical directory name (which must be dealt with by a
+preprocessor on some systems), 'a' is D, C, E, and V for the above
+types 1, 2, 3, and 4, respectively and 'ccc' is a one to three
+character name for the INCLUDE. In addition, a prefix P indicates a
+parameter include; PARAMETER includes must precede all other types of
+include. Since the statement order is fixed, an include text file may
+contain statements of only one of the above types.  For example,
+.literal
+
+            INCLUDE 'INCS:DBWT.INC'
+            INCLUDE 'INCS:CBWT.INC'
+
+causes the text:
+
+      C                                       Include DBWT
+            INTEGER*2 BWTNUM, BWTLUN, BWTIND, BWTREC, BWTDAT(1)
+            LOGICAL*2 WASERR
+            REAL*4    BWTNAM(6)
+      C                                       End DBWT
+      C                                       Include CBWT
+            COMMON /BWTCH/ BWTNAM, BWTNUM, BWTLUN, BWTIND, BWTREC,
+           *   WASERR, BWTDAT
+      C                                       End CBWT
+.end literal
+to be inserted.
+
+Note: I is sometimes used as the first letter of a declaration include
+which contains an array which should be explicitly declared in the
+routine.  An example is IDCH.INC for the device characteristics
+common.  The CDCH.INC file includes a common used to carry an array
+called FTAB which is used for I/O tables.  The size of FTAB depends on
+the number of I/O streams desired concurrently and should be declared
+in the main routine of the program.  Thus in the main routine of each
+program the includes INCS:IDCH.INC and INCS:CDCH.INC should appear as
+well as an INTEGER_*2 declaration for FTAB. (See the chapter on I/O
+for a discussion of the required dimension of FTAB.)
+.index FTAB
+
+.hl2 Variable Declaration
+
+The programmer is required to declare every variable in the routine.
+This will avoid any problems with the various default data types in
+various computer systems.  Of particular importance, in this regard,
+are those variables and constants which appear in CALL statements.
+Using the example of the subroutine COPY given above, the statement
+.literal
+                CALL COPY (2, KF, KT)
+.end literal
+will work on some machines, but will not work on computers which
+default to INTEGER_*4 with an address which points to the high-order
+byte.  The right way to code this is:
+.literal
+                INTEGER*2  KF(n), KT(n), N2
+                ...
+                DATA  N2 / 2 /
+                ...
+                CALL COPY (N2, KF, KT)
+.end literal
+
+ All declaration statements must begin in column 7.
+
+.hl2 Literals and Expressions in CALL Statements
+
+Literals (e.g., 2) and expressions should NEVER be used in CALL
+sequences.  The data type received by the routine called may not be
+what it (or the programmer) expects.
+
+.hl1 Documentation
+
+Proper documentation for both users and programmers is vital to the
+success of any software system.  In the AIPS system, this
+documentation is primarily the responsibility of the programmer.  In
+the following sections the various categories of AIPS documentation
+are discussed.
+
+.hl2 User Documentation
+
+.hl3 HELP files
+The primary source of user documentation is the HELP file.  This
+information is available to the user on-line from the AIPS program.
+There are several types of help files: (1) task help files, (2)
+general help files, and (3) adverb help files.  The general help files
+aid the user in finding the name of the task or verbs for a given
+operation. These entries consist of the name and a one line
+description of a task or verb.  New tasks should be entered into the
+appropriate general help files.  Task help files are the primary user
+documentation for a task or verb.
+
+There are three parts of the task HELP file separated by a line of 64
+-'s. Details about the format of the HELP file are found in the
+chapter on tasks.
+
+.list
+.tp 10
+.list element
+INPUTS
+
+The INPUTS section of the help file is ^&required\& for any task to
+run.  AIPS uses this section to determine the number and order of
+adverbs to be sent to the task and can check on limits on the values.
+The INPUTS section also contains a short description of the use of the
+task and of each of the adverbs.  A listing of the INPUTS section of
+the help file is displayed on the user's terminal showing the current
+values of the named adverbs when the user types "INPUT" to AIPS.  The
+INPUTS section is also used to specify any adverbs which may be send
+to the task during its execution through the TC file.
+.tp 10
+.list element
+HELP
+
+The HELP section of the help file gives a more detailed description of
+the function of the task and a more complete description of the
+meaning of each of the adverbs than the INPUTS section.  This section
+should also explain the default values of the adverbs.  The HELP
+section of the HELP file is listed on the users terminal when the user
+types "HELP name".
+.tp 10
+.list element
+EXPLAIN
+
+The EXPLAIN section of the help file should describe the techniques
+for properly using the task; hints about reasonable values of the
+adverbs can be given here.  A discussion of the interaction of the
+given task with other tasks is also appropriate.  It is best if
+someone other than the programmer writes the EXPLAIN section of the
+help file.  The HELP and EXPLAIN sections of the help file are written
+on the line printer when the user types "EXPLAIN name" to AIPS.
+.end list
+
+.hl3 AIPS Manual and Cookbook
+The AIPS manual and especially the AIPS Cookbook are employed by many
+AIPS users as a guide to using AIPS.  In particular, many users are
+unaware of the existence of any feature in AIPS not advertised in the
+Cookbook; unfortunately, the Cookbook only covers the most elementary
+portions of the AIPS system.  The AIPS manual and the Cookbook are
+maintained by Eric Greisen in Charlottesville.
+
+.tp 10
+.hl2 Programmer Documentation
+
+.hl3 Precursor Comments
+The most fundamental source of detailed programmer documentation in
+the AIPS system are comments in the source code, especially the
+precursor comments.  A listing of all of the precursor comments in the
+AIPS system can be found in the AIPS manual volume 3.  The precursor
+comments for all routines should describe the use of the routine as
+well as the meaning, units etc. of all call arguments. Many of the
+detailed descriptions of call sequences in this manual are essentially
+the precursor comments of the routines.
+
+.hl3 Shopping Lists
+There are a number of list of AIPS routines with one-line descriptions
+of their functions.  These lists are a good place to discover  what
+utility routines are available.  Unfortunately, since these lists are
+currently maintained by hand, they are woefully out of date.  They are
+still useful, however.
+
+.hl3 CHANGE.DOC
+Once source code, text files, etc. are entered into the AIPS libraries
+all changes should be documented in the CHANGE.DOC file. Installations
+outside of the main AIPS programming group are encouraged to adopt
+this system.  The CHANGE.DOC file contains entries giving the date,
+name of the routine, and the name of the person making the change,
+with a short description of the changes.  If a bug is being corrected,
+its symptoms should be described.  The CHANGE.DOC file associated with
+the master version of the AIPS system is published quarterly in the
+AIPSletter.
+
+.hl3 The Checkout System
+The AIPS group has instituted a check-out system for the text files in
+the master version of the AIPS system (including CHANGE.DOC).  The
+purpose of this check out system is to prevent different programmers
+from destroying each others changes to code by trying to work on the
+same routines at the same time.  There are occasionally changes made
+in AIPS which require changes in most or all tasks; frequently the
+original programmer of a task will be unaware of these changes.  For
+these reasons, modifications or additions to the the master version of
+AIPS should (are required to):
+.list
+.tp 10
+.list element
+Check out the relevant files.  A detailed description of the current
+check-out routines may be obtained from Eric Greisen in
+Charlottesville.
+.list element
+Modify the files.
+.list element
+Check the files back in.
+.list element
+Document the changes in CHANGE.DOC (which must itself be checked out).
+.end list

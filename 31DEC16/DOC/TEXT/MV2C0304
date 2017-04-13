@@ -1,0 +1,246 @@
+@@
+   A Simple Example
+
+
+   To illustrate the use of the more common i/o routines, we present
+the following example.  We suppose that from an existing, catalogued
+map we wish to create a new map where the number of points in the
+x-axis will be doubled (minus one) by linear interpolation between
+existing pixels.  For brevity, we will omit some of the error
+checking normally done after the i/o routines.  We have included, for
+completeness, calls to a number of routines not yet described.  Read
+Chapter V before studying this example in detail.
+
+     Because of the length of the comments they are not typed according
+to normal coding standards.
+
+
+      PROGRAM XDOUB
+C--------------------------------------------------------------------
+C   Sample program to double the number of x-pixels by linear
+C   interpolation.
+C     AIPS Inputs:
+C        INNAME   R*4(3)   Catalog name of input map (12 chars)
+C        INCLASS  R*4(2)   Catalog class of input map (6 chars)
+C        INSEQ    R*4      Sequence # of input map
+C        INDISK   R*4      Disk volume containing input map
+C      ( NLUSER   I*2      User id # : via GTPARM not adverb)
+C----------------------------------------------------------------------
+      REAL*4 NAME(3), CLASS(2), SEQIN, DISKIN
+      INTEGER*2 SEQ1, SEQ2, IVOL, USID
+      INTEGER*2 MA, LUN1, LUN2, FIND1, FIND2, CNO1, CNO2,
+     *   CATBLK(256), WBUF(256), INBUF(2048), OUTBUF(4096)
+      INTEGER*2  BLKOF(2), NXOLD, NXNEW, NY, ININD, OUTIND, DUM
+      INTEGER*2 BYTPIX, PGMNAM(3), NPARMS, IERR, RETCOD, NBYPX
+      REAL*4 READ, WRITE, INI, FIN
+      LOGICAL*2 F, RQUICK
+      INTEGER*2 N0, N2, N4, N4096, N8192
+C
+C                 Provide enough FTAB space
+      INTEGER*2 FTAB(200)
+C                 Include definition and common statements
+      INCLUDE 'IDCH.INC'
+C                 This causes the following text to be included:
+C                                                          Include IDCH
+      INTEGER*2 NVOL, NBPS, NSPG, NBTB1, NTAB1, NBTB2, NTAB2,
+     *   NBTB3, NTAB3, NTAPED, CRTMAX, PRTMAX, NBATQS, MAXXPR(2),
+     *   CSIZPR(2), NINTRN, KAPWRD, NCHPFP, NWDPFP, NWDPDP,
+     *   NBITWD, NWDLIN, NCHLIN, NTVDEV, NTKDEV, DSPARE(8),
+     *   DEVTAB(50)
+C                                                          End IDCH.
+C
+      INCLUDE 'DMSG.INC'
+C                 This includes:
+C                                                          Include DMSG
+      INTEGER*2 MSGCNT, TSKNAM(3), NPOPS, NLUSER
+      REAL*4    MSGTXT(20)
+C                                                          End DMSG.
+      INCLUDE 'DHDR.INC'
+C                      This includes
+C                                                          Include DHDR
+      INTEGER*2 K4OBJ, K4TEL, K4INS, K4OBS, K4DOB, K4DMP,
+     *   K4BUN, K4PTP, K4CTP, K4CIC, K4CRP, K4CRT, K4EPO,
+     *   K4DMX, K4DMN, K4BLK, K4IMN, K4IMC, K4PTY, K4IMNO,
+     *   K4IMCO, K4PTYO
+      INTEGER*2 K8BSC, K8BZE, K8CRV
+      INTEGER*2 K2PTPN, K2CTPN, K2EXTN
+      INTEGER*2 K2GCN, K2PCN, K2DIM, K2NAX, K2BPX, K2INH,
+     *   K2IMS, K2IMU, K2EXT, K2VER, K2NIT, K2BMJ, K2BMN,
+     *   K2BPA, K2TYP
+      INTEGER*2 I4RAN, I2VOL, I2CNO, I2WIN, I2DEP, I2COR,
+     *   I2TRA
+C                                                          End DHDR.
+      INCLUDE 'CDCH.INC'
+C                 This includes:
+C                                                          Include CDCH
+      COMMON /DCHCOM/ NVOL, NBPS, NSPG, NBTB1, NTAB1, NBTB2, NTAB2,
+     *   NBTB3, NTAB3, NTAPED, CRTMAX, PRTMAX, NBATQS, MAXXPR,
+     *   CSIZPR, NINTRN, KAPWRD, NCHPFP, NWDPFP, NWDPDP,
+     *   NBITWD, NWDLIN, NCHLIN, NTVDEV, NTKDEV, DSPARE,
+     *   DEVTAB, FTAB
+C                                                          End CDCH.
+      INCLUDE 'CMSG.INC'
+C                      This includes:
+C                                                          Include CMSG
+      COMMON /MSGCOM/ MSGCNT, TSKNAM, NPOPS, NLUSER, MSGTXT
+C                                                          End CMSG.
+      INCLUDE 'CHDR.INC'
+C                      This includes
+C                                                          Include CHDR
+      COMMON /HDRVAL/ K4OBJ, K4TEL, K4INS, K4OBS, K4DOB, K4DMP,
+     *   K4BUN, K4PTP, K4CTP, K4CIC, K4CRP, K4CRT, K4EPO,
+     *   K4DMX, K4DMN, K4BLK, K4IMN, K4IMC, K4PTY, K4IMNO,
+     *   K4IMCO, K4PTYO,
+     *   K8BSC, K8BZE, K8CRV,
+     *   K2PTPN, K2CTPN, K2EXTN,
+     *   K2GCN, K2PCN, K2DIM, K2NAX, K2BPX, K2INH,
+     *   K2IMS, K2IMU, K2EXT, K2VER, K2NIT, K2BMJ, K2BMN,
+     *   K2BPA, K2TYP,
+     *   I4RAN, I2VOL, I2CNO, I2WIN, I2DEP, I2COR,
+     *   I2TRA
+C                                                          End CHDR.
+C
+      COMMON /INPARM/ NAME, CLASS, SEQIN, DISKIN
+C
+      DATA MA /'MA'/,       LUN1, LUN2 /16,17/,
+     *   BLKOF/ 1, 0/
+      DATA READ, WRITE, INI, FIN /'READ', 'WRIT', 'INIT', 'FINI'/
+      DATA F /.FALSE./
+      DATA N0, N2, N4, N4096, N8192 /0, 2, 4, 4096, 8192/
+      DATA PGMNAM /'XD','OU','B '/
+C----------------------------------------------------------------------
+C                     ZDCHIN initializes the main I/O common /DCHCOM/
+      CALL ZDCHIN (N4, N4, N2, WBUF)
+C                     VHDRIN initializes the map header pointers in
+C                     /HDRVAL/
+      CALL VHDRIN
+C                     GTPARM picks up the adverb values from AIPS.
+C                     In addition it picks up the ID # (NPOPS) and
+C                     the user number NLUSER.
+      NPARMS = 7
+      CALL GTPARM (PGMNAM, NPARMS, RQUICK, NAME, WBUF, RETCOD)
+C                     If quick resumption requested, resume AIPS
+      IF (RQUICK) CALL RELPOP (RETCOD, WBUF, IERR)
+C                     If GTPARM error we must quit, a RELPOP error
+C                     hurts the user but not this task!
+      IF (RETCOD.NE.0) GO TO 990
+      RETCOD = 8
+C                     Convert real values to integer
+      SEQ1 = SEQIN + .01
+      IVOL = DISKIN + .01
+C                     Set user id
+      USID = NLUSER
+C                     Open the input map for reading, using LUN1 as
+C                     the logical unit number.  Retrieve the catalog
+C                     slot number in CNO1, the FTAB pointer in FIND1,
+C                     and the entire catalog block in CATBLK.  Use WBUF
+C                     as a working buffer.
+      CALL MAPOPN (READ, IVOL, NAME, CLASS, SEQ1, MA, USID,
+     *   LUN1, FIND1, CNO1, CATBLK, WBUF, IERR)
+C                     Check for error conditions
+      IF (IERR.EQ.0) GO TO 50
+C                     On error, print a message into log and exit
+          ENCODE (80,1050,MSGTXT) IERR
+          GO TO 990
+C                     Find the number of pixels in x-direction out
+C                     of catalog block.
+ 50   NXOLD = CATBLK (K2NAX)
+C                     Number of lines in map
+      NY    = CATBLK (K2NAX + 1)
+C                     Number of pixels per line in new map
+      NXNEW = 2 * NXOLD - 1
+C                     Enter this into catalog block
+      CATBLK(K2NAX) = NXNEW
+C                     Keep NAME, CLASS, USID, of new map the same as
+C                     old, but increment sequence no.
+      SEQ2 = SEQ1 + 1
+C                     Enter this into catalog block
+      CATBLK(K2IMS) = SEQ2
+C                     How many bytes of data per pixel
+      BYTPIX = NBYPX ( CATBLK(K2BPX) )
+C                     Create output map file using updated catalog
+C                     block.  CNO2 is catalog slot no. of new map.
+      CALL MCREAT (IVOL, CNO2, WBUF, IERR)
+      IF (IERR.NE.0) GO TO 980
+C                      Open the output map writing, using LUN2 as
+C                      the Logical Unit No., FIND2 as the FTAB pointer.
+      CALL MAPOPN (INI, IVOL, NAME, CLASS, SEQ2, MA, USID,
+     *   LUN2, FIND2, CNO2, CATBLK, WBUF, IERR)
+      IF (IERR.NE.0) GO TO 970
+C                       Initialize transfer from input map.  WIN = 0
+C                       as the 5th argument means transfer whole map.
+C                       Assume a buffer size of 4096 bytes.
+      CALL MINIT (READ, LUN1, FIND1, NXOLD, NY, N0, INBUF,
+     *   N4096, BYTPIX, BLKOF, IERR)
+      IF (IERR.NE.0) GO TO 970
+C                      Initialize transfer to output map.  Buffer
+C                      size is twice as big as input since lines are
+C                      longer.
+      CALL MINIT (WRITE, LUN2, FIND2, NXNEW, NY, N0, OUTBUF,
+     *   N8192, BYTPIX, BLKOF, IERR)
+      IF (IERR.NE.0) GO TO 970
+C                      Set up loop for line by line transfer
+      DO 200 IY = 1,NY
+C                      Ask for input line.
+         CALL MDISK (READ, LUN1, FIND1, INBUF, ININD, IERR)
+         IF (IERR.NE.0) GO TO 970
+C                      Assume data starts at INBUF(ININD).
+C                      Ask for position in output area where I can
+C                      put output data.  Start at OUTBUF(OUTIND)
+         CALL MDISK (WRITE, LUN2, FIND2, OUTBUF, OUTIND, IERR)
+         IF (IERR.NE.0) GO TO 970
+C                      Set up loop to transfer line
+         NSTOP = NXOLD - 1
+         DO 100 IX = 1,NSTOP
+C                      Figure out position of pixels in old & new array
+            IOLD = ININD + IX - 1
+            INEW = OUTIND + 2 * (IX - 1)
+C                      Transfer unchanged pixel
+            OUTBUF(INEW) = INBUF(IOLD)
+C                      Transfer interpolated pixel
+            OUTBUF(INEW + 1) = 0.5 * INBUF(IOLD) + 0.5 * INBUF(IOLD+1)
+ 100        CONTINUE
+ 200     CONTINUE
+C                      Flush output buffers
+      CALL MDISK (FIN, LUN2, FIND2, OUTBUF, OUTIND, IERR)
+      IF (IERR.NE.0) GO TO 970
+C                      Close input file: ignore errors here
+C                      Use dummy argument for new CATBLK
+      CALL MAPCLS (READ, IVOL, CNO1, LUN1, FIND1, DUM, F,
+     *   WBUF, IERR)
+C                      Close output file, again use dummy CATBLK
+C                      since I haven't changed it any since MCREAT
+      CALL MAPCLS (WRITE, IVOL, CNO2, LUN2, FIND2, DUM, F,
+     *    WBUF, IERR)
+C                      Done: successfully
+      RETCOD = 0
+      GO TO 990
+C
+C                      ERROR !
+C
+C                      Close & destroy output on failure
+ 970  CALL MAPCLS (WRITE, IVOL, CNO2, LUN2, FIND2, DUM, F,
+     *   WBUF, IER)
+      CALL MDESTR (IVOL, CNO2, CATBLK, WBUF, IX, IER)
+C
+C                      Close input map
+ 980  CALL MAPCLS (READ, IVOL, CNO1, LUN1, FIND1, DUM, F,
+     *   WBUF, IER)
+C                     Write overly simple message
+      ENCODE (80,1980,MSGTXT) IERR
+      CALL MSGWRT(8)
+C
+C                      close down message: needed only for
+C                      interactive AIPSs
+ 990  IF (NPOPS.GT.NINTRN) GO TO 995
+         ENCODE (80,1990,MSGTXT)
+         CALL MSGWRT(3)
+C                      Resume delayed (batch-like) AIPSs
+ 995  IF (.NOT.RQUICK) CALL RELPOP (RETCOD, WBUF, IERR)
+C
+ 999  STOP
+C----------------------------------------------------------------------
+ 1050 FORMAT ('ERROR OPENING INPUT MAP ',I6)
+ 1980 FORMAT ('ERROR IN I/O',I6)
+ 1990 FORMAT ('ENDS')
+      END

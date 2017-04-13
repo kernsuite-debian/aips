@@ -1,0 +1,221 @@
+AIPS USER BACKUP FACILITY
+
+The new AIPS stucture (on the Charlottesville Vax ONLY) of private
+catalogs allows a user to copy all
+of his user-specific files to tape. This includes the catalog, all
+cataloged files, all extension files, all save-get files and all
+TGET files.  Message files are not included.  A set of procedures
+exist to facillitate the backup and restore operation.
+
+WARNING: do not attempt to back up two sets of data onto one tape.
+BACKUP always does a rewind before writting to tape, thus the first
+set of data will be destroyed.  Even if the rewind were not performed,
+a conflict in file names on tape would exist.
+
+A. Backing up a user's files.
+   First a tape must be mounted on a tape drive and the proper mount
+command must be issued from the command level.  The mount commands are:
+
+$ @MOUNTBK
+
+for tape drive 1.
+
+$ @MOUNTBK2
+
+for tape drive 2.
+
+   Next the command
+
+$ @BACKUP
+
+is issued.  First the procedure responds with a warning:
+
+DO YOU KNOW THAT YOU MAY NOT BE ABLE TO RESTORE TO ANY OTHER COMPUTERS?
+ENTER YES OR NO :
+
+This warning reminds users that most AIPS systems will not be able to
+restore the files from this tape.  Reasons include: The procedure is
+VAX VMS specific so that other computers or VAXs running other oper-
+ating systems will not be able to run the RESTORE procedure.  Another
+AIPS may not have the new private catalog file structure.
+Also, another AIPS may have older file structures that are not
+compatable with the file structures on the current AIPS.  After the 
+warning the user must enter YES or NO.  YES continues while NO will
+stop.  Then the procedure will prompt for a user number.  After the
+user number is entered, all of that user's files will be copied to
+tape. The tape will then rewind and a verify pass will be made.
+Finally the procedure will ask the question:
+
+DO YOU WANT TO DELETE ALL FILES FOR nnn?
+ENTER YES OR NO :
+
+Type in YES if you wish to delete all disk files for the user number
+nnn or NO if you do not.  If an entry other than YES or NO is made the
+procedure will ask the question again.
+
+B. Restoring from tape to disk.
+
+WARNING: The restore process will not merge data sets.  Nor will it
+superceed sets that already exist.  This means that no disk can contain
+any data for the given user number if the restore is to work properly.
+This includes the catalog file.  Even an empty catalog file will not
+work.
+
+   First mount the tape with
+
+$ @MOUNTBK
+
+or
+
+$ @MOUNTBK2
+
+   Next run the restore procedure by typing
+
+$ @RESTORE
+
+   The procedure will prompt for a user number.  After the user number
+is entered the procedure will do a directory on all three disks for
+files belonging to that user.  If everything is ok 'No files found'
+will be printed.  The prompt "WERE ANY FILES FOUND FOR USER nnn" will
+appear.  If no files were found enter NO.  The program will restore all
+files from disk, and then rewind the tape and make a verify pass.  If
+files for the given user number are found you must enter a YES for the
+question "WERE ANY FILES FOUND FOR USER nnn".  The procedure will halt
+at this point.  Then you must backup the current files with the BACKUP
+procedure and answer YES to the "delete all files" question before you
+can restore the files that are on tape.
+
+C. Backup at Other Aips Installations.
+
+   If other AIPS installations have the new version of AIPS with the
+users files in private catalogs then BACKUP and RESTORE can be used 
+(with care) to transport user files.  The AIPS BACKUP and RESTORE use
+logical names DB00, DB01, and DB02.  Restore will restore to the
+default directory on the three devices specified by the logical names.
+The procedures assume a 3 disk system thus some editing may be
+necessary to get these procedures to work in a disimiliar enviornment.
+
+D Listings of the backup procedures.
+
+$! MOUNTBK.COM
+$!----------------------------------------------------------------------
+$!;  Copyright (C) 1995
+$!;  Associated Universities, Inc. Washington DC, USA.
+$!;
+$!;  This program is free software; you can redistribute it and/or
+$!;  modify it under the terms of the GNU General Public License as
+$!;  published by the Free Software Foundation; either version 2 of
+$!;  the License, or (at your option) any later version.
+$!;
+$!;  This program is distributed in the hope that it will be useful,
+$!;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$!;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$!;  GNU General Public License for more details.
+$!;
+$!;  You should have received a copy of the GNU General Public
+$!;  License along with this program; if not, write to the Free
+$!;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$!;  MA 02139, USA.
+$!;
+$!;  Correspondence concerning AIPS should be addressed as follows:
+$!;         Internet email: aipsmail@nrao.edu.
+$!;         Postal address: AIPS Project Office
+$!;                         National Radio Astronomy Observatory
+$!;                         520 Edgemont Road
+$!;                         Charlottesville, VA 22903-2475 USA
+$!----------------------------------------------------------------------
+$! Mount a foreign tape on MT00 with record size = 16384.
+$! Can be used with BACKUP.COM
+$MOUNT/FOREIGN /RECORDSIZE=16384 /BLOCKSIZE=16384 MT00: DUMMY TAPE:
+
+$! MOUNTBK2.COM
+$! Mount a foreign tape on MT01 with record size = 16384.
+$! Can be used with BACKUP.COM
+$MOUNT/FOREIGN /RECORDSIZE=16384 /BLOCKSIZE=16384 MT01: DUMMY TAPE:
+
+$! BACKUP.COM
+$!---------------------------------------------------------------------
+$! Backup and delete all AIPS files specific to one user.  The
+$! tape must be mounted foreign (Use @MOUNTBK or @MOUNTBK2 for
+$! tape drives 1 or 2).  This procedure is for a 3 disk system.
+$!---------------------------------------------------------------------
+$!
+$ LOOP1:
+$!Find out if the user knows what he is getting into.
+$    WRITE SYS$OUTPUT "DO YOU KNOW THAT YOU MAY NOT BE ABLE TO ",-
+        "RESTORE TO ANY OTHER COMPUTERS?"
+$    INQUIRE YES_OR_NO "ENTER YES OR NO "
+$    IF (YES_OR_NO .EQS. "YES") THEN GOTO CONT
+$    IF (YES_OR_NO .NES. "NO") THEN GOTO LOOP1
+$!
+$!   Quit
+$       WRITE SYS$OUTPUT "BACKUP STOPPING"
+$       GOTO FINI
+$!
+$ CONT:
+$!Backup all of AIPS user files.
+$    INQUIRE UN "ENTER USER NUMBER  "
+$    BACKUP /BLOCKSIZE=16384 DB00:*.'UN'   TAPE:DB0001.BCK
+$    BACKUP /NOREWIND/BLOCKSIZE=16384 DB01:*.'UN' TAPE:DB0101.BCK
+$    BACKUP /NOREWIND/BLOCKSIZE=16384 DB02:*.'UN' TAPE:DB0201.BCK
+$!
+$!Do verify pass.
+$    WRITE SYS$OUTPUT "DOING VERIFY"
+$    BACKUP /COMPARE TAPE:DB0001.BCK DB00:*.'UN'
+$    BACKUP /COMPARE /NOREWIND TAPE:DB0101.BCK DB01:*.'UN'
+$    BACKUP /COMPARE /NOREWIND TAPE:DB0201.BCK DB02:*.'UN'
+$!
+$ LOOP2:
+$ WRITE SYS$OUTPUT "DO YOU WISH TO DELETE ALL FILES FOR ",UN,"?"
+$ INQUIRE YES_OR_NO "ENTER YES OR NO "
+$ IF (YES_OR_NO .EQS. "NO" ) THEN GOTO FINI
+$ IF (YES_OR_NO .NES. "YES") THEN GOTO LOOP2
+$!
+$!Delete all files.
+$    WRITE SYS$OUTPUT "DELETING ALL FILES FOR USER ",UN
+$    DEL DB00:*.'UN';1
+$    DEL DB01:*.'UN';1
+$    DEL DB02:*.'UN';1
+$!
+$ FINI:
+$ DISMOUNT TAPE
+$ EXIT
+
+$!RESTORE.COM
+$!---------------------------------------------------------------------
+$! Restore AIPS user files written to tape with BACKUP.  The tape must
+$! be mounted with MOUNTBK for tape one or MOUNTBK2 for tape two.
+$! This routine is for a three disk system.
+$!---------------------------------------------------------------------
+$!
+$ INQUIRE UN "ENTER USER NUMBER "
+$!
+$!Check for existing data
+$    DIR /TOTAL DB00:*.'UN', DB01:*.'UN', DB02:*.'UN'
+$    LOOP:
+$    WRITE SYS$OUTPUT "WERE ANY FILES FOUND FOR USER ",UN," ?"
+$    INQUIRE YES_OR_NO "ENTER YES OR NO "
+$    IF (YES_OR_NO .EQS. "NO") THEN GOTO CONT
+$    IF (YES_OR_NO .NES. "YES") THEN GOTO LOOP
+$!
+$!Tell user what to do
+$    WRITE SYS$OUTPUT "YOU MUST BACKUP THE EXISTING FILES WITH"
+$    WRITE SYS$OUTPUT "@BACKUP, AND ANSWER YES TO THE DELETE"
+$    WRITE SYS$OUTPUT "ALL FILES QUESTION."
+$    DISMOUNT TAPE
+$    EXIT
+$!
+$ CONT:
+$!Restore data from three disks.
+$    BACKUP TAPE:DB0001.BCK DB00:[]
+$    BACKUP /NOREWIND TAPE:DB0101.BCK DB01:[]
+$    BACKUP /NOREWIND TAPE:DB0201.BCK DB02:[]
+$!
+$!Do verify
+$    WRITE SYS$OUTPUT "DOING VERIFY"
+$    BACKUP /COMPARE TAPE:DB0001.BCK DB00:[]*.'UN'
+$    BACKUP /NOREWIND /COMPARE TAPE:DB0101.BCK DB01:[]*.'UN'
+$    BACKUP /NOREWIND /COMPARE TAPE:DB0201.BCK DB02:[]*.'UN'
+$!
+$ DISMOUNT TAPE:
+$ EXIT

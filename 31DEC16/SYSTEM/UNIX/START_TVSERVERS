@@ -1,0 +1,193 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997-1998, 2002-2004, 2008, 2015
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: START_TVSERVERS TVOPT [VERSION] [UNIX|INET]
+#-----------------------------------------------------------------------
+# START_TVSERVERS starts the AIPS server processes on a workstation.  It
+# takes care of defining the essential AIPS logicals (including TVDEV,
+# etc) via HOSTS.SH, TVDEVS.SH, and AIPSPATH.SH.  There may be site or
+# host specific overrides in AIPSASSN.SH, so it is called too.
+#
+# This script will either be called via a remote shell or locally.
+#
+# On Sun4 systems, it may be necessary to edit the first part of this
+# file if OpenWindows is not in use or in a nonstandard place.  For
+# generic X11 installations, just set LD_LIBRARY_PATH to the appropriate
+# X11 library area.
+#
+# This file must have mode +x - done by install.pl usually.
+#-----------------------------------------------------------------------
+#                                       Set the AIPS root directory.
+AIPS_ROOT=/DEFINE_ME
+#                                       Who am I?  DON'T CHANGE!!!
+. $AIPS_ROOT/HOSTS.SH
+[ "$ARCH" = "" ] && echo "START_TVSERVERS: ARCH not defined" && exit 1
+#                                       Change these if needed
+case $ARCH  in
+  S[OU]L|SUN*)
+    if [ "$OPENWINHOME" = "" ] ; then
+      for i in /usr/Openwin /usr/openwin /usr/openwin3 ; do
+         [ -d $i ] && OPENWINHOME=$i
+      done
+      export OPENWINHOME
+      if [ "$OPENWINHOME" = "" ] ; then
+         echo "START_TVSERVERS: Help!  Can't find OPENWINHOME"
+      fi
+   fi
+#                                       This may cause problems; if so,
+#                                       just comment the whole thing out
+   if [ "$LD_LIBRARY_PATH" = "" ] ; then
+      LD_LIBRARY_PATH=$OPENWINHOME/lib:/usr/lib
+      export LD_LIBRARY_PATH
+    fi
+    ;;
+esac
+#
+# --------------- do not change anything below this line ---------------
+#
+export AIPS_ROOT
+#                                       Shortcuts for output text.
+ei4 () {
+  echo "START_TVSERVERS: $*"
+}
+#                                       Posix: echo behaves differently
+#                                       Following trick from Martin
+#                                       Shepherd (mcs@astro.caltech.edu)
+#                                       and Will Deich.
+ni4 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "START_TVSERVERS: $*"
+  else
+    echo "START_TVSERVERS: $*\c"
+  fi
+}
+spc() {
+  echo " "
+}
+if [ ! -d $AIPS_ROOT ] ; then
+  ei4 "AIPS_ROOT is not a directory; cannot start TV servers."
+  exit 2
+fi
+#                                       Arg 1 is TVDISP:TVHOST
+TVOPT=$1
+if [ "$TVOPT" = "" ] ; then
+  ei4 "TVOPT not defined, cannot start anything"
+  exit 2
+fi
+#                                       Arg 2 is version or socket type;
+#                                       if version, arg 3 is Socket type
+ARG2=`echo $2 | tr '[a-z]' '[A-Z]'`
+SOCKTYPE=INET
+case $ARG2 in
+   OLD|NEW|TST) VERSION=$ARG2; export VERSION;;
+   INET|UNIX)   SOCKTYPE=$ARG2;;
+   *)           VERSION="";;
+esac
+ARG3=`echo $3 | tr '[a-z]' '[A-Z]'`
+case $ARG3 in
+   INET|UNIX) SOCKTYPE=$ARG3;;
+esac
+#                                       Set the PATH, SYSUNIX, etc.
+#                                       This is sensitive to VERSION.
+. $AIPS_ROOT/AIPSPATH.SH
+#                                       and THEN define TV variables,
+#                                       but only if needed.
+if [ "$AIPSTVS" = "" ] ; then
+  if [ -f $AIPS_ROOT/TVDEVS.SH ] ; then
+    . $AIPS_ROOT/TVDEVS.SH
+  else
+    . $SYSUNIX/TVDEVS.SH
+  fi
+fi
+#                                       Get local overrides if any
+. $AIPS_ROOT/AIPSASSN.SH
+#                                       Use XAS by default.
+if [ "$TVALT" = "TVALT00" ] ; then
+   TVALT=TVALT03; export TVALT
+fi
+#                                       Start the TV servers.
+case $TVALT in
+  TVALT01) ei4 "Sunview server has been deprecated"
+#                                       SSSERVERS
+      ;;
+  *)
+#                                       X11 of some sort, start XAS.
+     if [ "$DISPLAY" = "" ] ; then
+        DISPLAY="${TVDISP}:0"
+        export DISPLAY
+#                                       do if INET and DISPLAY not ^/tmp
+     elif [ "$TVDISP" = "$TVHOST" ] ; then
+        if [ $SOCKTYPE = INET ] ; then
+           case $ARCH  in
+              S[OU]L|SUN*)
+                 DISPLAY="${TVDISP}:0"
+                 export DISPLAY
+                 ;;
+              *)
+                 if [ ! `echo "$DISPLAY" | grep "^/\(private/\)*tmp"` ] ; then
+                    DISPLAY="${TVDISP}:0"
+                    export DISPLAY
+                    fi
+                 ;;
+           esac
+        fi
+     fi
+#                                       do if equal and DISPLAY not ^/tmp
+     if [ "$TVDISP" = "$TVHOST" ] ; then
+        case $ARCH  in
+           S[OU]L|SUN*)
+              xxx="${TVDISP}:0"
+              if [ "$DISPLAY" = "$xxx" ] ; then
+                  hhh=`echo $HOST | tr '[A-Z]' '[a-z]'`
+                  if [ "$hhh" = "$TVDISP" ] ; then
+                     DISPLAY=":0"
+                     export DISPLAY
+                  fi
+              fi
+              ;;
+           *)
+              if [ ! `echo $DISPLAY | grep "^/\(private/\)*tmp"` ] ; then
+                 xxx="${TVDISP}:0"
+                 if [ "$DISPLAY" = "$xxx" ] ; then
+                    hhh=`echo $HOST | tr '[A-Z]' '[a-z]'`
+                    if [ "$hhh" = "$TVDISP" ] ; then
+                       DISPLAY=":0"
+                       export DISPLAY
+                    fi
+                 fi
+              fi
+              ;;
+        esac
+     fi
+     if [ $SOCKTYPE = INET ] ; then
+        XASERVERS
+     else
+        UNIXSERVERS
+     fi
+     ;;
+esac
+#                                       End of START_TVSERVERS

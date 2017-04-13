@@ -1,0 +1,85 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1999
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: START_TPSERVERS [-d] [da=...]
+#-----------------------------------------------------------------------
+# START_TPSERVERS starts the AIPS tape servers on a workstation.  It
+# takes care of defining the essential AIPS logicals (including TPDEV,
+# etc) via HOSTS.SH, AIPSPATH.SH, AIPSASSN.SH.
+#
+# The optional -d, if present, is passed along directly to STARTPMON and
+# causes verbose output to be printed.  If there are any disk selectors
+# in the form of a DA=... directive, they must occur after any -d.
+#
+#-----------------------------------------------------------------------
+#                                       Set the AIPS root directory.
+AIPS_ROOT=/DEFINE_ME
+#
+# --------------- do not change anything below this line ---------------
+#
+if [ "$1" = "-d" ] ; then
+  debug=$1
+else
+  debug=""
+fi
+export AIPS_ROOT
+if [ ! -d $AIPS_ROOT ] ; then
+  echo 'START_TPSERVERS: AIPS_ROOT is incorrectly defined, Help!'
+  exit 2
+fi
+#                                       Who am I?
+. $AIPS_ROOT/HOSTS.SH
+#                                       Set the proper PATH.
+. $AIPS_ROOT/AIPSPATH.SH
+#                                       Get other definitions, LOAD,
+#                                       FITS...
+. $AIPS_ROOT/AIPSASSN.SH
+#                                       Define tapes quietly.
+TPDEVS_QUIET=YES
+. $SYSUNIX/TPDEVS.SH
+#                                       TPMON needs right disk 1...
+DADEVS_QUIET=YES; export DADEVS_QUIET
+case $1 in
+  [Dd][Aa]=*) DAOPT=`echo $1 | sed -e 's/^...//'`; export DAOPT;;
+esac
+tmpfil=/tmp/DADEVS.$$
+[ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+if [ -f $tmpfil ] ; then
+  . $tmpfil
+  rm -f $tmpfil
+else
+#                                       If not or if it broke, fall back
+  . $SYSUNIX/DADEVS.SH
+fi
+if [ "$NVOL" = "0" -o "$DA01" = "" ] ; then
+   echo "Cannot start TPMON  because there are no defined disks!"
+   echo "(check DADEVS.LIST or .dadevs files, or AIPSASSN.\*)"
+   exit 1
+fi
+
+#                                       Start the tape monitor program.
+exec STARTPMON $debug

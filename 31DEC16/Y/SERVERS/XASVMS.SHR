@@ -1,0 +1,822 @@
+#! /bin/sh
+#------------------------------------------------
+# This is an AIPS self-unpacking shell archive
+# created on Thu Aug 16 13:48:04 MDT 1990.
+#------------------------------------------------
+#  Original XAS Z-routines from NRL with VMS mailbox support.
+#  CAVEAT EMPTOR: not supported by NRAO
+#-----------------------------------------------
+cat > README << --XYZZY--
+
+
+                     Installation Notes for XAS,
+                an X Window System TV Device for AIPS
+
+
+     XAS is an X Window System client that provides TV support for AIPS.  As
+an X client, XAS is a stand-alone program which must use some form of inter-
+process communication to talk with AIPS.  Our implimentation uses sockets
+under Unix and mailboxes under VMS.  XAS will run on any X compatible device
+which supports an 8-bit color table (256 colors), it currently allocates the
+upper 128 entries in the color table.
+
+     XAS works with AIPS version 15OCT89 or later.
+
+     The installation is done in two distinct steps:
+
+
+     1) Compile and re-link AIPS, this is the bulk of the work.
+
+	I.  Define the environment variables
+		
+		$YLOCAL = $YGEN/XAS
+		$ZLOCAL = $APLGEN/'...local OS...'/LOCAL
+
+            Where '...local OS...' gets you to your site-specific area.  On
+            the Alliant at NRL, which runs Berkeley Unix, this directory would
+            be $APLGEN/UNIX/BERK/ALLN/LOCAL.  On Unix systems, environment
+            variables are defined in CDVER.CSH.
+
+       II.  Create the directories $YLOCAL and $ZLOCAL and copy the Y-routines
+            into $YLOCAL and the Z-routines into $ZLOCAL.
+
+      III.  Edit LIBR.DAT
+
+		1) For Y-routines enter
+
+     			$LIBR/YXAS/SUBLIB:0:$YLOCAL
+			$LIBR/YXAS/SUBLIB:0:$YGEN
+
+		2) For AIPPGM, YPGNOT, YPGM, QYPGNOT make the substitution
+
+  			YSTUB -> YXAS
+
+       IV.  Create the directory YXAS in $LIBR.
+
+        V.  Compile and replace the Y- and Z-routines:
+
+     		COMRPL $YLOCAL/*.FOR
+      		COMRPL $ZLOCAL/*.FOR
+		COMRPL $ZLOCAL/*.C
+
+       VI.  Link AIPS to include the new subroutines:
+
+		COMLNK $AIPPGM/AIPS.o
+
+      VII.  Set the TV parameters, with RUN SETTVP for device 1, to the
+            following:
+
+            1  No. of gray-scale planes         (I)     2
+            2  No. of graphics overlay planes   (I)     1
+            3  No. of images / gray-plane       (I)    64
+            4  X,Y size of TV planes (pixels) (2 I)   512   512  (your default)
+            5  Maximum gray-scale intensity     (I)    62
+            6  Peak intensity out of LUT        (I)   255
+            7  Peak intensities in/out of OFM (2 I)   255   255
+            8  X,Y min. scroll increments     (2 I)     1     1
+            9  Maximum zoom: (>0) power of 2    (I)   -15
+                  (< 0) Max factor = 1 - MAXINT
+           10 Type of split-screen allowed     (I)     0
+                  1=Vert, 2=Hori, 3=Either, 4=Both
+           11 # X,Y pixels in TV characters  (2 I)     7     9
+           12 X-axis image write mode(s)       (I)     1
+                  0 - None, 1 -> Right, 2 -> Left
+           13 Y-axis image write mode(s)       (I)     1
+                  0 - None, 1 -> Up, 2 -> Down
+           14 Number of ALU units in TV        (I)     0
+           15 Number of image storage units    (I)     0
+
+
+
+     2) Compile and link XAS.
+
+        I.  Create a subdirectory to $YLOCAL called SOURCE, and copy in the XAS
+            source files.
+
+       II.  Check that the header file, xas.h, has the correct path for the
+            X11 include file.  Also set the appropriate switches for your
+            operating system and screen size.
+
+      III.  Compile and link.
+ 
+                 1) You may have to edit the Makefile to find all the
+                    libraries on your system.
+
+                  2) Type 'make'.
+
+
+
+     3) Testing the TV device.
+
+        I.  Start XAS as a background task.
+
+       II.  Start AIPS and choose TV device 1.
+
+      III.                This is important:
+            **** Always make TVINIT your first AIPS TV command. ****
+
+       IV.  Load an image with TVLOD and start experimenting.  The function
+            keys F3, F4, F5 and F6 are the AIPS buttons A, B, C and D.  For
+            tasks such as TVWIN, which require you to mark a position on
+            the screen, you must first click a mouse button and then hit
+            one of the buttons A,..,D.  It doesn't matter which mouse button
+            you click.  The cursor must always be in the XAS window for AIPS
+            to receive TV commands.
+
+
+
+     4) When you are satisfied that things are working you will probably
+        want to re-link the AIPS tasks that use the TV.
+
+
+
+                          Network Operation
+
+     The Unix version of the software provides network support so that XAS
+can run on one machine while AIPS runs on another.  Data is exchanged as
+standard FITS 16-bit integers to allow for different byte order on each
+machine.  Even if both programs run on the same machine it is important to
+READ THIS SECTION, because it describes the setup of environment variables
+needed for interprocess communication.  The environment variables are defined
+in the start-up script that is used to run AIPS.
+
+     1) Below is a script fragment for the case of XAS and AIPS running
+        on the same machine with one TV device.
+
+:                                       "Ask user if a TV is needed"
+:                                       "If yes, define TVDEV1, AIPSTV"
+:                                       "and start XAS."
+	while test "$ANSWER" = ""
+	do
+	  echo -n "Will you need a TV device" \
+		  "(y/n):"
+	  read ANSWER
+
+	  case $ANSWER in
+
+     	     Y | y)
+		TVFLG="y"
+                TVDEV1=/tmp/XSOCK
+                export TVDEV1
+                AIPSTV=/tmp/XSOCK
+                export AIPSTV
+:                                         "Start XAS in the background"
+                /XAS_PATH_NAME/xas &
+
+	     ;;
+
+	     N | n)
+	   	
+      	     ;;
+
+	     *)
+
+		ANSWER=""
+	     ;;
+
+	   esac
+	done
+
+     2) Running XAS and AIPS on separate machines requires an addition to
+        the /etc/services file on both machines.  This file is used to
+        define port numbers for network-based programs.  On each machine
+        add the following line to /etc/services:
+
+        XASIN           5500/tcp
+
+        Now, before starting up XAS on the workstation used as the TV
+        device, define the environment variable AIPSTV with the (C-shell)
+        command:
+
+               setenv AIPSTV XASIN
+
+         The AIPS start-up script on the other machine should include:
+
+:                                       "Ask user if a TV is needed"
+:                                       "If yes, define TVDEV1"
+	while test "$ANSWER" = ""
+	do
+	  echo -n "Will you need a TV device" \
+		  "(y/n):"
+	  read ANSWER
+
+	  case $ANSWER in
+
+     	     Y | y)
+		TVFLG="y"
+:                                          "hostname is the network host"
+:                                          "name of the machine running XAS"
+                TVDEV1=XASIN:hostname
+                export TVDEV1
+
+	     ;;
+
+	     N | n)
+	   	
+      	     ;;
+
+	     *)
+
+		ANSWER=""
+	     ;;
+
+	   esac
+	done
+
+--XYZZY--
+cat > ZXAS.H << --XYZZY--
+/*--------------------------------------------------------------------*/
+/*           ZXAS.H - AIPS Z-routine header file                      */
+/*               First Version:  8-Aug-1989                           */
+/*                 Last Update: 12-Jul-1990                           */
+/*--------------------------------------------------------------------*/
+
+#define BSD 1      /* Choose appropriate operating system */
+#define VMS 0
+
+#if BSD
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#endif /* BSD */
+
+#if VMS
+#include <ssdef.h>
+#include <iodef.h>
+#include <descrip.h>
+#define XAS_SOCKET "XasSocket"   /* mailbox name AIPS --> XAS */
+#define AIPS_SOCKET "AipsSocket" /* mailbox name XAS --> AIPS */
+
+#define Bool int
+#define True 1
+#define False 0
+
+#define maxmsg 2064
+#define bufquo 2064
+
+typedef struct
+{
+	short int ioresult;
+	short int iolength;
+	int unused;
+} IOSB;
+
+int AipsLink;
+#endif /* VMS */
+
+#include <stdio.h>
+
+typedef union {
+    struct {
+        short int
+            opcode,
+            parms[4],
+            data_length,
+            return_data_length,
+            status;
+            unsigned char data[2048];
+    } aips;
+    struct {
+        short int
+            opcode,
+            parms[4],
+            data_length,
+            return_data_length,
+            status;
+            short int data[1024];
+    } returned;
+    unsigned char buf[2064];
+} XAIPSBUF;
+--XYZZY--
+cat > ZXASC2.C << --XYZZY--
+#include <stdio.h>
+
+zsssc2_(fcb, ierr)
+/*--------------------------------------------------------------------*/
+/*! Close SUN Screen Server device, flushing any buffer               */
+/*# TV-IO                                                             */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 1995                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/*  deassigns via 'close' certain devices here the SSS TV socket      */
+/*  If buffered, write the last buffer first                          */
+/*  Inputs:                                                           */
+/*     fcb    I(*)   file control block of open socket                */
+/*  Output:                                                           */
+/*     ierr   I      error code: 0 => okay                            */
+/*                      1 => error in close                           */
+/*                      2 => error in flush buffer                    */
+/*--------------------------------------------------------------------*/
+int *fcb, *ierr;
+/*--------------------------------------------------------------------*/
+{
+/*--------------------------------------------------------------------*/
+   *ierr = 0;
+
+   if (close(*fcb) != 0)
+      *ierr = 1;
+
+   return;
+}
+--XYZZY--
+cat > ZXASCL.FOR << --XYZZY--
+      SUBROUTINE ZXASCL (LUN, FIND, IERR)
+C-----------------------------------------------------------------------
+C   Close the X AIPS Server associated with LUN and clear its
+C   FTAB entry.
+C
+C   Inputs:
+C      LUN      I           Logical unit number
+C      FIND     I           Index in FTAB to file control block for LUN
+C   Output:
+C      IERR     I           Error return code:
+C                              0 => no error
+C                              1 => close error or flush error
+C                              2 => file already closed in FTAB
+C                              3 => both errors
+C                              4 => erroneous LUN
+C-----------------------------------------------------------------------
+      INTEGER   LUN, FIND, IERR
+C
+      INTEGER   JERR, TVLUN, TVDEV
+      LOGICAL   F
+      INTEGER   OPCODE
+      INTEGER*2 HEADER(8), NWORDS, BUFF2(1)
+      INCLUDE 'INCS:DDCH.INC'
+      INCLUDE 'INCS:DMSG.INC'
+      INCLUDE 'INCS:DZCH.INC'
+      DATA F /.FALSE./
+      DATA TVLUN, TVDEV /9, 4/
+C-----------------------------------------------------------------------
+C                                       Check inputs.
+      IERR = 4
+C                                       Valid LUN?
+      IF (LUN.EQ.TVLUN) GO TO 10
+         WRITE (MSGTXT, 1000) LUN
+         CALL MSGWRT (7)
+         GO TO 999
+C                                       Valid device type?
+ 10   IF (DEVTAB(LUN).EQ.TVDEV) GO TO 20
+         WRITE (MSGTXT, 1010) LUN, DEVTAB(LUN)
+         CALL MSGWRT (7)
+         GO TO 999
+C                                       Locate LUN in FTAB.
+ 20   IERR = 0
+      CALL LSERCH ('SRCH', LUN, FIND, F, JERR)
+C                                       LUN already closed in FTAB.
+      IF (JERR.EQ.0) GO TO 30
+         IERR = 2
+         WRITE (MSGTXT, 1020) LUN
+         CALL MSGWRT (7)
+         GO TO 999
+C                               Have XAS close socket
+ 30   OPCODE = 12
+      NWORDS = 0
+      CALL ZILI16(1, OPCODE, 1, HEADER)
+      CALL ZILI16(1, NWORDS, 4, HEADER)
+      CALL ZXASX2 (FTAB(FIND+NMOFF), HEADER, NWORDS, BUFF2)
+      CALL ZI16IL(1, 7, HEADER, JERR)
+      IF (JERR.EQ.0) GO TO 40
+         IERR = IERR + 2
+         WRITE (MSGTXT, 1030)
+         CALL MSGWRT (7)
+C                                       Clear FTAB entry.
+ 40   CALL LSERCH ('CLOS', LUN, FIND, .FALSE., JERR)
+C                                       LUN already closed in FTAB.
+      IF (JERR.EQ.0.) GO TO 999
+         IERR = IERR + 2
+         WRITE (MSGTXT, 1040) LUN
+         CALL MSGWRT (7)
+C
+ 999  RETURN
+C-----------------------------------------------------------------------
+ 1000 FORMAT ('ZXASCL: INVALID LUN = ',I2)
+ 1010 FORMAT ('ZXASCL: DEVTAB(',I2,') = ',I1,' = INVALID DEVICE TYPE')
+ 1020 FORMAT ('ZXASCL: LUN = ',I2,' ALREADY CLOSED IN FTAB ON SEARCH')
+ 1030 FORMAT ('ZXASCL: ZQSDSN RETRUNS ERROR DEASSIGNING THE TV SOCKET')
+ 1040 FORMAT ('ZXASCL: LUN = ',I2,' ALREADY CLOSED IN FTAB ON CLOSE')
+      END
+--XYZZY--
+cat > ZXASMC.FOR << --XYZZY--
+      SUBROUTINE ZXASMC
+C--------------------------------------------------------------------
+C   ZXASMC issues a "master clear" to the TV.
+C--------------------------------------------------------------------
+      INCLUDE 'INCS:DDCH.INC'
+      INCLUDE 'INCS:DTVD.INC'
+C--------------------------------------------------------------------
+C
+ 999  RETURN
+      END
+--XYZZY--
+cat > ZXASO2.C << --XYZZY--
+/*--------------------------------------------------------------------*/
+/*              ZXASO2.C - X-AIPS open link routine                   */
+/*               First Version: 14-Aug-1989                           */
+/*                 Last Update: 12-Jul-1990                           */
+/*                                                                    */
+/*  Assign an i/o channel (i.e., open) for XAS TV device.             */
+/*  Inputs:                                                           */
+/*     pname  C*48  this is either a file name for unix domain        */
+/*                  sockets, or is of the form XASIN:machine_name for */
+/*                  a network connection.                             */
+/*  Outputs:                                                          */
+/*     fcb    I(*)  File descriptor (part of FTAB).                   */
+/*     ierr   I     Error code: 0 => success                          */
+/*                     1 => failure                                   */
+/*                     2 => invalid device name                       */
+/*--------------------------------------------------------------------*/
+#include "ZXAS.H"
+
+/*--------------------------------------------------------------------*/
+#if BSD
+void zxaso2_ (fcb, pname, ierr)
+int *fcb, *ierr;
+char pname[48];
+/*--------------------------------------------------------------------*/
+{
+   extern int errno;
+   char device[48], shvar[10];
+   int i, j;
+   char *machine_in;
+   struct sockaddr_un client;
+   struct sockaddr_in client_in;
+   struct servent *sp_in;
+   struct hostent *hp_in;
+/*--------------------------------------------------------------------*/
+   *ierr = 0;
+   errno = 0;
+                                        /* Extract logical device name*/
+   for (i=0; i < 10 && pname[i] != ':'; i++)
+      shvar[i] = pname[i];
+   shvar[i] = '\0';
+                                        /* Get value for TVDEVn       */
+   if (strncmp(shvar,"TVDEV",5) == 0) {
+      sprintf(device,"%s",getenv(shvar));
+                                        /* undefined                  */
+      if (strcmp(device,"(null)") == 0) {
+         printf("ZXASO2: NO SUCH DEVICE = %s\n",shvar);
+         *ierr = 2;
+         goto exit;
+         }
+                                        /* open socket, INET domain   */
+      if (strncmp(device,"XASIN",5)==0) {
+         if (( machine_in=(char *)index(device,':')) == NULL)
+            machine_in = "nobody";
+         else
+            machine_in++;
+                                        /* malformed names go here    */
+         if (!isalnum(*machine_in))
+            machine_in = "nobody";
+ 
+         if ((sp_in = getservbyname("XASIN","tcp")) == NULL) {
+            fprintf(stderr,"ZXASO2: tcp/XASIN not a service\n");
+            *ierr = 2;
+            goto exit;
+            }
+         if (( hp_in = gethostbyname(machine_in)) == NULL) {
+            fprintf(stderr,"ZXASO2: %s: unknown host\n",machine_in);
+            *ierr = 2;
+            goto exit;
+            }
+         bzero ((char *)&client_in, sizeof(client_in));
+         bcopy (hp_in->h_addr, (char *)&client_in.sin_addr,
+            hp_in->h_length);
+         client_in.sin_family = hp_in->h_addrtype;
+         client_in.sin_port = sp_in->s_port;
+         if ((*fcb = (int)socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+            perror("ZXASO2 socket (INET)");
+            *ierr = 1;
+            }
+         if (connect(*fcb,(char *)&client_in,sizeof(client_in)) < 0){
+            perror("ZXASO2 connect (INET)");
+            *ierr = 1;
+            }
+         }
+                                        /* open socket, UNIX domain   */
+      else {
+         if ((*fcb = (int)socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+            perror("ZXASO2 socket (UNIX)");
+            *ierr = 1;
+            }
+         client.sun_family = AF_UNIX;
+         strcpy(client.sun_path, device);
+
+         if (connect((*fcb), &client, sizeof(client.sun_path)+2)
+            < 0) {
+            perror("ZXASO2 connect (UNIX)");
+            *ierr = 1;
+            }
+         }
+      }
+   else {
+      printf("ZXASO2: NO SUCH DEVICE = %s\n",shvar);
+      *ierr = 2;
+      }
+                                        /* system error in FTAB      */
+exit:
+   if (*ierr != 0)
+      *(fcb + 2) = errno;
+   return;
+}
+#endif /* BSD */
+
+/*--------------------------------------------------------------------*/
+#if VMS
+void zxaso2(fcb, pname, ierr)   /* DEC VMS version */
+int *fcb, *ierr;
+chan pname[48];   /* not used by VMS version */
+/*--------------------------------------------------------------------*/
+{
+    static Bool Connected = False;
+    char *display_name = NULL;
+    $DESCRIPTOR (aipsname, AIPS_SOCKET);
+    $DESCRIPTOR (xasname, XAS_SOCKET);
+    int s,chan;
+    IOSB iostatus;
+
+
+    *ierr = 0;
+
+    if( !Connected )
+    {
+        /* create mailbox with logical name  "AipsSocket" */
+
+        s = sys$crembx(0,&chan,maxmsg,bufquo,0,0,&aipsname);
+        if(!(s & SS$_NORMAL))
+        {
+            fprintf(stderr,"AIPS:connect - ");
+            *ierr =  -1;
+        }
+
+        AipsLink = chan;
+
+        /* create mailbox with logical name  "XasSocket" */
+
+        s = sys$crembx(0,&chan,maxmsg,bufquo,0,0,&xasname);
+        if(!(s & SS$_NORMAL))
+        {
+            fprintf(stderr,"AIPS:connect - ");
+            *ierr =  -1;
+        }
+
+        *fcb = chan;
+
+        if( *ierr == 0 )
+        {
+            Connected = True;
+        }
+    } /* if not connected */
+} /* zxaso2 */
+#endif /* VMS */
+--XYZZY--
+cat > ZXASOP.FOR << --XYZZY--
+       SUBROUTINE ZXASOP (LUN, IND, IERR)
+C----------------------------------------------------------------------
+C   ZXASOP opens the link to the X AIPS Server.
+C
+C   INPUTS:
+C      LUN:   I        FORTRAN logical file number.
+C   Output:
+C      IND    I        Index into FTAB for the file control block.
+C      IERR   I        Error return code:
+C                          0 = no error
+C                          1 = LUN already in use
+C                          2 = file not found
+C                          3 = volume not found
+C                          4 = excl requested but not available
+C                          5 = no room for lun
+C                          6 = other open errors
+C
+C   First a qoute from Brian - "Although this doesn't really seem to
+C   do anything I kept it around rather than opening the socket
+C   directly because I'm not sure if it is important to have an FTAB
+C   entry (even though, e.g., LUN will never be used)."
+C   ZPHFIL is called as normal, but then the new routine ZXASO2 is
+C   called instead, which assigns a socket.
+C----------------------------------------------------------------------
+      INTEGER   LUN, IND, IERR
+C
+      CHARACTER PNAME*48
+      LOGICAL   T, F
+      INTEGER   ERRLUN, ERRTER, IT, IF, IER, IVOL
+      INCLUDE 'INCS:DDCH.INC'
+      INCLUDE 'INCS:DMSG.INC'
+      INCLUDE 'INCS:DZCH.INC'
+      DATA T, F /.TRUE.,.FALSE./,   IT,IF /1,0/
+      DATA ERRLUN, ERRTER /12, 6/
+C--------------------------------------------------------------------
+      CALL ZPHFIL ('TV', 1, 1, 1, PNAME, IER)
+C
+      IERR = 6
+      IF ((LUN.EQ.ERRLUN) .OR. (LUN.EQ.ERRTER)) GO TO 980
+      IF ((LUN.LE.0) .OR. (LUN.GT.50)) GO TO 980
+      IF (DEVTAB(LUN).NE.4) GO TO 970
+      IERR = 0
+C                                       allocate table
+      CALL LSERCH ('OPEN', LUN, IND, F, IER)
+      IF (IER.EQ.0) GO TO 20
+         IF (IER.NE.2) GO TO 10
+            IERR = 1
+            WRITE (MSGTXT, 1000) LUN
+            GO TO 990
+ 10      IF (IER.NE.3) GO TO 20
+            IERR = 5
+            WRITE (MSGTXT, 1010) LUN
+            GO TO 990
+C                                       non-disk devices
+ 20   CALL ZXASO2 (FTAB(IND+NMOFF), PNAME,  IER )
+      IF (IER.EQ.0) GO TO 999
+         IERR = 6
+         WRITE (MSGTXT, 1020) LUN
+C                                       Errors
+C                                       remove FTAB
+ 900  CALL LSERCH ('CLOS', LUN, IND, F, IER)
+      IF (IERR.EQ.6) GO TO 990
+C                                       illegal device
+ 970  WRITE (MSGTXT, 1970) LUN
+      GO TO 990
+C                                       illegal lun
+ 980  WRITE (MSGTXT, 1980) LUN, PNAME(1:24)
+      GO TO 990
+ 985  WRITE (MSGTXT, 1985) IVOL, PNAME(1:24)
+C                                       print msg
+ 990  CALL MSGWRT (6)
+C
+ 999  RETURN
+C-----------------------------------------------------------------------
+ 1000 FORMAT ('ZXASOP: LUN',I4,' ALREADY IN USE')
+ 1010 FORMAT ('ZXASOP: LUN TABLE FULL, CANT FIT LUN',I4)
+ 1020 FORMAT ('ZXASOP: CHANNEL ASSIGN ERROR FOR LUN ',I4)
+ 1970 FORMAT ('ZXASOP: CALLED FOR NON-TV DEVICE WITH LUN',I4)
+ 1980 FORMAT ('ZXASOP: LUN',I6,' ILLEGAL FOR ',6A4)
+ 1985 FORMAT ('ZXASOP: IVOL',I6,' ILLEGAL FOR ',6A4)
+      END
+--XYZZY--
+cat > ZXASX2.C << --XYZZY--
+/*--------------------------------------------------------------------*/
+/*              ZXASX2.C - X-AIPS I/O-routine                         */
+/*               First Version: 14-Aug-1989                           */
+/*                 Last Update: 13-Jul-1990                           */
+/*                                                                    */
+/* INPUT                                                              */
+/*                  fcb    I       File descriptor for socket         */
+/*     header[0]    op     I       opcode                             */
+/*     header[1..4] dat    I(4)    data                               */
+/*     header[5]    nwords I       number of words of data to send    */
+/*                                                                    */
+/* OUTPUT                                                             */
+/*     header[6]     istat  I       status returned,                  */
+/*                                  0 == success normally             */
+/*     header[7]     nsword I       number of words of data           */
+/*                                  returned (often 0)                */
+/*                                                                    */
+/* INPUT/OUTPUT                                                       */
+/*     buffer I(*)    on input contains nwords of data to send (if    */
+/*                    any), on return contains nswords of variable    */
+/*                    length data, if any                             */
+/*                                                                    */
+/*--------------------------------------------------------------------*/
+#include "ZXAS.H"
+
+/*--------------------------------------------------------------------*/
+#if BSD
+void zxasx2_(fcb, header, nwords, buffer)
+
+int *fcb, *nwords;
+short int header[], buffer[];
+
+{
+    int i, buflength;
+    XAIPSBUF xbuf;
+
+    /* zero the buffer and load header and data */
+    bzero(xbuf.buf,sizeof(xbuf.buf));
+    xbuf.aips.opcode = header[0];
+    for( i = 0; i < 4; i++)
+        xbuf.aips.parms[i] = header[i+1];
+    xbuf.aips.data_length = header[5];
+    for( i = 0; i < *nwords; i++ )
+        xbuf.aips.data[i] = ( unsigned char ) buffer[i];
+
+    /* construct size of buffer to send */
+    /* there are 16 bytes of header information */
+    buflength = *nwords + 16;
+
+    /* now send it off */
+    header[6] = 0;
+    if( write(*fcb,xbuf.buf,buflength) == -1 )
+    {
+        perror("ZXASX2:write - ");
+        header[6] = -1;
+        return;
+    }
+
+    /* wait for return status and, possibly, data */
+    if( (buflength = read(*fcb,xbuf.buf,sizeof(xbuf.buf))) == -1 )
+    {
+        perror("ZXASX2:read - ");
+        header[6] = -1;
+        return;
+    }
+    header[6] = xbuf.aips.status;
+    header[7] = xbuf.aips.return_data_length;
+
+    /* strip off header to get length of data */
+    buflength -= 16;
+
+    /* returned data values are short int */
+    if( buflength > 0 )
+        for( i = 0; i < buflength; i++ )
+            buffer[i] = xbuf.returned.data[i];
+
+} /* zxasx2 */
+#endif /* BSD */
+
+/*--------------------------------------------------------------------*/
+#if VMS
+void zxasx2 (fcb, header, nwords, buffer)  /* DEC VMS */
+
+int *fcb, *nwords;
+short int header[], buffer[];
+
+{
+    int i, buflength;
+    XAIPSBUF xbuf;
+    int s;
+    IOSB iostatus;
+
+    /* zero the buffer and load header and data */
+    memset(&xbuf.buf,0,sizeof(xbuf.buf));
+    xbuf.aips.opcode = header[0];
+    for( i = 0; i < 4; i++)
+        xbuf.aips.parms[i] = header[i+1];
+    xbuf.aips.data_length = header[5];
+    for( i = 0; i < *nwords; i++ )
+        xbuf.aips.data[i] = ( unsigned char ) buffer[i];
+
+    /* construct size of buffer to send */
+    /* there are 16 bytes of header information */
+    buflength = *nwords + 16;
+
+    /* now send it off */
+    header[6] = 0;
+
+    s = sys$qiow(0,*fcb,IO$_WRITEVBLK,&iostatus,0,0,
+                       xbuf.buf,buflength,0,0,0,0);
+    if(!(s & SS$_NORMAL) || !(iostatus.ioresult & SS$_NORMAL))
+    {
+        perror("AIPS:write - ");
+        header[6] = -1;
+        return;
+    }
+
+    /* wait for return status and, possibly, data */
+    s = sys$qiow(0,*fcb,IO$_READVBLK,&iostatus,0,0,
+                       xbuf.buf,sizeof(xbuf.buf),0,0,0,0);
+    if(!(s & SS$_NORMAL) || !(iostatus.ioresult & SS$_NORMAL))
+    {
+        perror("AIPS:read - ");
+        header[6] = -1;
+        return;
+    }
+    header[6] = xbuf.aips.status;
+    header[7] = xbuf.aips.return_data_length;
+
+    /* get length of data */
+    buflength = ???
+
+    /* returned data values are short int */
+    for( i = 0; i < buflength; i++ )
+         buffer[i] = xbuf.returned.data[i];
+
+} /* zxasx2 */
+#endif /* VMS */
+--XYZZY--

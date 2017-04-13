@@ -1,0 +1,739 @@
+
+
+
+
+
+                   The MAIL-REMINDER utility for VAX/VMS
+
+                          Patrick P. Murphy, Ph.D.
+                    National Radio Astronomy Observatory
+                               P.O. Box "O"
+                        Socorro, NM 87801-0387, USA
+                              (505) 772-4337
+                              (FTS) 476-8337
+
+                           Bitnet: PMURPHY@NRAO
+                      SPAN/HEPNET: 6654::PMURPHY
+                    Arpa/Internet: PMURPHY@NRAO.ARPA
+                             uucp: ...uunet!nrao1!pmurphy
+
+                               16-November-1987
+
+SUMMARY
+
+     The MAIL-REMINDER utility may be used on a VAX/VMS host computer
+(including all the MicroVAX/VAXstation series) as a quasi-bulletin-
+board system.  When set up with a suitable account, it provides a
+repository for electronic mail messages received via VMS (or MicroVMS)
+MAIL, and provides any user of the system (or any group of users, if
+necessary) access to these messages.  A common usage for MAIL-REMINDER,
+and also the one it was created for, is to act as a centralized receiver
+for mail exploder services such as the BANANAS service offered by NRAO
+for the AIPS system (BANANAS = Broadcast AIPS News And Network Address
+System).
+
+     What does it do?  Two things: (a) It checks for new mail, files it
+away in a specified folder if there is, and resubmits itself for a
+specified time in the future; (b) After running N times, it makes a
+summary of what arrived in the last N runs and mails this summary to a
+group of usernames as a reminder of what's going on.
+
+     In addition to this, the repository of messages can be accessed in
+two ways: (1) either by actually logging in to the captive account and
+scanning the messages with VMS MAIL ("captive" implies you can't do
+anything else from the account); or (b) doing a SET FILE <whatever> from
+a user's OWN account in VMS MAIL to access the captive account's mail
+file.  The <whatever> can either be the explicit filename or a logical
+name; we recommend the latter.
+
+     Although the MAIL-REMINDER was written for a specific application,
+it is quite generic in that it does not contain any specific assumptions
+about directories, optional software products above the basic VMS
+system, or the specific configuration of devices and peripherals at
+NRAO.  Thus, it is suitable for other e-mail broadcast services as long
+as the local users have access to a VMS or MicroVMS machine.
+
+
+DISCLAIMERS AND COPYRIGHT
+
+     The software is written in VAX/VMS DCL (VMS 4.4) and should work in
+any VMS or MicroVMS environment, versions 4.4 and up.  The software is
+Copyright (C) 1987 by Patrick P. Murphy and the National Radio Astronomy
+Observatory (NRAO).  All rights are reserved.  This software is in the
+public domain and may be freely copied and distributed, provided the
+copyright and this notice is propagated EXACTLY as it appears in this
+document and the source code.  NRAO and/or Patrick P. Murphy assume NO
+responsibility for bugs, errors, and other deficiencies in this code.
+It is distributed "as is", with NO support.  However, if errors are
+detected, we do ask that we be notified of them as soon as possible so
+we can attempt to rectify them.  Suggestions for improvement are also
+welcome.
+
+
+CHALLENGE!
+
+     The idea behind this facility is quite simple and generic.  This
+implementation is restricted to VMS, but there is NO reason why a UNIX
+version could not be developed.  We would like to challenge the reader,
+in particular if you are proficient in UNIX, to produce a UNIX version
+of MAIL-REMINDER with the same (or better!) functionality as this VMS
+version.  If you succeed, please let the author know and you will
+receive the grand prize: a special virtual AIPS banana as well as fame,
+the admiration of your peers, and the undying gratitude of the AIPS
+group!  (DG/AOS users: this challenge applies to you as well!!!)
+
+
+REQUIREMENTS
+
+     The following requirements must be met in order to establish the
+MAIL-REMINDER facility:
+
+    1.  A computer running VAX/VMS or MicroVMS version 4.4 or later;
+
+    2.  A "captive" account, capable of:
+                2.1.  Sending and receiving VMS mail;
+                2.2.  Running in batch mode, preferably interactive too.
+        You should talk to your systems manager about setting up such an
+        account; see Appendix A for the recommended UAF parameters.
+
+
+
+    3.  The following files.  These are listed in Appendix B.  You can
+        use your own file name in place of MAIL-REMINDER:
+                3.1.  MAIL-REMINDER.COM, the main command procedure;
+                3.2.  LOGIN.COM, the interactive/batch login procedure;
+                3.3.  LOGOUT.COM, used for logging out;
+
+    4.  The following OPTIONAL files:
+                4.1.  REMINDER.DIS, a distribution list of usernames;
+                4.2.  NOTICE.TXT, an introduction to people logging into
+                      the captive account.
+
+    5.  Finally, we recommend a system- or group-wide logical name that
+        will point at the relevant mail file to enable other users to
+        access that file from their own accounts.
+
+All of these requirements are covered in detail in the rest of this
+document.
+
+
+INSTALLATION PROCEDURE
+
+1.  First, set up a new account on your system to receive the incoming
+    mail messages.  Appendix A shows some typical parameters that your
+    system manager can use; if security is a concern, the login flags
+    are especially important.  Let us suppose you give this account a
+    username DBANANAS.
+
+    While you have your system manager's attention, ask him/her to set
+    up a system-wide logical name, e.g.
+        DEFINE/SYSTEM BANANA_MAIL disk:[directory]mailfile.MAI
+    where you substitute the appropriate names for the items in
+    lowercase.  The disk and directory will be the defaults for the
+    captive account you have just set up, and the name of mailfile will
+    normally be MAIL unless you change it (see step 3 below).  If you
+    intend on restricting the facility to a group, DEFINE/GROUP will do.
+
+2.  The next step is to extract each file listed in appendix (B) in this
+    document to a separate file, and put them in the default (login)
+    disk/directory for the DBANANAS account.
+
+    There are a total of 5 additional files in the distribution: these
+    are described in sub-items 3.1 through 4.2 of the previous section.
+
+3.  Once you have all the files on disk, you need to edit the main
+    MAIL-REMINDER.COM file.  At the beginning, there are several lines
+    that read like:
+
+    $!       Define the parameters needed.
+    $!       If you are going to change the time and/or mail parameters,
+    $!       the following five lines are ALL you should have to change.
+    $!
+    $ Short_Interval = "+1-"            ! Delta time, MUST be in DAYS!
+    $ LONG_INTERVAL  = 7                ! 7 times short interval
+    $ Mail_File      = "MAIL"           ! Use "MAIL" for default
+    $ Mail_Folder    = "MAIL"           ! Use "MAIL" for default
+    $ Distrib_List   = "REMINDER.DIS"   ! List of who to send summary to
+
+    Here is what each parameter means:
+
+    SHORT_INTERVAL:  how often the command procedure runs.  The default
+        -- and the minimum period -- is every day.  This is specified in
+        VMS delta time and MUST be of the form "+n-" where n is an
+        integer representing the number of days.
+    LONG_INTERVAL:  how often to send out the reminder message.
+        Specified as an integer, equal to the number of short intervals.
+        The default is 7 which with the SHORT_INTERVAL default would be
+        weekly.
+    MAIL_FILE:  The name of the mail file.  If you want the messages to
+        be filed away in a file other than the VMS default MAIL.MAI, put
+        the different file name here.  File type must remain .MAI .
+    MAIL_FOLDER:  The name of the folder the messages are to be put in.
+        If you are not familiar with or do not use folders, just set
+        this to the same as the value of MAIL_FILE.
+    DISTRIB_LIST:  The name of a file containing a list of people
+        (usernames) who want to be reminded by this facility.  The
+        format is simple: one username per line, with blank lines and
+        comments (preceded by an exclamation mark "!") ignored.  You can
+        put whatever format of usernames your local mail system is
+        configured to support, e.g. REMOTE::BILBO for a user on a remote
+        DECnet node, or ST%"BILLY" if you have software tools mail.  In
+        general, however, it will be a simple list of local usernames.
+        If the file does not exist, no "reminder" will be sent.
+
+    If you change the name of DISTRIB_LIST, please make sure that you
+    create it before setting wheels in motion!  (Unless you want to
+    disable this feature).  One further thing you can customize is the
+    section right after the ENDLOOP: label, to add a message after the
+    list of mail entries indicating to users how to read them.
+
+4.  Next, you will want to customize the LOGIN.COM file.  At the
+    beginning are three lines:
+
+        $ LOCAL_MAIL_DIRECTORY == "DISK$RES:[DBANANAS.MAIL]"
+        $ MAIL_PROTECTION      == "(GROUP:RW,WORLD:RW)"
+        $ SET_TERMINAL_COMMAND == "Set Terminal /Inquire /Line_Editing"
+
+    Let's go through them one at a time.
+    LOCAL_MAIL_DIRECTORY should be the default device/directory where
+        mail files are to be kept.  You HAVE to get into MAIL and do a
+        SET MAIL_DIRECTORY command if it's anything other than the login
+        area of the captive account.  This need only be done once.  For
+        example, with the above string, you would have to go into mail
+        and give the command SET MAIL_DIRETORY [.MAIL] .
+    MAIL_PROTECTION defines who can access the MAIL file.  VMS will
+        currently deny any group and world to mail files unless you do
+        something about it.  MAIL-REMINDER does that something and you
+        can let others in the captive mail account's group access it,
+        and/or let the "world" in (i.e. everyone).  It's a quirk of VMS
+        mail that you have to grant read AND write access.  If you want
+        to restrict access to users in the same group as DBANANAS, just
+        set this to "(GROUP:RW)".
+    SET_TERMINAL_COMMAND is the text of a DCL command to set the
+        terminal type.  As shown above, it will only work for DEC
+        terminals and their many emulators.  Just set the string to
+        blank (" ") if you don't want to set the terminal.  You only
+        lose line editing and keypad features (neither essential).
+
+    In addition to these three parameters, you will probably want to
+    modify the "remote privileged user" section, about 20 lines further
+    down in the login file.  It will look like:
+
+        $ remote_user = f$trnlnm("SYS$REM_ID", "LNM$JOB")
+        $ if remote_user .eqs. "" then goto CAPTIVE
+        $   if remote_user .eqs. "FRODO"   then goto EXIT
+        $   if remote_user .eqs. "BILBO"   then goto EXIT
+        $   if remote_user .eqs. "GANDALF" then goto EXIT
+        $   if remote_user .eqs. "ARAGON"  then goto EXIT
+
+    First, you need to have DECnet, even if you've only got a little
+    MicroVAX 2000.  I *think* the feature you need comes standard in
+    VMS, but I'm not sure.  If you can log into your machine again by
+    giving the DCL command SET HOST 0 (that's a zero), then you can use
+    this next feature.  If not, delete the above six lines from the
+    login, but make sure you can modify the files in the captive account
+    from another account, e.g. your own.
+
+    What you do is replace the names "FRODO", etc. above with the
+    username(s) of people who can use the account in a non-captive way.
+    These accounts will be able to do a SET HOST 0, log into DBANANAS or
+    whatever you have called it, and get to DCL command level (the
+    dollar prompt).
+
+    If you have DECnet, then the "privileged" users you define here will
+    be able to get to DCL level in the DBANANAS account by setting host
+    from any other machine in your DECnet environment, including the VAX
+    that DBANANAS is on.
+
+5.  You need to edit the LOGOUT.COM file.  As shipped, it will NOT auto-
+    matically log the "captive" user out.  This is to enable the
+    installer to customize the files in case DECnet is not available.
+    Find the lines that look like:
+
+        $!
+        $! LOGOUT          ! Change to "$ LOGOUT" at end of installation
+        $!
+
+    and change "$! LOGOUT" to read "$ LOGOUT" at the start of the line.
+
+6.  Finally, you are ready to submit the batch job.  MAIL-REMINDER will
+    do the "long interval" stuff the very first time, so you want to
+    submit it with the /AFTER qualifier for the time and/or date you
+    want it to start.  For example, suppose today is Thursday October 11
+    and you have set the short interval as one day, the long one as
+    seven, and want to have the reminder sent to users every monday at
+    1:00 AM.  The command to do this will look like:
+
+        SUBMIT/AFTER="+4-01:00"/NOPRINT MAIL-REMINDER.COM
+
+    One detail you may want to know is that MAIL-REMINDER will resubmit
+    itself on the hour; it checks what time it is when it starts up,
+    sets the minutes to zero and uses this time plus the short interval
+    when re-submitting itself.
+
+
+CHECKING ON PROGRESS
+
+One way of checking on the progress of the facility is to see if it
+sends the reminder messages every long interval (i.e., put yourself on
+the distribution list).  If it keeps cranking them out, all is probably
+well.  If something goes amiss, you should look at the log files.  The
+log file from the batch job will have the same name as the MAIL-REMINDER
+command file and file type .LOG, and a maximum of two copies are kept.
+You should look at the last log file and check for errors.  It helps to
+be literate in VAX DCL when doing this, or having someone who is look
+over your shoulder.
+
+If you do encounter significant problems, please try to ensure that you
+have done everything in the installation instructions above correctly.
+Then, if you still can't see the cause of the problem, have someone who
+is a VMS/DCL expert at your site look at this document, the
+MAIL-REMINDER.DOC file, and the steps you took to install it.  Finally,
+if all else fails, send an e-mail message to the author with DETAILS,
+and an attempt will be made to diagnose the problem and suggest a
+solution.  This is NOT an offer of support, merely a request to report
+genuine problems to the author so the software can be improved.
+
+
+APPENDIX A -- VAX UAF example
+
+The following is a typical VAX UAF settings for the captive account that
+MAIL-REMINDER should be run from.  It is similar to what is used at
+NRAO.  You should get your system manager to review this before setting
+up the captive account.
+
+Username: DBANANAS                 Owner:  AIPS Banana Peeler
+Account:  SOFTWARE                 UIC:    [NNN,MMM] ([SOFTWARE,DBANANAS])
+CLI:      DCL                      Tables:
+Default:  DISK$RES:[DBANANAS]
+LGICMD:
+Login Flags:  Disctly Defcli Captive Diswelcome Disreport Lockpwd
+Primary days:   Mon Tue Wed Thu Fri Sat Sun
+Secondary days:
+No access restrictions
+Expiration:            (none)    Pwdminimum:  0   Login Fails:     0
+Pwdlifetime:           (none)    Pwdchange:             (none)
+Last Login:  7-OCT-1987 09:59 (interactive),
+             9-OCT-1987 01:00 (non-interactive)
+Maxjobs:         0  Fillm:        20  Bytlm:         8192
+Maxacctjobs:     0  Shrfillm:      0  Pbytlm:           0
+Maxdetach:       0  BIOlm:        18  JTquota:       1024
+Prclm:           2  DIOlm:        18  WSdef:          150
+Prio:            4  ASTlm:        24  WSquo:          300
+Queprio:         0  TQElm:        10  WSextent:      1024
+CPU:        (none)  Enqlm:        30  Pgflquo:      10000
+Authorized Privileges:
+  TMPMBX NETMBX
+Default Privileges:
+  TMPMBX NETMBX
+
+
+APPENDIX B:  VMS/DCL COMMAND FILES
+
+The following files are included here, separated by form feeds:
+
+    1.  MAIL-REMINDER.COM, the main command procedure;
+    2.  LOGIN.COM, the interactive/batch login procedure;
+    3.  LOGOUT.COM, used for logging out;
+    4.  REMINDER.DIS, a sample distribution list of usernames;
+    5.  NOTICE.TXT, a sample login notice.
+
+$!----------------------------------------------------------------------
+$!;  Copyright (C) 1995
+$!;  Associated Universities, Inc. Washington DC, USA.
+$!;
+$!;  This program is free software; you can redistribute it and/or
+$!;  modify it under the terms of the GNU General Public License as
+$!;  published by the Free Software Foundation; either version 2 of
+$!;  the License, or (at your option) any later version.
+$!;
+$!;  This program is distributed in the hope that it will be useful,
+$!;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$!;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$!;  GNU General Public License for more details.
+$!;
+$!;  You should have received a copy of the GNU General Public
+$!;  License along with this program; if not, write to the Free
+$!;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$!;  MA 02139, USA.
+$!;
+$!;  Correspondence concerning AIPS should be addressed as follows:
+$!;         Internet email: aipsmail@nrao.edu.
+$!;         Postal address: AIPS Project Office
+$!;                         National Radio Astronomy Observatory
+$!;                         520 Edgemont Road
+$!;                         Charlottesville, VA 22903-2475 USA
+$!----------------------------------------------------------------------
+$!
+$! MAIL-REMINDER    Utility to remind people of new mail on exploder systems
+$!
+$!      Overview:  This procedure is intended to be run in batch mode.
+$!      ---------  It makes the ASSUMPTION that you have set aside the VMS
+$!      MAIL part of an account - or preferably a captive account - to
+$!      receive messages from somewhere.  The most frequent use of such
+$!      a captive account is to serve as a bulletin board, such as for
+$!      the NRAO's AIPS/BANANA electronic mail bulletins.  This command
+$!      procedure is a "perpetual" one in that it resubmits itself for
+$!      sometime in the future.
+$!
+$!      What you would like to do, then, is have an automatic way of
+$!      filing incoming messages away, say in a file separate from the
+$!      main MAIL.MAI, perhaps in a different folder, or maybe both.
+$!      This procedure will not only take care of that, but it will
+$!      also periodically shoot out a VMS mail message to specified
+$!      users reminding them of new messages since the last time the
+$!      procedure was run.  This reminder contains a list of the mail
+$!      messages similar to what you get from the VMS MAIL's DIRECTORY
+$!      command.
+$!
+$!      Implementation:  You need to specify the following pieces of
+$!      ---------------  information:
+$!
+$!        (1) a short interval in days, e.g. "+1-" for one day;
+$!        (2) a mail file, if other than MAIL.MAI, and folder;
+$!            if given, it will automatically file new mail there;
+$!            otherwise it just files it in folder MAIL;
+$!        (3) a second interval, e.g. 7 days, when it will shoot out a
+$!            summary of mail in the file/folder to a distribution list;
+$!            This MUST be a multiple of the short interval; and
+$!        (4) a distribution list for the summary messages.
+$!
+$!      With this information, the system will do two things.  First, every
+$!      short interval, it will scan for new mail in the account it is
+$!      running under, and if there is any, it will select it and file it in
+$!      the MAIL or other specified file/folder.  Secondly, every long
+$!      interval, it selects the MAIL or other specified file/folder, and
+$!      produces a summary (via the DIRECTORY command of VMS MAIL) of all
+$!      messages in it that arrived in the previous long interval.  It then
+$!      sends this summary to the people on the distribution list.
+$!      The distribution list is expected to contain ONE name per line.
+$!      Blank lines and comments (delimiter "!") are permitted in it.
+$!
+$!      Restrictions:  The recommended short period is one day; the long
+$!      -------------  period is specified as an integer multiple of short
+$!      periods.  The suggested (and default) values for these periods are
+$!      1 day and 7 days, respectively.  If changing these, be sure that
+$!      the short interval is specified in VMS DELTA time and in DAYS
+$!      only, i.e. "+n-" where n is the number of days; the procedure
+$!      combines it with an absolute time and also performs arithmetic on
+$!      it.  The long interval must always be an integer (not a string).
+$!      This procedure automatically resubmits itself in the default
+$!      batch queue with the /AFTER qualifier and the time specified is
+$!      on the hour prior to the current time found at procedure start.
+$!      In other words, if you submit the job at 7:45 AM with a short
+$!      period of one day, it will be resubmitted for 7:00 AM the
+$!      following day.
+$!
+$!      Disclaimers:  This procedure is written in VAX/VMS DCL (VMS 4.4).
+$!      ------------
+$!
+$!      Pat Murphy, National Radio Astronomy Observatory,
+$!                  P.O. Box "O", Socorro, NM 87801, USA.    (505) 772-4337
+$!
+$!             Bitnet: PMURPHY@NRAO            SPAN/HEPNET: 6654::PMURPHY
+$!      Arpa/Internet: PMURPHY@NRAO.ARPA       uucp: ...seismo!nrao1!pmurphy
+$!==========================================================================
+$!
+$!       Define the parameters needed.
+$!       If you are going to change the time and/or mail parameters,
+$!       the following five lines are ALL you should have to change.
+$!
+$ Short_Interval = "+1-"            ! Delta time (one day), MUST be in DAYS!
+$ LONG_INTERVAL  = 7                ! 7 times short interval
+$ Mail_File      = "BANANAS"        ! Use "MAIL" for default
+$ Mail_Folder    = "BANANAS"        ! Use "MAIL" for default
+$ Distrib_List   = "BANANAS.DIS"    ! List of who to send summary to
+$!
+$! Set the Delete command - interactive is assumed to be debugging mode
+$!
+$ Delete = "Delete/NoConfirm/NoLog"
+$ if f$mode() .eqs. "INTERACTIVE" then Delete = "! Don't delete "
+$!
+$! (note that VMS MAIL behaves differently in batch and interactive modes!)
+$!
+$!    Resubmit this thing for whenever ("When" MUST be in quotes)
+$!
+$ Set NoOn
+$ Set Message/Facility/ID/Severity/Text
+$ Start_Time = f$extract(11, 3, f$cvtime()) + "00" ! on the hour only
+$ When = Start_Time + Short_Interval
+$ ThisProc = f$environment("Procedure")
+$ MyName = f$parse(ThisProc,,,"Name")      ! Get rid of version# in filespec
+$ MyType = f$parse(ThisProc,,,"Type")      ! so new versions get used
+$ ThisProc = f$parse(ThisProc,,,"Device") + f$parse(ThisProc,,,"Directory") -
+                                          + Myname
+$ Purge 'ThisProc'.log/keep=2
+$ Submit/Log='ThisProc'.log/After="''When'"/NoPrint 'ThisProc''MyType'
+$!
+$!    Read the "Number of Short Intervals" file and increment it
+$!
+$ ShortIntFile = MyName + ".Int"
+$ If f$search(ShortIntFile) .nes. "" then goto INT_EXISTS
+$   Create 'ShortIntFile'
+O
+$INT_EXISTS:
+$ Open/Read SIF 'ShortIntFile'
+$ Read SIF Number
+$ Close SIF
+$ Delete 'ShortIntFile';*                  ! Get rid of old version
+$ Number = Number + 1
+$ If Number .gt. Long_Interval then Number = 1
+$ Create 'ShortIntFile'                    ! Create new version
+$ Open/Append SIF 'ShortIntFile'           ! This way we get standard format
+$ Write SIF Number
+$ Close SIF
+$ Do_Long_Stuff = (Number .eq. 1)
+$!
+$!   First, do the stuff that needs done every short interval.
+$!
+$ Temp_File_Root = "Sys$Scratch:" + MyName
+$ Temp_File = Temp_File_Root + ".NewStuff"
+$ if f$search(Temp_File) .nes. "" then Delete 'Temp_File';*
+$ Define/user sys$output 'temp_file'    ! This is a dummy file
+$ Mail                                  ! Start up the VMS mail utility
+Show New_Mail_Count                     ! See if there is anything new
+Exit                                    ! exit from VMS mail
+$!
+$! Now get the number of new mail messages from this file
+$!
+$ Open/read NewMail 'Temp_File'
+$ Read NewMail Line
+$ Close NewMail
+$ Delete 'Temp_File';*
+$ Write sys$output Line            ! so we can see it in the batch log file
+$ Mail_Count = f$element(2, " ", Line)
+$ If Mail_Count .eq. 0 then goto LONG_STUFF
+$!
+$! There are some new messages so put them in the right file/folder
+$! Note that there is no attempt at sorting by subject matter here!
+$! That would take a lot more work and is not appropriate for DCL.
+$!
+$   Temp_File = Temp_File_Root + ".Filer"
+$   Create 'Temp_File'
+$   Open/Append Filer 'Temp_File'
+$   Write Filer "$ Mail"
+$   Write Filer "Select NewMail"
+$   Write Filer "File/all " + Mail_folder + " " + Mail_file
+$   Write Filer "Read/New"              ! To reset system's mail counter
+$   Write Filer "Exit"                  !  - otherwise it gets confused by this
+$   Close Filer
+$   @'Temp_File'
+$   Delete 'Temp_File';*
+$!
+$LONG_STUFF:
+$!
+$ If .not. Do_Long_Stuff then EXIT
+$!
+$! Now do the long-interval stuff: First, get a list of things since last time
+$!
+$ Temp_File  = Temp_File_Root + ".Lister"
+$ Temp_File2 = Temp_File_Root + ".Output"
+$!
+$ NumDays = Long_Interval * f$int(Short_Interval - "+" - "-")
+$ If (NumDays .le. 0) then NumDays = Long_Interval
+$ When = f$cvtime("''Start_Time'-''NumDays'-", "Absolute")
+$!
+$! Create a temporary command file so we can get a MAIL directory listing
+$!
+$ Create 'Temp_File'
+$ Open/Append Lister 'Temp_File'
+$ Write Lister "$ Define/User_Mode sys$output " + Temp_File2
+$ Write Lister "$ MAIL"
+$ Write Lister "Set file " + Mail_File
+$ Write Lister "Directory/Since=""''When'"" " + Mail_Folder
+$ Write Lister "Exit"
+$ Close Lister
+$ @'Temp_File'
+$ Delete 'Temp_File';*
+$!
+$! Open the temporary file generated and see if there was anything there.
+$!
+$ If f$search(Temp_File2) .eqs. "" then EXIT ! Nothing else to do.
+$!
+$ Open/Read Index 'Temp_File2'
+$ Read Index Line
+$ If Line .nes. "%MAIL-E-NOMSGS, no messages" then goto SOME_MESSAGES
+$   Close Index
+$   Delete 'Temp_File2';*
+$   EXIT                                        ! Nothing more to do
+$!
+$! Now create a message file for distribution
+$!
+$SOME_MESSAGES:
+$ Today = f$extract(0, 17, f$time())
+$ Msg_File = Temp_File_Root + ".Message"
+$ Create 'Msg_File'
+$ Open/Append Msg 'Msg_File'
+$ Write Msg "From ''MyName' at ''Today'"
+$ Write Msg "The ''Mail_folder' folder of the ''mail_file' file has " + -
+            "new message(s)"
+$ Write Msg " - here is a summary:"
+$ Write Msg ""
+$ Num_Msgs = 0
+$!
+$! Loop through the output listing until we hit the end or null line
+$! (does batch mail do dir listings by page?  If so could be a problem)
+$!
+$LOOP:
+$   Read/End=ENDLOOP Index Line
+$   If Line .eqs. "" then goto ENDLOOP
+$   Write Msg Line
+$   Num_Msgs = Num_Msgs + 1
+$   Goto LOOP
+$ENDLOOP:
+$ Write Msg " "
+$!
+$! If you define a system-wide logical name pointing at the mail file,
+$! you can modify these lines for your system, and uncomment them.
+$!
+$! Write Msg "You can access these from any VLA VAX from your OWN account"
+$! Write Msg "by entering MAIL and typing SET FILE BANANA_MAIL."
+$!
+$ Close Msg
+$ Close Index
+$ Delete 'Temp_File2';*
+$!
+$! Allow for header and blank line following; then get Number of messages
+$!
+$ Num_Msgs = Num_Msgs - 2
+$ If Num_Msgs .le. 0 then Delete 'Msg_File';*
+$ If Num_Msgs .le. 0 then EXIT
+$!
+$ Banner = Mail_Folder + " bulletin - " + f$string(Num_Msgs) + " new "
+$ If Num_Msgs .eq. 1 then Banner = Banner + "message"
+$ If Num_Msgs .ne. 1 then Banner = Banner + "messages"
+$!
+$! We Now have the message file.  Get the disrtibution file
+$!
+$ If f$search(Distrib_List) .eqs. "" then EXIT ! no-one cares......
+$ Open/Read Dist 'Distrib_List'
+$!
+$! Read through the distribution list one name at a time.  I know, I
+$! could easily ship the whole thing to MAIL, but I prefer to keep on
+$! going if one or more names fail (node down or whatever).
+$!
+$DIST_LOOP:
+$   Read/End=ENDISTLOOP Dist UserName
+$   UserName = f$edit(UserName, "Trim, Collapse, UnComment, UpCase")
+$   if UserName .eqs. "" then goto DIST_LOOP
+$     Set NoOn
+$     Mail/Subject="''banner'" 'Msg_File' 'UserName'
+$     Goto DIST_LOOP
+$ENDISTLOOP:
+$ Close Dist
+$ Delete 'Msg_File';*
+$ EXIT
+
+$! LOGIN.COM file for MAIL-REMINDER utility captive account
+$!
+$! Customize by modifying the next three command lines:
+$!
+$ LOCAL_MAIL_DIRECTORY == "DISK$RES:[DBANANAS.MAIL]"  ! Keep mail files here
+$ MAIL_PROTECTION      == "(GROUP:RW,WORLD:RW)"       ! Who can access them
+$ SET_TERMINAL_COMMAND == "Set Terminal /Inquire /Line_Editing" ! DEC terminals
+$!
+$! End of user-customizable section.
+$!
+$ On ERROR     then goto ENDIT
+$ On CONTROL_Y then goto ENDIF
+$ If f$Mode() .eqs. "BATCH" then       goto BATCH
+$ If f$Mode() .nes. "INTERACTIVE" then goto ENDIT  ! Don't allow network access
+$ Set NoOn
+$ 'SET_TERMINAL_COMMAND'
+$!
+$ On ERROR then goto ENDIT
+$!
+$! Type out the login notice, if any.
+$!
+$ If f$Search("Notice.txt") .nes. "" then Type Notice.txt
+$!
+$! See if a privileged user is remoted in.  You should replace the names
+$! below with suitable usernames that you trust (like your own).  If you
+$! don't have DECNET (try SET HOST 0; if it doesn't work, you don't),
+$! you will have to remove these lines down to but not including the
+$! line "$CAPTIVE:".
+$!
+$ Remote_user = f$trnlnm("SYS$REM_ID", "LNM$JOB")
+$ If Remote_user .eqs. "" then goto CAPTIVE
+$   If Remote_user .eqs. "FRODO"   then goto EXIT
+$   If Remote_user .eqs. "BILBO"   then goto EXIT
+$   If Remote_user .eqs. "GANDALF" then goto EXIT
+$   If Remote_user .eqs. "ARAGON"  then goto EXIT
+$!
+$CAPTIVE:
+$ Define/User_Mode Sys$Input Sys$Command
+$ Mail
+$ Set Protection='MAIL_PROTECTION' 'LOCAL_MAIL_DIRECTORY'*.mai;*,mail$*.*;*
+$ Purge
+$ENDIT:
+$ @Sys$Login:logout
+$BATCH:
+$!
+$! Come here for batch jobs, i.e. maintenance, daemons, etc.
+$!
+$ Set NoOn
+$ Set Protection='MAIL_PROTECTION' 'LOCAL_MAIL_DIRECTORY'*.mai;*,mail$*.*;*
+$ Exit
+$EXIT:
+$ Set Control=(T,Y)
+$ Write Sys$Output "You are a privileged user; do what you will."
+$ Lo*gout :== @Sys$Login:logout
+$ Exit
+$!
+$! End of LOGIN.COM
+
+$! LOGOUT.COM - logout procedure for MAIL-REMINDER
+$!
+$ Where = f$Environment("Default")
+$ Set Default 'LOCAL_MAIL_DIRECTORY'
+$ Set protection='MAIL_PROTECTION' *.mai;*,mail$*.*;*
+$ PURGE
+$ Set Default 'Where'
+$ if f$getjpi("", "PrcCnt") .ne. 0 then goto SUBS
+$ LO*gout := LOGOUT        ! avoid calling this procedure repeatedly!
+$!
+$! LOGOUT                  ! Change to "$ LOGOUT" at end of installation
+$!
+$SUBS:
+$ write sys$Output "*** You still have sub-processes active! ***"
+$ EXIT
+$!
+$! End of LOGOUT.COM
+
+! REMINDER.DIS - distribution list for MAIL-REMINDER utility.
+!
+! This file lists the people who will get reminders of what is new in BANANA
+! mail for the previous week.  It is NOT the list of BANANA mail receivers.
+! At the VLA, BANANA mail only goes to the DBANANAS account and people can
+! access the banana mail file/folder whenever they want.
+
+! The following are not real accounts (at least not at the VLA!)  They
+! are shown only for illustration purposes
+
+SHIRE::BILBO		! DECnet example; BILBO has account on remote node
+FRODO			! but FRODO is on the local machine.
+ST%"Gandalf"		! You can use this if software tools mail is available
+
+EXOS%"FooBear@Shire.MidEarth.Fict"	! Excelan software example
+
+ARAGON
+USER1
+USER2
+
+! End of BANANAS.DIS
+
+|~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~|
+| BANANAS BANANAS BANANAS BANANAS BANANAS BANANAS BANANAS BANANAS BANANAS! |
+|                                                                          |
+| This is the captive DBANANAS (Distributed Bananas) account.  To read the |
+| Banana mail (Broadcast AIPS News And Network Address System), just do    |
+|                                                                          |
+|     MAIL> SET FILE BANANAS         to get banana messages; then any of:  |
+|     MAIL> DIR                      for a list of messages and            |
+|     MAIL> READ n                   to read message number "n".           |
+|     MAIL> READ/NEW                 will get any new messages.            |
+|                                                                          |
+| Problems?  Questions?  Contact Pat Murphy (VLA) or Don Wells (C'ville)   |
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+                              --- The End ---

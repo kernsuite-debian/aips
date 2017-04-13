@@ -1,0 +1,742 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1999, 2001, 2003-2005
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#--------------------------------------------------------------------
+# Usage: COMLNK [directory-path/][@]program[.FOR,.f,.C,.c,.S,.s,.o]
+#               [AIPS-sytle-options] [UNIX-style-options]
+#               [file.OPT] [file.LOG]
+#
+# Drives the preprocesing/compilation/linking of AIPS programs.  Object
+# modules from compilations of source in the $AIPS_VERSION tree are left
+# in the $PREP area.  Executable modules from the $AIPS_VERSION tree are
+# moved to the relevant LOAD area (unless NOREPLACE is specified, then
+# the executable module is left in $PREP).  Otherwise, binaries are
+# moved to or left in the current working directory.
+#
+# Inputs (can appear in any order):
+#
+# 1) [directory-path/][@]program[.FOR,.f,.C,.c,.S,.s,.o]
+#
+#    At least one (uppercase) routine module name with or without an
+#    extension.  If not a pathname, the current working directory is
+#    assumed and prepended.  Pathnames can be given either literally or
+#    using environment variables defined as directory paths (e.g.
+#    $APLPGM/whatever).
+#
+#    The special character '@', if prepended to the filename, denotes
+#    the name of a file containing a list of module pathnames.
+#
+#    The extension (.FOR, .C, etc.) is effectively ignored since SEARCH
+#    strips it and tries to determine the most up-to-date module form.
+#    SEARCH will also search "path/" and below for the existence of a
+#    program module more appropriate to the host architecture and, if
+#    necessary, change "path/" and/or the filename extension.  If the
+#    starting "path/" is not a subdirectory of $AIPS_VERSION, the search
+#    is restricted to that directory.  Otherwise, the directory search
+#    path is determined from $SYSLOCAL/SEARCHx.DAT (x=0,1,2,3,...)
+#
+# 2) [AIPS-sytle-options]
+#
+#    Recognizable AIPS-style options.  These are usually compiler/linker
+#    options defined in the architecture- and site-specific files
+#    CCOPTS.SH, ASOPTS.SH, and LDOPTS.SH in $SYSLOCAL, and FDEFAULT.SH
+#    and OPTIMIZE.LIS in $SYSUNIX.  The relevant AIPS shell script (FC,
+#    AIPSCC, or AIAS, and LINK) will refer to these.  LDOPTS.SH is sourced
+#    here before options are processed.  Recognized AIPS-style options
+#    include:
+#
+#    DEbug   - generate code suitable for debugger(s). Forces NOSTRIP
+#    DIrty   - compile letting declarations default (not recommended)
+#    LIst    - generate line numbered listing of source code
+#                (only if compilation is necessary)
+#    MAp     - generate link map
+#    OPTn    - optimization level (n = 0 to 9), also NOOPT
+#    PRofile - generate code suitable for profiling
+#    PUrge   - delete preprocessed file, log files and object module
+#                after successful compilation.  DEBUG causes PURGE
+#                to leave the preprocessed source intact however.
+#    REplace - move binary to LOAD areas if appropriate.
+#    SAve    - Keep an old copy of the binary around (avoid bus
+#              error when it's replaced on most systems)
+#    STrip   - strip symbol table from executable
+#
+#    Uppercase part of option is minimum required for recognition.
+#    The above can be prefixed with NO to negate the option, e.g.
+#    NOPURGE will cancel any deleting of files.  Note that DEBUG and
+#    any OPT setting are mutually exclusive.
+#
+# 3) [UNIX-style-options]
+#
+#    UNIX-style options which are passed on to the local compiler.
+#
+# 4) [file.OPT]
+#
+#    Link list file of the form '*.OPT'.  For regular programs in the
+#    $AIPS_VERSION directory hierarchy, none is needed as the file
+#    $SYSLOCAL/LIBR.DAT is used to determine libraries, etc. needed.
+#    For other programs, a '*.OPT' file must be specified.  The
+#    routine LIBS, given the pathname of an AIPS program area, will
+#    print out the default link list and its output can be captured
+#    to create your options file, e.g. LIBS $APLPGM >MY.OPT will
+#    create an options file for a program that otherwise would go in
+#    the $APLPGM area.
+#
+# 5) [file.LOG]
+#
+#    Optional log filename (e.g. FITLD.LOG).  If not given, log files
+#    are automatically generated (or appended to) for each program being
+#    processed.  If purging is enabled either by default or by
+#    specifying PURGE on the command line and all goes well, these
+#    automatic log files are deleted.  If an error occurs, or if the
+#    user specifies a '.LOG' file on the command line, it is either
+#    generated or appended to but never deleted.
+#
+# Other options:
+#
+#  *  You can have two sets of libraries: debug/noopt and
+#     nodebug/optimized.  The debug libraries are used only if the
+#     file $SYSLOCAL/DOTWOLIB exists and the DEBUG option is specified.
+#
+#  *  You can use shared libraries on Suns (Sun4 and Solaris) and HPs
+#     if the file $SYSLOCAL/USESHARED exists.
+#
+# This version also updates COMLNK.UPD for the COAOARN site only.  The
+# file specification entered on the command line (or in the at-file) is
+# placed in COMLNK.UPD which is not necessarily the one compiled (SEARCH
+# may find a version that it deems more appropriate).  If the user is
+# aipssrc or aipsmgr, or the variable AIPSSRC is set to "NO", then no
+# update of the rcs file is performed.  Also no update is performed if
+# the rcs file is on a NFS mounted filesystem for locking reasons.
+#
+# The transact variable holds the name of the directory that contains
+# COMLNK.UPD.  This needs to be changed if the location of COMLNK.UPD is
+# changed.  The freeze variable is only used during the quarterly (sic)
+# update at NRAOAOC.
+#--------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+[ "$PREP" = "" ] && echo "AIPS environment not defined; do CDTST?" && \
+ exit 1
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+[ -w $PREP ] || PREP=`$LPWD` && export PREP
+trap 'rm -f $PREP/COMLNK.$$ $PREP/SEARCH.$$ $PREP/PP.$$ $PREP/AT.$$; \
+   exit 1' 1 2 3 15
+#                                       Umask ideally is this...
+umask 002
+#                                       NRAO rcs definitions.
+if [ "$SITE" = COAOARN ] ; then
+   transact=$UPDATE
+#                                       poor sod who gets to do this..
+   INSTALL_TESTER=pmurphy; export INSTALL_TESTER
+   INSTALL_TESTER2=egreisen; export INSTALL_TESTER2
+   freeze=$UPHOME
+   umask 000
+fi
+#                                       Any command line argument(s)?
+if test "$*" = ""
+then
+   echo "Usage: COMLNK" \
+      "[directory-path/][@]program[.FOR,.f,.C,.c,.S,.s,.o]] \\"
+   echo "              [AIPS-sytle-options] [UNIX-style-options] \\"
+   echo "              [file.OPT] [file.LOG]"
+   exit 1
+fi
+#                                       Initialize OPTS, OPTFIL, ULOG
+#                                       and local PURGE.
+OPTS=""
+OPTFIL=""
+ULOG=""
+PURGE=TRUE
+DODEBUG=NO
+REPLACE=FALSE
+SAVE=FALSE
+STRIPIT=""
+#                                       Parse command line arguments.
+for i
+do
+   case $i in
+#                                       UNIX-style option.  Pass it on.
+      -*) OPTS="$OPTS $i"
+      ;;
+#                                       User specified log filename; add
+#                                       $LPWD for simple filenames.
+      *.LOG | *.log)
+         case $i in
+            */*) ULOG=$i ;;
+            *)   ULOG=`$LPWD`/$i ;;
+         esac
+      ;;
+#                                       Optional link list file.
+      *.OPT | *.opt)
+         if [ "$OPTFIL" != "" ] ; then
+            echo "COMLNK    : You can only specify one options file"
+            rm -f $PREP/COMLNK.$$
+            echo "COMLNK    : Dies of unnatural causes"
+            exit 1
+         else
+            if [ -f $i ] ; then
+               OPTFIL=$i
+            else
+               echo "COMLNK    : File       $i"
+               echo "COMLNK    : not found!"
+               rm -f $PREP/COMLNK.$$
+               echo "COMLNK    : Dies of unnatural causes"
+               exit 1
+            fi
+         fi
+      ;;
+
+#                                       An '@' file list of pathnames.
+      *@*)
+#                                       Form pathname if a $AT is a
+#                                       simple filname.
+         case $AT in
+            */*) AT=`echo $i | sed -e 's/@//'` ;;
+            *) AT=`echo $i | sed -e 's/@//'`
+               AT=`$LPWD`/$AT ;;
+         esac
+#                                       Append it to pathname list.
+         if [ -f "$AT" ] ; then
+            sed -n -e 's/^[^-]/&/p' $AT >> $PREP/COMLNK.$$
+         else
+            echo "COMLNK    : '@' file    $AT"
+            echo "COMLNK    : not found!"
+            rm -f $PREP/COMLNK.$$
+            echo "COMLNK    : Dies of unnatural causes"
+            exit 1
+         fi
+      ;;
+#                                       Pathname.  Append to the list.
+      */*) echo $i >> $PREP/COMLNK.$$
+      ;;
+#                                       File: add $LPWD, append to list.
+      *.*) echo `$LPWD`/$i >> $PREP/COMLNK.$$
+      ;;
+#                                       To get here, the argument is
+#                                       probably, but not necessarily,
+#                                       an option.  Check it out.
+      *) j=`echo $i | tr '[a-z]' '[A-Z]'`
+#                                       For each option, remove any
+#                                       conflicting option(s), add.
+         case $j in
+            DE | DEB | DEBU | DEBUG)
+               OPTS="`echo $OPTS | \
+                sed -e 's/ DEBUG//g'` DEBUG NOPURGE"
+		STRIPIT="NOSTRIP"
+                PURGE=FALSE
+               [ -f $SYSLOCAL/DOTWOBLIB ] && DODEBUG=YES
+            ;;
+            NODE | NODEB | NODEBU | NODEBUG)
+               OPTS="`echo $OPTS | sed -e 's/ DEBUG//g'` NODEBUG"
+               DODEBUG=NO
+            ;;
+            NOOPT)
+               OPTS="`echo $OPTS | sed -e 's/ OPT[0-9]//g'` NOOPT"
+            ;;
+            LI | LIS | LIST)
+               OPTS="`echo $OPTS | sed -e 's/ NOLIST//g'` LIST"
+            ;;
+            NOLI | NOLIS | NOLIST)
+               OPTS="`echo $OPTS | sed -e 's/ LIST//g'` NOLIST"
+            ;;
+            MA | MAP)
+               OPTS="`echo $OPTS | sed -e 's/ NOMAP//g'` MAP"
+            ;;
+            NOMA | NOMAP)
+               OPTS="`echo $OPTS | sed -e 's/ MAP//g'` NOMAP"
+            ;;
+            OPT[0-9])
+               OPTS="`echo $OPTS | sed \
+                      -e 's/ NOOPT//g' -e 's/ OPT[0-9]//g'` $i"
+            ;;
+            DI | DIR | DIRT | DIRTY)
+               OPTS="`echo $OPTS | sed -e 's/ NODIRTY//g'` DIRTY"
+            ;;
+            NODI | NODIR | NODIRT | NODIRTY)
+               OPTS="`echo $OPTS | sed -e 's/ DIRTY//g'` NODIRTY"
+            ;;
+            PU | PUR | PURG | PURGE)
+               OPTS="`echo $OPTS | sed -e 's/ NOPURGE//g'` PURGE"
+               PURGE=TRUE
+            ;;
+            NOPU | NOPUR | NOPURG | NOPURGE)
+               OPTS="`echo $OPTS | sed -e 's/ PURGE//g'` NOPURGE"
+               PURGE=FALSE
+            ;;
+            RE | REP | REPL | REPLA | REPLAC | REPLACE)
+               OPTS="`echo $OPTS | sed -e 's/ NOREPLACE//g'` REPLACE"
+               REPLACE=TRUE
+            ;;
+            NORE | NOREP | NOREPL | NOREPLA | NOREPLAC | NOREPLACE)
+               OPTS="`echo $OPTS | sed -e 's/ REPLACE//g'` NOREPLACE"
+               REPLACE=FALSE
+            ;;
+            PR | PRO | PROF | PROFI | PROFIL | PROFILE)
+               OPTS="`echo $OPTS | sed -e 's/ NOPROFILE//g'` PROFILE"
+            ;;
+            NOPR | NOPRO | NOPROF | NOPROFI | NOPROFIL | NOPROFILE)
+               OPTS="`echo $OPTS | sed -e 's/ PROFILE//g'` NOPROFILE"
+            ;;
+            SA | SAV | SAVE)
+               OPTS="`echo $OPTS | sed -e 's/ NOSAVE//g'` SAVE"
+               SAVE=TRUE
+            ;;
+            NOSA | NOSAV | NOSAVE)
+               OPTS="`echo $OPTS | sed -e 's/ SAVE//g'` NOSAVE"
+               SAVE=FALSE
+            ;;
+	    ST | STR | STRI | STRIP)
+	       OPTS="`echo $OPTS | sed -e 's/ NOSTRIP//g'`"
+	       OPTS="`echo $OPTS | sed -e 's/ STRIP//g'`"
+	       STRIPIT=STRIP
+	    ;;
+	    NOST | NOSTR | NOSTRI | NOSTRIP)
+	       OPTS="`echo $OPTS | sed -e 's/ STRIP//g'` NOSTRIP"
+	       OPTS="`echo $OPTS | sed -e 's/ STRIP//g'`"
+	       STRIPIT=NOSTRIP
+	    ;;
+            *)
+#                                       If not a recognized AIPS-style
+#                                       option, treat it as a file in
+#                                       current working directory given
+#                                       without an extension and append
+#                                       it to the pathname list.
+               echo `$LPWD`/$i >> $PREP/COMLNK.$$
+            ;;
+         esac
+      ;;
+   esac
+done
+#                                       End of command line parsing.
+#                                       Delete leading blank(s) in
+#                                       $OPTS".
+OPTS=`echo $OPTS | sed 's/^  *//'`
+#                                       Time to get down to business.
+#                                       Any programs to compile/link?
+if [ ! -f $PREP/COMLNK.$$ ] ; then
+   echo "Usage: COMLNK" \
+      "[path/][@]program[.FOR,.f,.C,.c,.S,.s,.o]] \\"
+   echo "              [AIPS-sytle-options] [UNIX-style-options] \\"
+   echo "              [file.OPT] [file.LOG]"
+   echo "COMLNK    : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Loop through file list.
+#                                       LOOPSTAT *has* to be exported!
+LOOPSTAT="OK"; export LOOPSTAT
+for PATHNAME in `cat $PREP/COMLNK.$$` ; do
+   FILESTAT="OK"
+#                                       Save $PATHNAME in case we are
+#                                       being '@' file driven.
+   ATNAME=$PATHNAME
+#                                       Get the file name.
+   FILE="`echo $PATHNAME | sed -e 's#.*/##' | sed -e 's#\..*##'`"
+#                                       Override debug/opt settings from
+#                                       command line (aips modules only)
+   case $PATHNAME in
+#                                       APLCONTR is an exception
+      $APLCONTR*)
+         OPTX=$OPTS;;
+      $AIPS_VERSION*)
+#                                       System compilation.  Check for
+#                                       debug/nodebug flag...
+          if [ "$DODEBUG" = "NO" ] ; then
+             OPTX=$OPTS
+          else
+#                                       Remove command line DEBUG/OPT's
+             OPTX=`echo $OPTS | sed -e 's/[NO]*DEBUG//' \
+                   -e 's/[NO]*OPT[0-9]*//' -e 's/^ *//'`
+          fi
+      ;;
+      *)
+#                                       User compilation.
+          OPTX=$OPTS
+      ;;
+   esac
+#                                       Set log file name if necessary
+   if [ "$ULOG" = "" ] ; then
+      case $PATHNAME in
+         $APLCONTR*)
+            LOG="$APLCONTR/$FILE.LOG"
+         ;;
+         $AIPS_VERSION*)
+            LOG="$PREP/$FILE.LOG"
+         ;;
+         *)
+            LOG=`echo $PATHNAME | sed -e 's/\..*//'`.LOG
+         ;;
+      esac
+      rm -f $LOG
+   else
+      LOG=$ULOG
+   fi
+#                                       Screen out subroutines.
+   case $PATHNAME in
+      $AIPS_VERSION/*/SUB/* | \
+      $AIPS_VERSION/*/DEV/*)
+         echo "COMLNK    : Skipping   $PATHNAME"       | tee -a $LOG
+         echo "COMLNK    : use COMRPL on subroutines." | tee -a $LOG
+         continue
+      ;;
+   esac
+#                                       Record date.
+   echo "COMLNK    : Date       `date`" | tee -a $LOG
+#                                       Determine proper/fastest module
+#                                       for this system, if any.
+   PROPER=`SEARCH -q $PATHNAME 2> $PREP/SEARCH.$$`
+   if [ "$PROPER" = "" ] ; then
+      cat $PREP/SEARCH.$$ | tee -a $LOG
+      rm -f $PREP/COMLNK.$$ $PREP/SEARCH.$$
+      FILESTAT="BAD"
+      continue
+    elif [ "$PROPER" != "$PATHNAME" ] ; then
+      echo "COMLNK    : Substitute $PROPER"   | tee -a $LOG
+      echo "COMLNK    : for        $PATHNAME" | tee -a $LOG
+      PATHNAME=$PROPER
+   fi
+   rm -f $PREP/SEARCH.$$
+#                                       Extract AREA, i.e., directory.
+   AREA=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+#                                       Form pathname of object module.
+   OFILE=`echo $PATHNAME | sed -e 's/\(.*\.\)\(.*\)/\1o/'`
+#                                       Check what we have.  If it's an
+#                                       object module, just link,
+#                                       otherwise compile and link.
+   case $PATHNAME in
+
+      *.FOR | *.C | *.S)
+#                                       Preprocess.  PP returns an
+#                                       easily recognizable pathname of
+#                                       the successfully preprocessed
+#                                       file or an error message.
+         ORIGNAME=$PATHNAME
+         PATHNAME=`PP $PATHNAME 2> $PREP/PP.$$`
+         cat $PREP/PP.$$ | tee -a $LOG
+         rm -f $PREP/PP.$$
+         if test "$PATHNAME" = ""
+         then
+            echo "COMLNK    : Preprocessing fails!" | tee -a $LOG
+            rm -f $PREP/COMLNK.$$
+            FILESTAT="BAD"
+            continue
+         fi
+      ;;
+
+   esac
+#                                       To get here, preprocessing must
+#                                       have been successful or pre-
+#                                       processed form already existed.
+   case $PATHNAME in
+
+      *.f | *.c | *.s)
+#                                       Check for files really in $PREP.
+         case $PATHNAME in
+            $PREP/* | $APLCONTR/*)
+            ;;
+            $AIPS_VERSION/*)
+               PATHNAME=`echo $PATHNAME | sed -e "s#$AREA#$PREP#"`
+            ;;
+         esac
+      ;;
+   esac
+   case $PATHNAME in
+#                                       Compile $PATHNAME with $OPTS.
+      *.f)
+#                                       Fortran source. () important!
+#                                       If this is NOT a debug COMLNK,
+#                                       revert to normal compiling.
+         if [ "$DODEBUG" = "NO" ] ; then
+#                                       Insert LINK here when ready...
+            FFILE=$PATHNAME
+            if ( export AREA; FC $OPTS $PATHNAME $LOG ) ; then
+               PATHNAME=$OFILE
+            else
+#                                       Delete preprocessed code
+               echo "COMLNK    : Compile failed!" | tee -a $LOG
+               rm -f $PATHNAME
+               echo "COMLNK    : Deleted    $PATHNAME" | tee -a $LOG
+               rm -f $PREP/COMLNK.$$
+               FILESTAT="BAD"
+               continue
+            fi
+         else
+#                                       Debug compile.  The DEBUG and
+#                                       PURGE options are overridden.
+#                                       Use () for sub-shell.  Vital!
+#                                       Insert LINK here when ready...
+            FFILE=$PATHNAME
+            if ( export AREA; FC $OPTX NOOPT DEBUG NOPURGE \
+                                 $PATHNAME $LOG )
+            then
+               PATHNAME=$OFILE
+            else
+#                                       Carry on with next module...
+               echo "COMLNK    : Compile failed!" | tee -a $LOG
+               rm -f $PATHNAME
+               echo "COMLNK    : Deleted    $PATHNAME" | tee -a $LOG
+               rm -f $PREP/COMLNK.$$
+               FILESTAT="BAD"
+               continue
+            fi
+         fi
+      ;;
+
+      *.c)
+#                                       C source.  Is there any?
+#                                       Regular compile.
+         if [ "$DODEBUG" = "NO" ] ; then
+            FFILE=$PATHNAME
+            if AIPSCC $OPTS $PATHNAME $LOG ; then
+               PATHNAME=$OFILE
+            else
+#                                       Delete preprocessed code
+               echo "COMLNK    : Compile failed!" | tee -a $LOG
+               rm -f $PATHNAME
+               echo "COMLNK    : Deleted    $PATHNAME" | tee -a $LOG
+               rm -f $PREP/COMLNK.$$
+               FILESTAT="BAD"
+               continue
+            fi
+         else
+            FFILE=$PATHNAME
+            if AIPSCC $OPTX DEBUG NOOPT NOPURGE $PATHNAME $LOG
+            then
+               PATHNAME=$OFILE
+            else
+#                                       Delete preprocessed code
+               echo "COMLNK    : Compile failed!" | tee -a $LOG
+               rm -f $PATHNAME
+               echo "COMLNK    : Deleted    $PATHNAME" | tee -a $LOG
+               rm -f $PREP/COMLNK.$$
+               FILESTAT="BAD"
+               continue
+            fi
+         fi
+      ;;
+
+      *.s)
+#                                       Assembler source.
+         FFILE=$PATHNAME
+         if AIAS $OPTS $PATHNAME $LOG
+         then
+            PATHNAME=$OFILE
+         else
+#                                       Delete preprocessed code, onward
+            echo "COMLNK    : Compilation failed!" | tee -a $LOG
+            rm -f $PATHNAME
+            echo "COMLNK    : Deleted    $PATHNAME" | tee -a $LOG
+            rm -f $PREP/COMLNK.$$
+            FILESTAT="BAD"
+            continue
+         fi
+      ;;
+
+   esac
+#                                       Reset OFILE to the real name of
+#                                       the object file.  The value
+#                                       given to OFILE above and passed
+#                                       to LINK (as PATHNAME) was used
+#                                       to determine the link list.
+   case $PATHNAME in
+      $APLCONTR*)
+         OFILE="$APLCONTR/${FILE}.o"
+         ;;
+      $AIPS_VERSION*)
+         OFILE="$PREP/${FILE}.o"
+         ;;
+      *) ;;
+   esac
+#                                       To get here, compilation must
+#                                       have been successful or
+#                                       up-to-date object module
+#                                       already existed.  Try to link.
+   if [ "$DODEBUG" = "NO" ] ; then
+      LINK $PATHNAME $OPTFIL $OPTS $STRIPIT $LOG
+      lstat=$?
+   else
+      LINK $PATHNAME $OPTFIL $OPTX DEBUG NOPURGE NOSTRIP $LOG
+      lstat=$?
+   fi
+   if [ $lstat -eq 0 ] ; then
+#                                       Delete the object module.
+      if [ "$PURGE" = TRUE ] ; then
+         if [ -f "$OFILE" ] ; then
+            rm -f $OFILE
+            echo "COMLNK    : Deleted    $OFILE" | tee -a $LOG
+         fi
+         if [ -f "$FFILE" ] ; then
+            rm -f $FFILE
+            echo "COMLNK    : Deleted    $FFILE" | tee -a $LOG
+         fi
+      fi
+#                                       Update transact. file (CV only)
+      if [ "$SITE" = "COAOARN" -a "$ARCH" = "LINUX" -a \
+           "$HOST" = "DAVE" -a "$UPHOME" = "/home/aipssrc/master" ] ; then
+         case $PATHNAME in
+            $APLCONTR*) ;;
+            $AIPS_VERSION*)
+#                                       Determine if on NFS mount
+#                                       HIGHLY SunOS 5 specific I'm
+#                                       sure.  Is there a better way???
+#                                       old tail grammar for Solaris
+               if [ -d $transact/ ] ; then
+                  fname=`df -k $transact | tail -1 | awk '{print $1}'`
+                  case $fname in
+                     *:*)
+                        thost=`echo $fname | awk -F: '{print $1}'`
+                        tdisk=`echo $fname | awk -F: '{print $2}'`
+                        echo "COMLNK    : !!!!!!!!! WARNING !!!!!!!!!" \
+                         | tee -a $LOG
+                        echo "COMLNK    : WARNING: transaction file" \
+                         $transact/COMLNK.UPD | tee -a $LOG
+                        echo "COMLNK    : is on an NFS disk ($tdisk)." \
+                         | tee -a $LOG
+                        echo "COMLNK    : You MUST do this on $thost" \
+                         "to record this compilation in that file." \
+                         | tee -a $LOG
+                        echo "COMLNK    : !!!!!!!!! WARNING !!!!!!!!!" \
+                         | tee -a $LOG
+                        transact="update/allowed/on"
+                        ;;
+                  esac
+               fi
+#                                       Get .FOR, .C, etc....
+               if [ "$ORIGNAME" = "" ] ; then
+                  if [ "$FNAME" != "" ] ; then
+                     ORIGNAME=$FNAME
+                  else
+                     ORIGNAME=$PATHNAME
+                  fi
+               fi
+#                                       Make sure transact. file exists.
+               if [ -f $transact/COMLNK.UPD ] ; then
+#                                       whoa!  Check if it's frozen...
+                  if [ \( "$LOGNAME" = "$INSTALL_TESTER" \) -a \
+                   \( "$INSTALL_TESTING" = "YES" \) ] ; then
+                     echo "COMLNK    : Detected desperate programmer," \
+                      "ignoring freeze" | tee -a $LOG
+                     updtrans $transact/COMLNK.UPD $ORIGNAME `whoami`
+                     if [ $? -ne 0 ] ; then
+                        echo "COMLNK    : Whoa! Fix that!" | tee -a $LOG
+                     else
+                        echo "COMLNK    : updated $transact/COMLNK.UPD"\
+                         "(despite FREEZE)" | tee -a $LOG
+                     fi
+                  elif [ -f $freeze/AIPS_IS_FROZEN.$VERSION ] ; then
+                     echo "COMLNK    : WARNING: $AIPS_VERSION is" \
+                      "currently frozen!" | tee -a $LOG
+                     echo "COMLNK    : will NOT update" \
+                      "$transact/COMLNK.UPD" | tee -a $LOG
+                  elif [ "$USER" = aipsmgr -o "$USER" = aipssrc ] ; then
+                     echo "COMLNK    : $USER cannot update RCS logs" | \
+                      tee -a $LOG
+                  elif [ "$AIPSRCS" = "NO" ] ; then
+                     echo "COMLNK    : AIPSRCS=NO, not updating" \
+                      "$transact/COMLNK.UPD"
+                  else
+#                                       No, it's not frozen, go ahead.
+                     updtrans $transact/COMLNK.UPD $ORIGNAME `whoami`
+                     if [ $? -ne 0 ] ; then
+#                                       Problems.  Scream loudly.
+                        echo "COMLNK    : !!!!!!!!! WARNING !!!!!!!!!" \
+                         | tee -a $LOG
+                        echo "COMLNK    : failed to update COMLNK.UPD" \
+                         | tee -a $LOG
+                        echo "COMLNK    : !!!!!!!!! WARNING !!!!!!!!!" \
+                         | tee -a $LOG
+                     else
+#                                       It worked so remind caller.
+                        echo "COMLNK    : updated $transact/COMLNK.UPD"\
+                         | tee -a $LOG
+                     fi
+                  fi
+               else
+#                                       Hmm.  No transaction file?
+                  echo "COMLNK    : no $transact/COMLNK.UPD" \
+                   | tee -a $LOG
+               fi
+               ;;
+         esac
+      fi
+   else
+#                                       Delete object module, carry on.
+      echo "COMLNK    : Link failed!" | tee -a $LOG
+      if [ "$PURGE" = TRUE ] ; then
+         if [ -f "$OFILE" ] ; then
+            rm -f $OFILE
+            echo "COMLNK    : Deleted    $OFILE" | tee -a $LOG
+         fi
+         if [ -f "$FFILE" ] ; then
+            rm -f $FFILE
+            echo "COMLNK    : Deleted    $FFILE" | tee -a $LOG
+         fi
+      fi
+      FILESTAT="BAD"
+      rm -f $PREP/COMLNK.$$
+      continue
+   fi
+#                                       If we are being '@' file driven,
+#                                       auto-edit the '@' file prefixing
+#                                       this $PATHNAME with a '-' to
+#                                       indicate it as done.
+   if [ "$AT" != "" ] ; then
+      if [ "$FILESTAT" = "OK" ] ; then
+         sed -e 's#^'$ATNAME'#-&#' $AT > $PREP/AT.$$
+         cp $PREP/AT.$$ $AT
+         rm $PREP/AT.$$
+         echo "COMLNK    : Changed    $ATNAME"  | tee -a $LOG
+         echo "COMLNK    : in         $AT"      | tee -a $LOG
+         echo "COMLNK    : to         -$ATNAME" | tee -a $LOG
+      else
+         echo "COMLNK    : Leave      $ATNAME"  | tee -a $LOG
+         echo "COMLNK    : in         $AT"      | tee -a $LOG
+         echo "COMLNK    : unchanged as it FAILED to compile." \
+                                                   | tee -a $LOG
+      fi
+   fi
+#                                       Clean up and delete .LOG?
+   if [ "$PURGE" = "TRUE" -a "$ULOG" = "" ] ; then
+      rm -f $LOG
+   fi
+   if [ "$FILESTAT" != "OK" ] ; then
+      LOOPSTAT="BAD"
+   fi
+done
+if [ \( -f $PREP/COMLNK.$$ \) -a \( "$LOOPSTAT" = "OK" \) ] ; then
+   echo "COMLNK    : Ends successfully"
+   rm $PREP/COMLNK.$$
+   exit 0
+else
+   if [ "$LOOPSTAT" != "OK" ] ; then
+      echo "COMLNK    : at least one module FAILED to compile or link"
+   fi
+   echo "COMLNK    : Dies of unnatural causes"
+   exit 1
+fi

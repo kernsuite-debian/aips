@@ -1,0 +1,79 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: DATOUCH [file]
+#-----------------------------------------------------------------------
+# Touch AIPS data disk to cause them to be automounted.
+# Also lists out protection on the SPACE file and its directory.
+# The optional [file] overrides the DADEVS.LIST/.dadevs selection.
+#-----------------------------------------------------------------------
+#                                       figure out which list to use...
+                                  dfile=$NET0/DADEVS.LIST
+[ -f $NET0/DADEVS.LIST.$SITE ] && dfile=$NET0/DADEVS.LIST.$SITE
+[ -f $DA00/DADEVS.LIST ]       && dfile=$DA00/DADEVS.LIST
+[ -f $HOME/.dadevs ]           && dfile=$HOME/.dadevs
+[ -f $HOME/.dadevs.$SITE ]     && dfile=$HOME/.dadevs.$SITE
+if [ "$1" != "" ] ; then
+   if [ -f "$1" ] ; then
+      dfile=$1
+   else
+      echo "DATOUCH: file $1 not found, ignoring."
+   fi
+fi
+if [ ! -f $dfile ] ; then
+   echo "DATOUCH: cannot find $dfile"
+   exit 1
+fi
+echo "DATOUCH: using file $dfile"
+echo " "
+lscmd="ls -ld"
+lnktst="-h"
+case $ARCH in
+   SUN3 | SUN4 | DEC | CVEX) lscmd="ls -ldg" ;;
+   IBM) lnktst="-L";;
+esac
+#                                       Loop for each disk in the file
+for ENTRY in `grep -e '^[-+]' $dfile | sed 's#[-+]##'` ; do
+#
+#                                       Get listing of SPACE file
+   $lscmd $ENTRY/SPACE >/dev/null 2>&1
+   if [ ! -f $ENTRY/SPACE ] ; then
+      echo "Cannot find $ENTRY/SPACE, ignoring this entry"
+#                                       Remove automounter indirection
+#                                       THe -h test works on sun/ibm.
+   else
+      entry=$ENTRY
+      if [ $lnktst "$entry" ] ; then
+#                                       Symbolic link
+         entry=`$lscmd $ENTRY | awk -F\> '{print $2}' | sed -e 's#^ ##g'`
+      fi
+      $lscmd $entry
+      if [ ! -g "$entry" ] ; then
+	 echo "$entry is not set-gid"
+      fi
+   fi
+done

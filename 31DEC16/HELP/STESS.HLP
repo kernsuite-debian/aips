@@ -1,0 +1,265 @@
+; STESS
+;---------------------------------------------------------------
+;! Task which finds sensitivity in mosaicing
+;# TASK IMAGING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 2002-2003, 2005, 2007, 2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+STESS     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+STESS :  Task which finds sensitivity in mosaicing
+                                   Input image
+INNAME                                Image name (name)
+INCLASS                               Image name (class)
+INSEQ              0.0      9999.0    Image name (seq. #)
+INDISK                                Image disk drive #
+                                   Output  image
+OUTNAME                               Image name (name)
+OUTCLASS                              Image name (class)
+OUTSEQ            -1.0      9999.0    Image name (seq. #)
+OUTDISK                               Image disk drive #
+
+NMAPS              1.0      4087.0 Number of maps to analyse
+NOISE    *         0.0             Required residual, units are
+         *                         (Jy/BEAM)
+BLC                0.0        4096 Bottom left corner of STESS
+TRC                0.0        4096 Top right corner of STESS
+PBSIZE                             PB FWHM in arcseconds CHANGED
+PBPARM                             Beam parameters:
+                                   (1) Cutoff 0 -> 0.07
+                                   (2) > 0 -> Use (3)-(7)
+                                   (3)-(7) Beam shape
+BADDISK                            Disks to avoid for scratch.
+----------------------------------------------------------------
+STESS
+Type: Task
+Use:  STESS is an adjunct to LTESS which finds the sensitivity
+      function of a mosaic.
+
+      FLATN can now do this function also and it creates the output
+      geometry as needed on the fly.  STESS, like LTESS, VTESS, and
+      UTESS requires the user to put all pointings into large images
+      of the desired output geometry and image size (with modest
+      regions having actual value) before running the task. EXPLAIN
+      VTESS says:
+
+      Sky-curvature effects will be important in some circumstances
+      and will hinder the use of VTESS. For 20cm and shorter in the C
+      and D configurations, you can usually get away with mapping each
+      primary beam separately. The procedure is:
+      1. Observe at the requisite number of pointing centers, spaced
+         every HWHM (e.g. 15 arcmin at 20cm).
+      2. Calibrate, edit each field separately.
+      3. Run UVMAP on each field separately WITHOUT any phase shifts.
+         The size of each field must be double the full primary beam
+         size (e.g. 512**2 with 15" cellsize is fine for 20cm D-array).
+      4. Choose one centrally-located field as the center of the
+         coordinate system to be used. Pad the map and beam for this
+         field up to twice the maximum field of view. The task PADIM
+         does this nicely. This resulting image is the reference field
+         image.
+      5. Put all the other images onto the same grid.  OHGEO or HGEOM
+         are very convenient for this: put the reference field image in
+         slot two, and the image to be converted into slot one.
+      6. Pad the beams out to the required size. Really you should do
+         step 5 on each beam but the shift will come out incorrectly
+         then.
+      7. Set up the parameters for VTESS, and then run STESS to check
+         the sensitivity function.
+
+Adverbs:
+  INNAME......The dirty image name.      Standard defaults.
+  INCLASS.....The dirty image class.     Standard defaults.
+  INSEQ.......The dirty image seq. #.    0 => highest.
+                 If NMAPS > 1 then images having sequence
+                 numbers INSEQ,INSEQ+1,...,INSEQ+NMAPS-1 are
+                 operated on.
+  INDISK......The dirty image disk drive #. 0 => any.
+  OUTNAME.....The STESS image name.         Standard defaults.
+  OUTCLASS....The STESS image class.  Standard behavior with
+              default = 'xSTESS' if INCLASS = 'xMAP' where x
+                           is any character
+                        'STESS' if INCLASS = anything else
+  OUTSEQ......The STESS image seq. #.  0 => highest unique.
+              If >0; image will be created if new,
+              overwritten if image name exists.
+  OUTDISK.....The STESS disk drive no. 0 => highest with space
+  NMAPS.......Number of maps to be deconvolved. Must be in
+              sequence starting at INSEQ.  Can use up to 4087!
+  NOISE.......The target R.M.S. residuals for each image are ERROR
+              (Jy/beam). Note this controls the  quality of the final
+              STESS image. STESS tries to get fit to be less than 1.05
+              SIGMA. Can be changed by TELL.
+              NOISE(64) is used for fields > 64.
+  BLC.........Bottom left corner of STESS image, BLC(3) gives the
+              channel number to deconvolve.
+  TRC.........Top right corner of image; both BLC and TRC default do
+              that the inner quarter is chosen.
+  PBSIZE......Size of primary beam in arcsec, FWHM of Gaussian model.
+              One number per field.
+              If = 0, use PBPARM beam with defaults suitable to the
+                      VLA.
+              If < 0, do no primary beam correction, e.g. for fields
+                      that are not interferometer data.
+              If > 0, use a Gaussian of FWHM of PBSIZE(I).
+              PBSIZE(64) is used for fields > 64.
+  PBPARM......Primary beam parameters:
+              (1) Lowest beam value to believe: 0 -> 0.07  Sources
+                  outside this range are ignored.
+              (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+              (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See explain for details
+  BADDISK.....This array contains the numbers of disks on which
+              it is desired that scratch files not be located.
+              BADDISK has no effect on input and output maps.
+----------------------------------------------------------------
+STESS :  Task which finds the sensitivity function for mosaics
+DOCUMENTOR: T.J.Cornwell NRAO/VLA
+DATE OF DOCUMENTATION: 18 May 1987
+RELATED PROGRAMS: STESS
+VERSION: 15OCT87
+
+                      PURPOSE
+
+                      REFERENCES
+
+Cornwell T.J., and Evans K.F., "A simple Maximum Entropy
+deconvolution algorithm", Astronomy and Astrophysics, (1985)
+
+Burch,S.F, Gull,S.F., and Skilling,J., "Image restoration by a
+powerful Maximum Entropy method", Computer Vision, Graphics and
+Image processing, 23, 113-128 (1983).
+
+              --------------------------------
+
+PRIMARY BEAM FUNCTION:
+
+     FACES corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+1.285           -1.329E-3       6.445E-7        -1.146E-10  *
+1.465           -1.343          6.579           -1.186 "
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.

@@ -1,0 +1,554 @@
+$ VLAPROCS.001
+$---------------------------------------------------------------
+$! RUN file to prepare to test performance of AIPS tasks on data
+$# Run POPS
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995-1997; 2001-2002; 2006-2008; 2011
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+* VLA Calibration procedures
+*
+* Dummy procedure to define adverbs
+PROC VLADUMMY
+   SCALAR  DOLISTR, DOPRINT, SNVER, VBA_WAIT, VLAERR
+   STRING*16 VBA_KEYS, VBA_DATE, VLA_OBJ
+   ARRAY     VBA_KEYV(2)
+   STRING*8 VBA_TASK, VBA_TTSK, VBA_KEYW
+   STRING*2 VBA_TYPE
+   RETURN
+   FINISH
+* Initilalize
+minamper 10; minphser 10
+dolistr 1; doprint 1
+*
+PROCEDURE RUNWAIT (VBA_TASK)
+*---------------------------------------------------------------
+*   Runs VBA_TASK and waits for it to complete regardless of the
+*   value of DOWAIT.
+*   Inputs:
+*       VBA_TASK    name of task
+*---------------------------------------------------------------
+    VBA_WAIT = DOWAIT
+    DOWAIT   = TRUE
+    VBA_TTSK = TASK
+    TASK     = VBA_TASK
+    GO
+    DOWAIT = VBA_WAIT
+    TASK   = VBA_TTSK
+    RETURN
+FINISH
+PROCEDURE MAXTAB (VBA_TYPE)
+*---------------------------------------------------------------
+*   Return the highest version number of a table of type
+*   VBA_TYPE attached to the specified file.
+*
+*   Inputs:
+*       VBA_TYPE    Table type
+*
+*   Adverbs:
+*       USERID      User ID
+*       INNAME      File name
+*       INCLASS     File class
+*       INSEQ       File sequence number
+*       INDISK      File disk number
+*---------------------------------------------------------------
+    SCALAR VBA_SLOT
+    SCALAR VBA_VERS
+*---------------------------------------------------------------
+*
+*   Save adverb values
+*
+    VBA_KEYW = KEYWORD
+    VBA_KEYV = KEYVALUE
+    VBA_KEYS = KEYSTRNG
+*
+    VBA_SLOT = 0
+    KEYSTRNG = '  '
+*
+*   Invariant: KEYSTRNG <> VBA_TYPE implies that no of the first
+*              VBA_SLOT tables has type VBA_TYPE
+*   Bound: 50 - VBA_SLOT
+*
+    WHILE VBA_SLOT <> 50 & KEYSTRNG <> VBA_TYPE
+        VBA_SLOT = VBA_SLOT + 1
+        KEYWORD = 'EXTYPE' !! CHAR(VBA_SLOT)
+        GETHEAD
+    END
+*
+*   If KEYSTRNG = VBA_TYPE then VBA_SLOT is the index for table
+*   type VBA_TYPE in the file header otherwise there are no
+*   tables of type VBA_TYPE.
+*
+    IF KEYSTRNG = VBA_TYPE THEN
+        KEYWORD = 'EXTVER' !! CHAR(VBA_SLOT)
+        GETHEAD
+    ELSE
+        KEYVALUE(1) = 0
+    END
+*
+    VBA_VER = KEYVALUE(1)
+*
+*   Restore saved adverbs
+*
+    KEYWORD  = VBA_KEYW
+    KEYVALUE = VBA_KEYV
+    KEYSTRNG = VBA_KEYS
+*
+    RETURN VBA_VER
+*
+FINISH
+*
+PROCEDURE VLACKMOD
+* used in VLALDMOD
+  error=0;sysout='';sys2com''
+  syscom'ls -1 $AIPSTARS/
+  sys2com(1) inname!!'.MODEL'
+  sys2com(2) ' >& /dev/null
+  system
+return
+finish
+*
+PROCEDURE VLACKOBJ
+* used in VLALDMOD
+  if (((vla_obj='1331+305') ! (vla_obj='1328+307')) ! (vla_obj='j1331+3030'))
+    then; vla_obj='3c286';end
+  if (((vla_obj='0137+331') ! (vla_obj='0134+329')) ! (vla_obj='J0137+3309'))
+    then; vla_obj='3c48';end
+  if (((vla_obj='0521+166') ! (vla_obj='0518+165')) ! (vla_obj='J0521+1638'))
+    then; vla_obj='3c138';end
+  if (((vla_obj='0542+498') ! (vla_obj='0538+498')) ! (vla_obj='J0542+4951'))
+    then; vla_obj='3c147';end
+  if (((vla_obj='1411+522') ! (vla_obj='1409+524')) ! (vla_obj='J1411+5212'))
+    then; vla_obj='3c295';end;clrtemp;return
+finish
+*
+PROCEDURE VLABAND
+* used in VLALDMOD
+  band='';j=1
+  while (j<9)
+    keyword='ctype'!!char(j);gethead;keyword='crval'!!char(j);clrtemp
+    if (keystrng='FREQ') then;gethead;j=9;else;j=j+1;end;end
+  keyvalue(1)=keyvalue(1)/1e9;
+  if ( (keyvalue(1)>38)    & (keyvalue(1)<51) )    then; band='q';end
+  if ( (keyvalue(1)>20.4)  & (keyvalue(1)<25.5) )  then; band='k';end
+  if ( (keyvalue(1)>13.5)  & (keyvalue(1)<16.3) )  then; band='u';end
+  if ( (keyvalue(1)> 6.8)  & (keyvalue(1)< 9.6) )  then; band='x';end
+  if ( (keyvalue(1)> 4.2)  & (keyvalue(1)< 5.1) )  then; band='c';end
+  if ( (keyvalue(1)> 1.15) & (keyvalue(1)< 1.75) ) then; band='l';end
+  if ( (keyvalue(1)>0.298) & (keyvalue(1)<0.345) ) then; band='p';end
+  if ( (keyvalue(1)>0.072) & (keyvalue(1)<0.076) ) then; band='4';end;clrtemp
+  return
+finish
+*
+PROCEDURE VLALDMOD
+* Procedure to load a flux calibrator model if one exists
+* similar but not identical to loadmodl in VLARUN
+* used in VLACALIB
+  scalar vla1950
+  vla1950=-1
+  keyword'epoch';keyvalue=0;keystrng='';gethead
+  if (keyvalue(1)<1999) then;vla1950=1;end
+  vlaband; vlackobj;clrtemp;
+  if(substr(vla_obj,1,2)='3C')then
+    inname=vla_obj!!'_'!!band;inclass'model';intype'ma'; inseq 0; vlackmod
+    if(error<1) then
+       outdisk=indisk; object=vla_obj; go calrd;
+       if (vla1950) then;eposwtch;end
+    end
+  else
+    error=1
+  end
+return
+finish
+*
+PROC VLACALIB
+* Procedure to run CALIB  listing closure errors and solutions
+* rewritten by Amy Mioduszewski
+* Save inputs
+   scalar olddowait, vlamod
+   olddowait=dowait
+   dowait=1
+   vlamod=-1
+   tput vlacalib
+* If there is one CALSOUR and it is a standard flux calibrator
+* then use model if available
+   if((calsour(2)='')&(uvra(1)=0)&(uvra(2)=0)&(ante(1)=0))then
+     vla_obj=calsour(1); vlaldmod
+     if(error<1) then; vlamod=1;end
+   end
+* Defaults for most CALIB adverbs.
+   default calib;tget vlacalib;task 'calib'
+   bchan 1;echan 0; aparm 4,0;solmode 'A&P'
+   aparm(6)=2; cparm 0, 0, minamper/10, minphser/10, 1, 0
+   if(vlamod=1)then
+     in2na=vla_obj!!'_'!!band;in2class'model';in2seq=0;in2di=indi
+   end
+* Run CALIB and print messages
+   if (DOPRINT<=0) then; go;end
+   if (DOPRINT>0)then
+     docrt -1; prnum 0; prta 'aips';clrm;inputs vlacalib
+     prta task; clrm; go; prta 'AIPS'; prtm; prta task; prtm
+     prta ''
+   end
+* Run LISTR to print SN table
+   if (DOPRINT>0) THEN
+     task 'listr';default;tget vlacalib;task 'listr'
+     docrt=-1
+     opty 'gain'; inext 'sn'; bif 1;eif 2; stokes 'half'
+     dparm 5 1 0;go
+   end
+   tget vlacalib
+   if (SNVER=0) then
+       print '!! SNVER=0 => generated a NEW SN table'
+       end
+   dowait=olddowait
+   return;finish
+*
+PROC VLARESET
+* Procedure to reset calibration; delete all SN and CL tables
+* higher than ver 1.
+   i 0; j 0; tput vlareset
+   for x=1:10; keyw 'EXTYPE'!!char(x); geth
+      if 'CL'=keystr then keyw 'EXTVER'!!char(x);geth;
+         j = keyval(1); end
+      if 'SN'=keystr then keyw 'EXTVER'!!char(x);geth;
+         i = keyval(1); end; end
+   if i>0 then inex 'sn'; inver -1; extd; end
+   inext 'cl'
+   if j>1 then for inver=2:J; extd; end; inver 0; end
+   return;finish
+*
+PROC VLACLCAL
+* Procedure to run CLCAL followed by LISTR to list CL table.
+* rewritten by Amy Mioduszewski
+* Save inputs
+   scalar olddowait
+   olddowait=dowait
+   dowait=1
+   tput vlaclcal
+* Set CLCAL adverbs
+   task 'CLCAL';default;tget VLACLCAL;task 'clcal'
+   opcode 'cali'; cutoff=0;go
+* Run CLCAL and print messages
+*   if (DOPRINT<=0) then; go;end
+*   if (DOPRINT>0)then
+*     docrt -1; prnum 0; prta task; clrm; go; prtm; prta ''
+*   end
+* Run LISTR to print CL table
+   if (DOPRINT>0) THEN
+     task 'listr';default;tget vlaclcal;task 'listr'
+     opty 'gain'; inext 'CL'; inver gainuse; sources ''
+     docrt -1;bif 1;eif 2; stokes 'half'; dparm 5 1 0;go
+   end
+   tget vlaclcal
+   dowait=olddowait
+   return;finish
+PROC VLASUMM
+*---------------------------------------------------------------
+*   Plots an AN or CL table versus time
+*
+* Inputs:
+*   INNAME      input file name
+*   INCLASS     input file class
+*   INSEQ       input file sequence number
+*   INDISK      input file disk number
+*   INEXT       table to be plotted
+*   INVERS      table number to be plotted
+*   STOKES      stokes to plot
+*   SUBARRAY    subarray number
+*   DOCRT       print to screen?
+*   OUTPRINT    print to file
+*
+*   This is identical to VLBASUMM which is part of VLBAUTIL
+*---------------------------------------------------------------
+tput vlasumm
+scalar vba_ant
+vba_ant=maxtab('an')
+task 'prtan'; default; tget vlasumm; task 'prtan'
+for i=1 to vba_ant
+  invers i; runwait('prtan')
+end
+task 'listr'; default; tget vlasumm; task 'listr';optype 'scan'
+runwait('listr')
+tget vlasumm
+return; finish
+PROCEDURE MAXTAB (VBA_TYPE)
+*-----------------------------------------------------------------------
+*   Return the highest version number of a table of type VBA_TYPE
+*   attached to the specified file.
+*
+*   Inputs:
+*       VBA_TYPE    Table type
+*
+*   Adverbs:
+*       USERID      User ID
+*       INNAME      File name
+*       INCLASS     File class
+*       INSEQ       File sequence number
+*       INDISK      File disk number
+*-----------------------------------------------------------------------
+    ARRAY VBA_KEYV(2)
+    SCALAR VBA_SLOT, VBA_VERS
+    STRING*8 VBA_KEYW
+    STRING*16 VBA_KEYS
+*Save adverb values
+    VBA_KEYW = KEYWORD
+    VBA_KEYV = KEYVALUE
+    VBA_KEYS = KEYSTRNG
+    VBA_SLOT = 0
+    KEYSTRNG = '  '
+*  Invariant: KEYSTRNG <> VBA_TYPE implies that no of the first
+*             VBA_SLOT tables has type VBA_TYPE
+*  Bound: 50 - VBA_SLOT
+    WHILE VBA_SLOT <> 50 & KEYSTRNG <> VBA_TYPE
+        VBA_SLOT = VBA_SLOT + 1; KEYWORD = 'EXTYPE' !! CHAR(VBA_SLOT)
+        GETHEAD
+    END
+*  If KEYSTRNG = VBA_TYPE then VBA_SLOT is the index for table type
+*  VBA_TYPE in the file header otherwise there are no tables of type
+*  VBA_TYPE.
+    IF KEYSTRNG = VBA_TYPE THEN
+        KEYWORD = 'EXTVER' !! CHAR(VBA_SLOT); GETHEAD
+    ELSE
+        KEYVALUE(1) = 0
+    END
+    VBA_VER = KEYVALUE(1)
+*  Restore saved adverbs
+    KEYWORD  = VBA_KEYW; KEYVALUE = VBA_KEYV; KEYSTRNG = VBA_KEYS
+RETURN VBA_VER
+FINISH
+PROCEDURE VLALIST
+*procedure to run LISTR in a standard manner
+   default 'listr';tget vlalist;task 'listr'
+     docrt=-1; opty 'gain'; inext 'sn'; bif 1;eif 2
+     stokes 'half'; dparm 5 1 0
+   runwait('listr')
+FINISH
+PROCEDURE DAYNUM(VBA_DATE)
+*-----------------------------------------------------------------------
+*   Returns the day number when given a date as a character string in
+*   yyyymmdd format.  The leap year calculation is good from 1901-2099.
+*   VBA_DATE is a 16 character string so the user can send KEYWORD.
+*-----------------------------------------------------------------------
+array vba_mnum(12)
+scalar vba_yr, vba_mo, vba_day, vba_dnum, vba_leap, vba_ok
+*-----------------------------------------------------------------------
+vba_leap = 0; vba_yr=value(substr(vba_date,1,4))
+vba_mnum(1)=0;vba_mnum(2)=31;vba_mnum(3)=59;vba_mnum(4)=90
+vba_mnum(5)=120;vba_mnum(6)=151;vba_mnum(7)=181;vba_mnum(8)=212
+vba_mnum(9)=243;vba_mnum(10)=273;vba_mnum(11)=304;vba_mnum(12)=334
+vba_mo=value(substr(vba_date,5,6)); vba_day=value(substr(vba_date,7,8))
+if(mod(vba_yr,4)=0&vba_mo>2) then; vba_leap=1;end
+vba_dnum=vba_mnum(vba_mo)+vba_day+vba_leap
+if(vba_mo<1)!(vba_mo>12)!(vba_day<1)!(vba_day>31)then; vba_dnum=-1;end
+return vba_dnum
+finish
+PROCEDURE VLATECR
+*-----------------------------------------------------------------------
+*   Input adverbs:
+*       INNAME      file name
+*       INCLASS     file class
+*       INSEQ       file sequence number
+*       INDISK      disk number
+*-----------------------------------------------------------------------
+scalar vba_ok, vba_yr, vba_cr, vba_dnum, vba_i, vba_get, vba_days, vba_nfil
+scalar vba_rund
+string*3 vba_chdn
+string*48 vba_inf
+*-----------------------------------------------------------------------
+tput vlatecr; vnum 35; vput vlatecr; sysout=''
+vba_ok=1;vba_get=1; sys2com='';
+if(maxtab('NX')=0)then
+ vba_ok=-6
+end
+if(vba_ok>0)then
+  default gethead; vget vlatecr;
+  keyword = 'DATE-MAP'; gethead; vba_cr=value(substr(keystrng,1,4))
+  vba_rund=daynum(keystrng)
+  keyword = 'DATE-OBS'; gethead; vba_yr=value(substr(keystrng,1,4))
+  if(vba_yr>1997)&(vba_yr<=vba_cr) then;
+     vba_dnum=daynum(keystrng);
+     if(vba_dnum<1)!(vba_dnum>366) then; vba_ok=-4;end
+     if(vba_yr=1998)&(vba_dnum<151)then; vba_ok=-5;end
+  else
+     vba_ok=-4; if(vba_yr<=1997) then; vba_ok=-5; end
+  end
+  default getthead; vget vlatecr;
+  inext 'nx';keywo 'num row'; getthead; pixxy keyval(1), 1; tabget
+  vba_days=keyval(1)+keyval(2); pixxy(2)=2; tabget
+  vba_nfil=ceil(vba_days+0.5*(keyval(1)+keyval(2)))
+  if(vba_ok>0)&((vba_yr<2002)!((vba_yr=2002)&(vba_dnum<305))) then
+     if(((vba_days+0.5*(keyval(1)+keyval(2)))-vba_nfil+1.0)*24.0>23.0) then
+        vba_nfil=vba_nfil+1
+     end
+     pixxy 1, 1; tabget; vba_days=keyval(1)+keyval(2); pixxy(2)=2; tabget
+     if((vba_days-0.5*(keyval(1)+keyval(2)))*24.0<1.0) then
+       vba_nfil=vba_nfil+1; vba_dnum=vba_dnum-1
+     end
+     if(vba_yr=1998)&(vba_dnum<151)then; vba_ok=-5;end
+  end
+  if(vba_ok>0) then
+    syscom 'which wget
+    system
+    if(error>0) then
+      syscom 'which curl
+      system
+      if(error>0) then
+         syscom 'which ncftpget
+         system
+         if(error>0) then; vba_ok=-1;else; vba_get=-2;end
+      else
+         vba_get=-1
+      end
+    end
+  end
+  if(vba_ok>0) then
+    type 'Download file(s):'
+    for vba_i=vba_dnum to vba_dnum+vba_nfil-1
+      substr(vba_chdn,1,2)='00';
+      if(vba_i>99) then;
+         vba_chdn=char(vba_i)
+      else
+        if(vba_i>9) then
+          substr(vba_chdn,2,3)=char(vba_i)
+        else
+          substr(vba_chdn,3,3)=char(vba_i)
+        end
+      end
+      sys2com(1)=' ftp://cddis.gsfc.nasa.gov/gps/products/ionex/
+      sys2com(2)=char(vba_yr)!!'/'!!vba_chdn!!'/'
+      sys2com(3)='jplg
+      sys2com(4)=vba_chdn!!'0.'!!substr(char(vba_yr),3,4)!!'i
+      sys2com(5)='.Z'
+      if(vba_get>0) then
+        syscom 'wget -t 10 -P /tmp
+        system
+        if(error>0) then
+          sys2com(3)='codg
+          system
+          if(error<=0)then
+            syscom 'mv /tmp/
+            sys2com(1)=sys2com(3)
+            sys2com(2)=sys2com(4)
+            sys2com(3)='.Z /tmp/jplg
+            system
+            sys2com(1)=' ftp://cddis.gsfc.nasa.gov/gps/products/ionex/
+            sys2com(2)=char(vba_yr)!!'/'!!vba_chdn!!'/'
+            sys2com(3)='jplg
+          end
+        end
+      else
+        if(vba_get=-1) then
+          syscom 'curl
+          sys2com(6)=' > /tmp/jplg
+          sys2com(6)=sys2com(6)!!sys2com(4)!!sys2com(5)
+          system
+          if(error>0) then
+            sys2com(3)='codg
+            sys2com(6)=' > /tmp/codg
+            sys2com(6)=sys2com(6)!!sys2com(4)!!sys2com(5)
+            system
+            if(error<=0)then
+              syscom 'mv /tmp/
+              sys2com(1)=sys2com(3)
+              sys2com(2)=sys2com(4)
+              sys2com(3)='.Z /tmp/jplg
+              sys2com(6)=''
+              system
+              sys2com(1)=' ftp://cddis.gsfc.nasa.gov/gps/products/ionex/
+              sys2com(2)=char(vba_yr)!!'/'!!vba_chdn!!'/'
+              sys2com(3)='jplg
+            end
+          end
+        else
+          syscom='cd /tmp ; ncftpget -t 120
+          system
+          if(error>0) then
+            sys2com(3)='codg
+            system
+            if(error<=0)then
+              syscom 'mv /tmp/
+              sys2com(1)=sys2com(3)
+              sys2com(2)=sys2com(4)
+              sys2com(3)='.Z /tmp/jplg
+              system
+              sys2com(1)=' ftp://cddis.gsfc.nasa.gov/gps/products/ionex/
+              sys2com(2)=char(vba_yr)!!'/'!!vba_chdn!!'/'
+              sys2com(3)='jplg
+            end
+          end
+        end
+      end
+      if(error>0) then; vba_ok=-2; end
+      if(error<=0)then
+        syscom = 'uncompress /tmp/
+        sys2com(1) = sys2com(3)!!sys2com(4)!!sys2com(5)
+        if(error>0) then; vba_ok=-3;end
+        if(vba_i=vba_dnum)then
+          vba_inf = '/tmp/
+          vba_inf = vba_inf!!sys2com(3)!!sys2com(4)
+        end
+        sys2com(2)~'','','','',''; system
+      end
+    end
+  end
+  if(vba_ok<0)then
+    type 'The download failed.'
+    if(vba_ok=-1)then
+      type 'Your system does not have any of the three possible commands,
+      type 'wget, curl or ncftpget, that this script attempts to use to
+      type 'automatically download the IONEX file(s).
+    end
+    if(vba_ok=-2) then
+      type 'It takes up to a week for the IONEX files to appear,'
+      type 'if your experiment is recent, try again in a few days.'
+    end
+    if(vba_ok=-4) then
+      type 'Attempt to convert observation date to day number failed.'
+      type 'Check the observation date in the header of this file.'
+    end
+    if(vba_ok=-5) then
+      type 'IONEX files do not exist for dates earlier than June 1, 1998.'
+    end
+    if(vba_ok<>-5) then
+      type 'Download the file(s) manually (see TECOR EXPLAIN file),'
+      type 'and run TECOR.'
+    end
+  end
+end
+if(vba_ok>0) then
+  default tecor; vget vlatecr; task 'tecor'
+*    nfiles=vba_nfil; infi=vba_inf; runwait('tecor')
+    nfiles=vba_nfil; infi=vba_inf; go tecor
+  type 'Number of files downloaded = '!!char(nfiles)
+  type 'There are jplg* (IONEX) files in your /tmp directory.
+  type 'CL #'!!char(maxtab('CL'))!!' contains ionospheric corrections'
+end
+if(vba_ok=-6) then
+  type 'You must have a NX table to use this procedure.
+  type 'Run INDXR and try again.
+end
+tget vlatecr
+return;finish

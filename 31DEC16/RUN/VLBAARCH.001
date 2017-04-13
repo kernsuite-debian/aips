@@ -1,0 +1,659 @@
+$ VLBAPROC
+$---------------------------------------------------------------
+$! Procedures for easy-to-learn VLBA data reduction
+$# RUN POPS VLBI UTILITY CALIBRATION
+$-----------------------------------------------------------------------
+$;  Copyright (C) 2000-2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+PROCEDURE VBA_VARS
+*-----------------------------------------------------------------------
+*   Define variables for VLBA procedures.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VBA_VARS
+*-----------------------------------------------------------------------
+*
+*   These are used as arguments for procedures
+*
+    STRING*8 VBA_TASK
+    STRING*2 VBA_TYPE
+*
+*   These are used to store adverb settings that should be restored
+*   at the end of a procedure.
+*
+    STRING*2  VBA_EXT
+    STRING*16 VBA_KEYS
+    ARRAY     VBA_KEYV(2)
+    STRING*8  VBA_KEYW
+    ARRAY     VBA_PIXY(7)
+    SCALAR    VBA_VERS
+*
+    string*8  a_bpol
+    scalar    x,y,z,a_id,a_suba,a_disk,a_err,a_error, a_debug
+    array a_tape(10)
+    RETURN
+FINISH
+
+PROCEDURE A_INFO (vba_TASK)
+  if (a_debug > 0) then
+    task vba_task;type '*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*'
+    inp;type '*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*'; j = 1
+    type 'TYPE RETURN TO CONTINUE, ZERO TO STOP';read j
+    if (j = 0) then;type 'OK, STOPPING AT' vba_task;a_error = 99;end
+  end; $ type vba_task!!' RUNNING ..'
+RETURN;finish
+
+PROCEDURE RUNWAIT (VBA_TASK)
+*-----------------------------------------------------------------------
+*   Runs VBA_TASK and waits for it to complete
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL RUNWAIT
+*-----------------------------------------------------------------------
+    STRING*8  VBA_TTSK
+    SCALAR    VBA_WAIT
+  VBA_WAIT = DOWAIT; DOWAIT = TRUE; VBA_TTSK = TASK; TASK = VBA_TASK
+  a_info(task);if(a_error=0)then;GO;end;DOWAIT=VBA_WAIT;TASK=VBA_TTSK;RETURN
+FINISH
+
+PROCEDURE MAXTAB (VBA_TYPE)
+*-----------------------------------------------------------------------
+*   Return the highest version number of a table of type VBA_TYPE
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL MAXTAB
+*-----------------------------------------------------------------------
+  SCALAR VBA_SLOT
+
+  VBA_KEYW = KEYWORD; VBA_KEYV = KEYVALUE; VBA_KEYS = KEYSTRNG
+  VBA_SLOT = 0; KEYSTRNG = '  '
+*  Invariant: KEYSTRNG <> VBA_TYPE implies that no of the first
+*             VBA_SLOT tables has type VBA_TYPE
+*  Bound: 50 - VBA_SLOT
+  WHILE VBA_SLOT <> 50 & KEYSTRNG <> VBA_TYPE
+    VBA_SLOT = VBA_SLOT + 1; KEYWORD = 'EXTYPE' !! CHAR(VBA_SLOT); GETHEAD
+  END
+*  If KEYSTRNG = VBA_TYPE then VBA_SLOT is the index for table type
+*  VBA_TYPE in the file header otherwise there are no tables of type
+*  VBA_TYPE.
+  IF KEYSTRNG = VBA_TYPE THEN
+    KEYWORD = 'EXTVER' !! CHAR(VBA_SLOT); GETHEAD
+  ELSE
+    KEYVALUE(1) = 0
+  END
+  VBA_VER = KEYVALUE(1)
+*  Restore saved adverbs
+  KEYWORD  = VBA_KEYW; KEYVALUE = VBA_KEYV; KEYSTRNG = VBA_KEYS
+  RETURN VBA_VER
+FINISH
+
+PROCEDURE VBA_ONLY
+*-----------------------------------------------------------------------
+*   Returns TRUE if a data set only contains VLBA antennas (not yet ++)
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VBA_ONLY
+*-----------------------------------------------------------------------
+    SCALAR    VBA_NSUB
+    SCALAR    VBA_NANT
+    SCALAR    VBA_STAT
+    SCALAR    VBA_VLBA
+    SCALAR    VBA_ROW
+* Save adverbs
+    VBA_EXT = INEXT; VBA_VERS = INVERS; VBA_PIXY = PIXXY;
+    VBA_KEYW = KEYWORD; VBA_KEYV = KEYVALUE; VBA_KEYS = KEYSTRNG
+    VBA_NSUB = MAXTAB ('AN'); VBA_VLBA = TRUE
+    FOR INVER = 1 TO VBA_NSUB
+        INEXT = 'AN'
+        KEYWORD = 'NUM ROW'
+        GETTHEAD
+        VBA_NANT = KEYVALUE(1)
+        FOR VBA_ROW = 1 TO VBA_NANT
+            PIXXY = VBA_ROW, 1; TABGET; VBA_STAT = FALSE
+            IF KEYSTRNG = 'BR' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'FD' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'HN' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'KP' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'LA' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'MK' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'NL' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'OV' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'PT' THEN; VBA_STAT = TRUE; END
+            IF KEYSTRNG = 'SC' THEN; VBA_STAT = TRUE; END
+*            IF KEYSTRNG = 'Y' THEN; VBA_STAT = TRUE; END
+*            IF KEYSTRNG = 'GB' THEN; VBA_STAT = TRUE; END
+*            IF KEYSTRNG = 'EB' THEN; VBA_STAT = TRUE; END
+*            IF KEYSTRNG = 'AR' THEN; VBA_STAT = TRUE; END
+            IF VBA_STAT = FALSE THEN; VBA_VLBA = FALSE; END
+        END
+    END
+* Restore adverbs
+    INEXT = VBA_EXT; INVERS = VBA_VERS; PIXXY = VBA_PIX
+    KEYWORD  = VBA_KEYW; KEYVALUE = VBA_KEYV; KEYSTRNG = VBA_KEYS
+    RETURN VBA_VLBA
+FINISH
+
+PROCEDURE VBA_NOT
+*-----------------------------------------------------------------------
+*   Returns TRUE if a data set only contains non-VLBA antennas (not yet ++)
+$ and correlated by the vlba correlator (else already stopped)
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VBA_ONLY
+*-----------------------------------------------------------------------
+    SCALAR    VBA_NSUB
+    SCALAR    VBA_NANT
+    SCALAR    VBA_STAT
+    SCALAR    VBA_VLBA
+    SCALAR    VBA_ROW
+* Save adverbs
+    VBA_EXT = INEXT; VBA_VERS = INVERS; VBA_PIXY = PIXXY;
+    VBA_KEYW = KEYWORD; VBA_KEYV = KEYVALUE; VBA_KEYS = KEYSTRNG
+    VBA_NSUB = MAXTAB ('AN'); VBA_VLBA = TRUE
+
+    FOR INVER = 1 TO VBA_NSUB
+        INEXT = 'AN'
+        KEYWORD = 'NUM ROW'
+        GETTHEAD
+        VBA_NANT = KEYVALUE(1)
+        FOR VBA_ROW = 1 TO VBA_NANT
+            PIXXY = VBA_ROW, 1; TABGET; VBA_STAT = TRUE
+            IF KEYSTRNG = 'BR' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'FD' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'HN' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'KP' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'LA' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'MK' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'NL' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'OV' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'PT' THEN; VBA_STAT = FALSE; END
+            IF KEYSTRNG = 'SC' THEN; VBA_STAT = FALSE; END
+*            IF KEYSTRNG = 'Y' THEN; VBA_STAT = FALSE; END
+*            IF KEYSTRNG = 'GB' THEN; VBA_STAT = FALSE; END
+*            IF KEYSTRNG = 'EB' THEN; VBA_STAT = FALSE; END
+*            IF KEYSTRNG = 'AR' THEN; VBA_STAT = FALSE; END
+            IF VBA_STAT = FALSE THEN; VBA_VLBA = FALSE; END
+        END
+    END
+* Restore adverbs
+    INEXT = VBA_EXT; INVERS = VBA_VERS; PIXXY = VBA_PIX
+    KEYWORD  = VBA_KEYW; KEYVALUE = VBA_KEYV; KEYSTRNG = VBA_KEYS
+    RETURN VBA_VLBA
+FINISH
+
+PROCEDURE VBA_NSTK
+*-----------------------------------------------------------------------
+*   Returns the number of STOKES axis values in a file.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VBA_NSTK
+$ NB : Unprocessed data has 1 or 4 stokes axes - only 1 may give a problem
+*-----------------------------------------------------------------------
+    SCALAR    VBA_AXIS
+    SCALAR    VBA_NUM
+* Save adverbs
+    VBA_KEYW = KEYWORD; VBA_KEYS = KEYSTRNG; VBA_KEYV = KEYVALUE
+    VBA_AXIS = 0; KEYSTRNG = '  ';vget vlbafpol
+* Invariant: KEYSTRNG <> 'STOKES' implies that the STOKES axis is not
+*            one of the first VBA_AXIS axes
+* Bound: 7 - VBA_AXIS
+    WHILE VBA_AXIS <> 7 & KEYSTRNG <> 'STOKES'
+        VBA_AXIS = VBA_AXIS + 1
+        KEYWORD = 'CTYPE' !! CHAR(VBA_AXIS); GETHEAD
+    END
+    IF KEYSTRNG = 'STOKES' THEN
+        KEYWORD = 'NAXIS' !! CHAR(VBA_AXIS); GETHEAD
+        VBA_NUM = KEYVALUE(1)
+    ELSE
+        PRINT 'VBA_NSTK: STOKES AXIS IS MISSING'
+        VBA_NUM = 0
+    END
+* Restore adverbs
+    KEYWORD  = VBA_KEYW; KEYSTRNG = VBA_KEYS; KEYVALUE = VBA_KEYV
+    RETURN VBA_NUM
+FINISH
+
+procedure dozapit
+  indisk=1;chkname;while (error>0 & indisk<100);indisk=indisk+1;chkname;end
+  if (error=0) then;zap;else;type'ERROR ZAPPING !';a_error=99;end;indisk=0
+return;finish
+
+procedure vlbafits
+  string*1 a_pol
+  scalar a_st,a_if,a_ch,a_fq,a_bw;x=0;a_st=0;a_if=0;a_ch=0;a_fq=0;a_bw=0
+if(a_error<>99)then
+   vget fitab;vget vlbafpol;task'fitab' $ to get inname etc
+  while x <> 7 $ get number of stokes, IFs, channels and freq for dataout name
+    x=x+1;keyword='ctype'!!char(x);gethead
+    if keystrng='stokes' then;keyword='naxis'!!char(x);gethead;a_st=keyvalue(1)
+      if a_st=4 then;a_pol='F';else;if a_st=2 then;a_pol='H';else;
+        keyword='crval'!!char(x);gethead;
+        if keyval(1)=-1 then;a_pol='R';else;if keyval(1)=-2 then;a_pol='L';else
+        if keyval(1)=-5 then;a_pol='X';else;if keyval(1)=-6 then;a_pol='Y';else
+        if keyval(1) >0 then;a_pol='I';else;a_pol='U';end;end;end;end;end;end
+    end;end
+    if keystrng='if' then;keyword='naxis'!!char(x);gethead;a_if=keyvalue(1);end
+    if keystrng='freq' then;keyword='naxis'!!char(x);gethead;a_ch=keyvalue(1)
+      keyword='cdelt'!!char(x);gethead;a_bw=keyvalue(1)*a_ch/1e6
+      keyword='crval'!!char(x);gethead;a_fq=keyvalue(1)/1e9;end
+  end;x=1;dataout=dataout!!inname!!'_'
+  if a_pol = 'u' then
+    dataout=dataout!!char(a_st)!!'ST';else;dataout=dataout!!a_pol!!'POL'
+  end;dataout=dataout!!char(a_if)!!'IF'
+  if (a_bw < 0.5) then; dataout=dataout!!char(a_bw*1000)!!'KHZ'
+    else; dataout=dataout!!char(a_bw)!!'MHZ'
+  end
+  dataout=dataout!!char(a_ch)!!'CH_'!!char(a_fq)!!'GHZ'
+  if (a_id > 9) then;dataout=dataout!!char(a_id)
+    else;dataout=dataout!!'0'!!char(a_id);end
+  while ( x < length(dataout) )
+    if (substr(dataout,x,x) = ' ') then; substr(dataout,x,x) = '_';end;x=x+1
+  end;clrtemp;runwait('fitab');dozapit;return
+end
+finish
+
+PROCEDURE VLBAFPOL
+*-----------------------------------------------------------------------
+*   Check whether polarization labelling needs to be fixed and either
+*   fix it automatically if it is safe to do so or recommend settings
+*   for FXPOL if not.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VLBAFPOL
+*
+*   Input adverbs:
+*       INNAME      input file name
+*       INCLASS     input file class
+*       INSEQ       input file sequence number
+*       INDISK      input file disk number = 0
+*       OUTDISK     output file disk number = 0
+*-----------------------------------------------------------------------
+  SCALAR  VBA_NIFS, VBA_PAIR, VBA_FREQ, VBA_AXIS, VBA_NUM
+*-----------------------------------------------------------------------
+  indisk 0;VPUT VLBAFPOL;a_error=0
+  in4name inname;in4class inclass;in4seq inseq;in4disk indisk
+  IF VBA_NSTK = 1 THEN
+    IF MAXTAB ('FQ') > 0 THEN
+*  Find the number of IFs:
+      INEXT='FQ';INVERS=1;KEYWORD='NO_IF';GETTHEAD;VBA_NIFS=KEYVALUE(1)
+*  Find the number of IF pairs that have the same frequency: usually R and L
+      VBA_PAIR = 0
+      if vba_nifs > 1 then
+        FOR I = 0 TO VBA_NIFS / 2 - 1
+          USERID = 0; INEXT = 'FQ'; INVERS = 1;
+          PIXXY = 1, 2, 2 * I + 1; TABGET
+          VBA_FREQ = KEYVALUE(1); PIXXY = 1,2,2*I+2;TABGET
+          IF KEYVALUE(1) = VBA_FREQ THEN
+            VBA_PAIR = VBA_PAIR + 1
+          END
+        END
+      end
+      IF VBA_PAIR = 0 THEN
+*  This data set appears to contain only one polarization - set to archive
+        type 'single polarization data set'
+        vlbafits
+      ELSE
+        IF 2 * VBA_PAIR = VBA_NIFS THEN
+*  Set up for FXPOL:
+          task'FXPOL';DEFAULT;VGET VLBAFPOL;TASK'FXPOL';OUTNAME INNAME
+          OUTCLASS'FXPOL';outseq inseq;outdisk indisk
+          in4name inname;in4class inclass;in4seq inseq;in4disk indisk
+          IF(SUBSTR(INCLASS,1,3) = 'FQ-') THEN
+            OUTCLASS='FPOL'!! SUBSTR(INCLASS,4,5)
+          END
+*  Guess BANDPOL from the reference value for the STOKES axis in a file
+          VBA_AXIS = 0; KEYSTRNG = '  '
+          WHILE VBA_AXIS <> 7 & KEYSTRNG <> 'STOKES'
+            VBA_AXIS=VBA_AXIS+1;KEYWORD='CTYPE'!!CHAR(VBA_AXIS);GETHEAD
+          END
+          IF KEYSTRNG = 'STOKES' THEN
+            KEYWORD='CRVAL'!!CHAR(VBA_AXIS);GETHEAD;VBA_NUM=KEYVALUE(1)
+          END
+          IF (VBA_NUM = -1) THEN;BANDPOL='*(RL)';ELSE;BANDPOL='*(LR)';END
+          IF VBA_ONLY = false THEN
+*  Some foreign stations present so BANDPOL might be wrong if non-vlba only:
+            if vba_not=1 then;type'non-vlba only - hope bandpol is right';end
+          END $ can delete file and continue to archive the fpol output
+          RUNWAIT ('FXPOL');dozapit
+          a_id=freqid;inclass outclass;inseq outseq;vput vlbafpol;vlbafits
+          inname in4name;inclass in4class;inseq in4seq;indisk in4disk
+          vput vlbafpol
+        ELSE
+*   AIPS can not guess the correct setting for BANDPOL - use it from vlbaarch
+          PRINT 'THIS DATA USES AN UNUSUAL OBSERVING SET-UP.'
+          if substr(a_bpol,1,1)<>' 'then
+            PRINT 'USING BANDPOL AS GIVEN IN VLBAARCH INPUTS :', a_bpol
+            task'FXPOL';DEFAULT;VGET VLBAFPOL;TASK'FXPOL';OUTNAME INNAME
+            OUTCLASS'FXPOL';outseq inseq;outdisk indisk;bandpol a_bpol
+            IF(SUBSTR(INCLASS,1,3) = 'FQ-') THEN
+              OUTCLASS='FPOL'!! SUBSTR(INCLASS,4,5)
+            END
+            RUNWAIT ('FXPOL');dozapit
+            a_id=freqid;inclass outclass;inseq outseq;vput vlbafpol;vlbafits
+            inname in4name;inclass in4class;inseq in4seq;indisk in4disk
+            vput vlbafpol
+          else
+              type'CHECK BANDPOL ON:',inname,inclass,char(inseq);a_error=99
+          end
+        END
+      END
+    ELSE
+      PRINT 'THIS DATA SET IS CORRUPT - NO FREQUENCY TABLE'
+    END
+  ELSE
+    vlbafits
+  END;clr4name
+  RETURN
+FINISH
+
+PROCEDURE VLBAFIX
+*-----------------------------------------------------------------------
+*   Sort, search for subarrays in, and fix polarization of VLBA data.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VLBAFIX
+*
+*   Input adverbs:
+*       INNAME      file name
+*       INCLASS     file class
+*       INSEQ       file sequence number
+*       INDISK      disk number
+*       OUTDISK     output disk number = 0
+*       CLINT       CL table interval
+*       SUBARRAY    is there a subarray
+*-----------------------------------------------------------------------
+    STRING*6 VBA_TCLA
+    ARRAY   VBA_IF1(20), VBA_IF2(20)
+    SCALAR  VBA_INDX, VBA_I, VBA_J, VBA_LOFF, VBA_MDIF, VBA_NFQI, VBA_ROWS,
+    SCALAR  VBA_9050, VBA_BFQ VBA_FQ, VBA_SRT, VBA_SX, VBA_TSEQ
+*-----------------------------------------------------------------------
+if a_error<>99 then
+  FOR VBA_I=1 TO 20;VBA_IF1(VBA_I)=0;VBA_IF2(VBA_I)=0;END;vget vlbafix
+* Find out if data needs sorting
+  VBA_SRT = TRUE; KEYWORD = 'SORTORD'; KEYVALUE = 0;KEYSTRNG = ''; GETHEAD
+  IF SUBSTR(KEYSTRNG,1,2) = 'TB' THEN;VBA_SRT = FALSE;END
+* Find out if data needs to be split into seperate frequencies
+  INEXT='FQ';INVERS=1;KEYWORD='NUM ROW';GETTHEAD;VBA_NFQI=KEYVALUE(1)
+  KEYWORD = 'NO_IF'; GETTHEAD; VBA_NIF = KEYVALUE(1);vput vlbafpol
+  FOR VBA_I=2 TO 7
+    KEYWORD='CTYPE'!!CHAR(VBA_I); GETHEAD
+    IF(SUBSTR(KEYSTRNG(1),1,4)='FREQ') THEN
+      KEYWORD = 'CRVAL'!!CHAR(VBA_I); GETHEAD; VBA_BFQ = KEYVALUE(1)
+    END
+  END
+  VBA_SX = -1; VBA_9050 = -1
+  FOR VBA_I = 1 TO VBA_NFQI
+    PIXXY VBA_I, 2, 1; TABGET;VBA_FQ=VBA_BFQ+KEYVALUE(1)
+    IF(VBA_FQ < 9.1e9 & VBA_FQ > 7.8e9) THEN; VBA_SX=VBA_I;END
+    IF(VBA_FQ < 2.8e9 & VBA_FQ > 2.0e9) THEN; VBA_SX=VBA_I;END
+    IF(VBA_FQ < 6.3e8 & VBA_FQ > 5.9e8) THEN; VBA_9050=VBA_I;END
+    IF(VBA_FQ < 3.5e8 & VBA_FQ > 3e8) THEN; VBA_9050=VBA_I;END
+  END
+  FOR VBA_I = 1 TO VBA_NFQI
+    IF(VBA_SX = VBA_I ! VBA_9050 = VBA_I) THEN
+      IF(VBA_SX = VBA_I) THEN; VBA_MDIF = 1E9; END
+      IF(VBA_9050 = VBA_I) THEN; VBA_MDIF = 2E8; END
+      VBA_LOFF=0
+      FOR VBA_J = 1 TO VBA_NIF
+        PIXXY VBA_I, 2, VBA_J; TABGET
+        IF(KEYVALUE(1)-VBA_LOFF > VBA_MDIF & VBA_J > 1)THEN
+          VBA_IF1(VBA_I)=VBA_J
+        END
+        VBA_IF2(VBA_I)=VBA_J;VBA_LOFF = KEYVALUE(1)
+      END
+      IF(VBA_IF1(VBA_I)=0 & VBA_SX=VBA_I) THEN; VBA_SX=-1; END
+      IF(VBA_IF1(VBA_I)=0 & VBA_9050=VBA_I) THEN; VBA_9050=-1; END
+    END
+  END
+* Sort data (if needed)
+  IF VBA_SRT = TRUE THEN
+    TASK'MSORT';DEFAULT;VGET VLBAFIX;TASK'MSORT';OUTNAME=INNAME
+    OUTCLASS=INCLASS;OUTSEQ=INSEQ;SORT='TB';RUNWAIT('MSORT')
+  END
+* Correct for subarrys (if needed)
+  IF SUBARRAY > 0 THEN
+    PRINT 'CORRECTING FOR SUBARRAYS';TASK'USUBA';DEFAULT;VGET VLBAFIX;
+    TASK'USUBA';FREQID=0;SUBARRAY=a_suba;RUNWAIT('USUBA');inext'nx';invers 1
+    if maxtab('nx') > 0 then;invers -1;extdest;invers 0;end
+    task'indxr';default;vget vlbafix;task'indxr'
+    CPARM=0,0,CLINT,1,1,0;RUNWAIT ('INDXR')
+  END
+
+* Split into seperate frequencies (if needed)
+  IF (VBA_NFQI > 1) ! (VBA_SX > 0) ! (VBA_9050 > 0) THEN
+    TASK 'UVCOP'; DEFAULT; VGET VLBAFIX; TASK 'UVCOP'
+* Set invarient inputs
+    FLAGVER=MAXTAB('FG');UVCOPPRM=0,0,0,1,0;OUTNAME=INNAME;VPUT UVCOP
+* Loop through frequencies
+    FOR VBA_ROWS = 1 TO VBA_NFQI
+      VGET VLBAFIX
+      PIXXY  = VBA_ROWS, 1, 1; INVER  = 1; INEXT  = 'FQ'
+      TABGET; FREQID = KEYVALUE(1); VPUT UVCOP
+      IF VBA_SX <> vba_rows & VBA_9050 <> vba_rows THEN
+        VGET UVCOP;BIF = 0;EIF = 0; OUTCLASS = 'FQ-' !! CHAR(FREQID)
+        PRINT'COPYING FREQUENCY ID #'!!CHAR(FREQID);RUNWAIT('UVCOP')
+        a_id=freqid;inclass outclass;inseq outseq;outdisk 0;vput vlbafpol
+      ELSE
+        VGET UVCOP; BIF=1; EIF=VBA_IF1(vba_rows)-1
+        PRINT 'COPYING FREQUENCY ID #' !! CHAR(FREQID)
+        OUTCLASS = 'FQ-' !! CHAR(FREQID);RUNWAIT ('UVCOP')
+        VBA_TCLA = OUTCLASS; VBA_TSEQ = OUTSEQ
+* Index data
+        TASK 'INDXR'; DEFAULT; VGET VLBAFIX; TASK 'INDXR'
+        INCLASS  = VBA_TCLA; INSEQ = VBA_TSEQ; INDISK = OUTDISK
+        CPARM  = 0, 0, CLINT, 1, 1, 0;RUNWAIT ('INDXR')
+* run VLBAFPOL
+        a_id=freqid;inclass outclass;inseq outseq;outdisk 0;vput vlbafpol
+        IF VBA_NSTK = 1 THEN; VLBAFPOL; else; vlbafits; END
+        VGET 'UVCOP';BIF=VBA_IF1(vba_rows); EIF=VBA_IF2(vba_rows)
+        PRINT 'COPYING FREQUENCY ID #'!! CHAR(VBA_NFQI+1)
+        OUTCLASS = 'FQ-' !! CHAR(VBA_NFQI+1);RUNWAIT ('UVCOP')
+        a_id=freqid;inclass outclass;inseq outseq;outdisk 0;vput vlbafpol
+      END
+* Index data
+      VBA_TCLA=OUTCLASS;VBA_TSEQ=OUTSEQ;TASK'INDXR';DEFAULT;VGET VLBAFIX
+      TASK'INDXR';INCLASS=VBA_TCLA;INSEQ=VBA_TSEQ;INDISK=OUTDISK
+      CPARM=0,0,CLINT,1,1,0;RUNWAIT('INDXR');VGET VLBAFIX;
+      INCLASS=VBA_TCLA;INSEQ=VBA_TSEQ;INDISK=OUTDISK;a_id=freqid;vput vlbafpol
+* run VLBAFPOL
+      IF VBA_NSTK = 1 THEN; VLBAFPOL; else; vlbafits;END
+    END;vget vlbafix;dozapit
+  ELSE; IF VBA_NSTK = 1 THEN;outseq inseq; VLBAFPOL; else; vlbafits;END; END
+  IF VBA_SX > 0 ! VBA_9050 > 0 THEN; VBA_NFQI=VBA_NFQI+1; END
+  RETURN
+end
+FINISH
+
+PROCEDURE VLBALOAD
+*-----------------------------------------------------------------------
+*   Loads VLBA data from a tape.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VLBALOAD
+*
+*   Input adverbs:
+*       INTAPE      input tape drive number
+*       NFILES      number of files to skip
+*       OUTNAME     output file name
+*       OUTDISK     output disk number
+*       NCOUNT      number of files to load from tape
+*-----------------------------------------------------------------------
+    CLINT = 0.25; douvcomp = -1; VNUM = 34; VPUT VLBALOAD
+* Set defaults for FITLD adverbs:
+    TASK 'FITLD'; DEFAULT; vGET VLBALOAD; TASK 'FITLD'
+    DOCONCAT = 1; WTTHRESH = 0.1; OUTCLASS = 'UVDATA'; RUNWAIT ('FITLD')
+* Table merging and indexing happens in ARCHLOAD - not needed here
+    VGET VLBALOAD
+    RETURN
+FINISH
+
+PROCEDURE ARCHLOAD
+*-----------------------------------------------------------------------
+*   Loads VLBA correlator data from a tape or disk.
+$ modified by Lorant Sjouwerman around 01JAN04 from VLBAUTIL VLBALOAD
+*
+*   Input adverbs:
+*       INTAPE      input tape drive number
+*       DATAIN      disk file name (this and format taken from vlbaarch)
+*       FORMAT      disk file name format (job number or FITLD style)
+*       NFILES      number of files to skip
+*       NCOUNT      number of files to load from tape or disk
+*       OUTNAME     output file name
+*       OUTDISK     output disk number
+*-----------------------------------------------------------------------
+SCALAR A_NTIM, a_format
+string*48 a_infile
+* Set defaults for FITLD adverbs:
+    vnum 34;vget vlbaarch;a_format=format;a_suba=subarray;a_bpol=bandpol;
+    a_infile=datain;TASK'FITLD';DEFAULT;vGET VLBALOAD;TASK'FITLD';DOCONCAT 1
+    WTTHRESH 0.1;OUTCLASS='UVDATA'
+    if intape = 0 then $ using disk file names - which format?
+      if a_format = 0 then $ job numbers - each time a different datain name
+        j = ncount; ncount = 1
+        for a_ntim = (nfiles+1) to (nfiles + j)
+          datain = a_infile!!char(a_ntim)!!'0001.FITS'; runwait('fitld')
+        end
+      else;datain=a_infile;runwait('fitld');end
+    else;ncount=a_tape(z);if z>1 then;nfiles=0;end;RUNWAIT('FITLD');end
+    INNAME=OUTNAME;INCLASS='UVDATA';INSEQ=0;INDISK=OUTDISK;CHKNAME
+   FOR A_NTIM =1:(-1*ERROR+1)
+      IF (MAXTAB('GC') > 0 ! MAXTAB('TY') > 0) THEN
+        inext 'gc';invers 1;keyword='num row'; getthead
+        IF (MAXTAB ('GC') = 1) & ((keyvalue(1)+keyvalue(2)) > 0) THEN
+          TASK 'TACOP'; DEFAULT; VGET VLBALOAD; TASK 'TACOP'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'GC'; INVERS = 1; NCOUNT = 1
+          OUTNAME = INNAME; OUTCLASS = INCLASS; OUTSEQ = INSEQ
+          OUTDISK = INDISK; OUTVERS = 2; RUNWAIT ('TACOP'); EXTDEST
+          TASK 'TAMRG'; DEFAULT; VGET VLBALOAD; TASK 'TAMRG'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'GC'; INVERS = 2; OUTVERS = 1
+          APARM = 1, 1, 2, 1, 3, 1; BPARM = 1, 2, 3; OUTSEQ = INSEQ
+          RUNWAIT ('TAMRG'); EXTDEST
+        END
+        inext 'pc';invers 1;keyword='num row'; getthead
+        IF (MAXTAB ('PC') = 1) & ((keyvalue(1)+keyvalue(2)) > 0) THEN
+          TASK 'TACOP'; DEFAULT; VGET VLBALOAD; TASK 'TACOP'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'PC'; INVERS = 1; NCOUNT = 1
+          OUTNAME = INNAME; OUTCLASS = INCLASS; OUTSEQ = INSEQ
+          OUTDISK = INDISK; OUTVERS = 2; RUNWAIT ('TACOP'); EXTDEST
+          TASK 'TAMRG'; DEFAULT; VGET VLBALOAD; TASK 'TAMRG'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'PC'; INVERS = 2; OUTVERS = 1
+          APARM = 1, 1, 4, 1, 5, 1, 6, 1; BPARM = 1, 3, 4, 5, 6
+          CPARM = (0.05 / (24.0 * 60.0 * 60.0)), 0; OUTSEQ = INSEQ
+          RUNWAIT ('TAMRG'); EXTDEST
+        END
+        inext 'ty';invers 1;keyword='num row'; getthead
+        IF (MAXTAB ('TY') = 1) & ((keyvalue(1)+keyvalue(2)) > 0) THEN
+          TASK 'TACOP'; DEFAULT; VGET VLBALOAD; TASK 'TACOP'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'TY'; INVERS = 1; NCOUNT = 1
+          OUTNAME = INNAME; OUTCLASS = INCLASS; OUTSEQ = INSEQ
+          OUTDISK = INDISK; OUTVERS = 2; RUNWAIT ('TACOP'); EXTDEST
+          TASK 'TAMRG'; DEFAULT; VGET VLBALOAD; TASK 'TAMRG'
+          INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+          INDISK = OUTDISK; INEXT = 'TY'; INVERS = 2; OUTVERS = 1
+          APARM = 1, 1, 4, 1, 5, 1, 6, 1; BPARM = 1, 3, 4, 5, 6
+          CPARM = (0.05 / (24.0 * 60.0 * 60.0)), 0; OUTSEQ = INSEQ
+          RUNWAIT ('TAMRG'); EXTDEST
+        END
+*        TYPE 'your GC, TY and PC tables have been merged'
+      END
+    END
+* check sort order, if TB then delete NX table and run INDXR
+    vget vlbafix;VGET VLBALOAD
+    INNAME=OUTNAME;INCLASS='UVDATA';INSEQ=0;INDISK=OUTDISK;CHKNAME
+    if error < 1 then
+      FOR A_NTIM =1:(-1*ERROR+1)
+        inseq=a_ntim;chkname;while error>0&inseq<100;inseq=inseq+1;chkname;end
+        KEYWORD='SORTORD';KEYVALUE=0;KEYSTRNG='';GETHEAD;vput vlbafix
+        IF SUBSTR(KEYSTRNG,1,2) = 'TB' THEN
+           IF(MAXTAB('NX')>0) THEN; INEXT 'NX'; INVERS 0; EXTD; END
+           TASK 'INDXR'; DEFAULT; VGET VLBALOAD; infile'';TASK 'INDXR'
+           INNAME = OUTNAME; INCLASS = 'UVDATA'; INSEQ = A_NTIM
+           INDISK = OUTDISK; CPARM = 0, 0, CLINT, TRUE, TRUE, 0;chkname
+           while error>0&inseq<100;inseq=inseq+1;chkname;end;RUNWAIT ('INDXR')
+        END
+        vget vlbafix;cparm 0;keyword'telescop';gethead
+        if keystrng <> 'vlba' then
+          type'NON-VLBA CORRELATOR - DO VLBAFIX/FPOL & ARCHIVE BY HAND - SORRY'
+        else;vlbafix;end
+      END
+    end
+    RETURN
+FINISH
+
+procedure vlbaarch
+  a_err=0;a_error=0;y=-99;tput vlbaarch
+  if substr(outname,1,1)=' ' then;type'SPECIFY OUTNAME';a_err=a_err+1;end
+  if length(outname) > 9 then;type'USE AN OUTNAME LESS THAN 9 CHARACTERS'
+    type'E.G. "BX999Z P1" FOR BX999, SEGMENT Z, PASS 1';a_err=a_err+1;end
+  if substr(dataout,1,1)=' ' then;type'SPECIFY DATAOUT';a_err=a_err+1;end
+  if length(dataout)>5 then;type'PLEASE SPECIFY A SHORTER DATAOUT BY EXITING'
+    type'AIPS AND DEFINING AN ENVIRONMENT VARIABLE BEFORE STARTING AIPS'
+    type'IN UNIX TYPE "SETENV XXX SOME_DIRECTORY_NAME" WITH XXX<5 CHAR'
+    type'THEN IN AIPS USE DATAOUT="XXX:" WITH SINGLE QUOTES';a_err=a_err+1;end
+  if substr(datain,1,1)=' ' & intape = 0 then
+        type'SPECIFY EITHER ONE OF INTAPE OR DATAIN';a_err=a_err+1;end
+  if substr(datain,1,1)<>' ' & intape<>0 then
+        type'SPECIFY INTAPE OR DATAIN ONLY, NOT BOTH';a_err=a_err+1;end
+  if intape > 0 then; a_tape=aparm; a_disk=ncount
+    if a_disk < 1 then;type'NEED MORE TAPE INFO';a_err=a_err+1;end
+    if aparm(a_disk)<1 then;type'NEED MORE TAPE-FILE INFO';a_err=a_err+1;end
+    if nfiles>0 & a_disk > 1 then;type'will use nfiles is zero - check!';end
+  else;a_disk=1;end
+*  if subarray=1 then;type'SUBARRAY CANNOT BE ONE - CHANGE';a_err=a_err+1;end
+  if ncount = 0 then;type'SPECIFY NUMBER OF FILES TO READ';a_err=a_err+1;end
+  if a_err>0 then;type char(a_err)!!' INPUT ERRORS WERE FOUND - TRY AGAIN'
+  else;inp vlbaarch
+*    if subarray > 1 then;type'WILL RUN USUBA TO CORRECT FOR SUBARRAYS';end
+*    if substr(bandpol,1,1)<>' 'then;type'WILL TRY TO CHECK FOR BANDPOL';end
+*    type char(nfiles)!!' FILES WILL BE SKIPPED'
+*    type char(ncount)!!' FILES WILL BE READ'
+*    if intape = 0 then
+*      type char(format)!!' IS THE FORMAT USED TO READ FROM DISK DATAIN :'
+*      type '-> ' datain
+*    else;type'READING FROM TAPE DRIVE NUMBER : '!!char(intape);end
+*    type 'OUTPUT FILES WILL BE WRITTEN USING CONVENTIONS STARTING WITH :'
+*    type '-> ' dataout
+    type'CHECK BELOW FOR AMPLE DISK SPACE ON DISK NO : '!!char(outdisk);free
+    type'';type'TYPE RETURN TO CONTINUE WITH THESE SETTINGS (ELSE STOP)';read y
+    if y<>-99 then;type'ARCHIVING PROCEDURE IS STOPPED ON YOUR REQUEST'
+    else;type'CONTINUING WITH ARCHIVING - BUT REMEMBER:'
+      type' ** DO NOT RUN SIMULTANEOUS VLBAARCH`S IN THE SAME USERNO **';type''
+      vnum=34;if subarray=0 then;subarray=1;end;vput vlbaarch;task'vlbaload'
+      default;vget vlbaarch;clint 0.25;douvcomp -1;vput vlbaload
+      task'vlbafix';default;vget vlbaarch;inname outname;inclass'uvdata'
+           indisk outdisk;outdisk 0;clint 0.25;vput vlbafix
+      task'fitab';default;vget vlbaarch;inname outname;inclass'uvdata'
+           indisk 0;outdisk 0;intype'uv';format 0;douvcomp -1;vput fitab;z=1
+      if a_disk>1 then $ multiple tapes - do vlbaload assuming nfiles=0
+        while z < a_disk
+          type'VLBALOAD - LOAD TAPE :'!!char(z)!!' out of :'!!char(a_disk)
+          type'  -  LET IT SETTLE AND TYPE RETURN TO CONTINUE';read;mount
+          vget vlbaload;if z>1 then;nfiles=0;end;ncount=a_tape(z);z=z+1
+          vlbaload;dismount
+        end
+      end
+      if intape > 0 then
+        type'LOAD THE LAST TAPE AND LET IT SETTLE; TYPE RETURN TO CONTINUE'
+        read;mount
+      else;type'TYPE RETURN TO CONTINUE READING FILES FROM DISK';read;end
+      type'';type'STARTING TO ARCHIVE';archload;type'';type'ARCHIVING ENDED'
+      type'CHECK THE OUTPUT FILES AGAINST THE EXPECTATION FROM <EXP>.SUM'
+      vget vlbaarch;vnum=0;dowait -1;if intape>0 then;dismount;end
+    end
+  end
+  vnum 34;vget vlbaarch;vnum=0;tget vlbaarch
+  return
+finish

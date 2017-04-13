@@ -1,0 +1,203 @@
+INTRODUCTION
+
+     The purpose of this document is to explain my implementation of
+the AIPS TV routines on the COMTAL VISION 1/20.  For background information,
+see the relevant portions of the 'Going AIPS' programmers guide, the COMTAL
+manuals, and the documentation of the FTNVMS package.
+
+
+OVERVIEW OF THE TV SOFTWARE
+
+      The NRAO programmers have isolated all machine-dependant sections
+of the AIPS software in the Y- and Z- routines.  These are subroutines
+whose names beegin with Y or Z.  All operations involving the TV are
+done by Y-routines, some of which in turn call Z-routines.  Thus, to
+understand the implementation of the TV, all one needs to study are the
+Y-routines themselves.  Each Y-routine performs one specific function.
+Virtually my entire effort in implementing the TV has been to rewrite
+the Y-routines to conform to the COMTAL's command vocabulary.  This
+was in some cases easier said than done, as the generaly similar
+capabilities of the COMTAL and the NRAO's IIS tv are divided into
+specific operations in different ways.  Also, the COMTAL has a stand-
+alone minicomupter operating system, while the IIS is directly driven
+by the host computer and has no stand-alone capabilities.
+     The IIS Y-routines drive the TV via system service calls to the
+TV device driver.  The system services are bit-and-register
+assembly language procedures.  Each time a Y-routine decides to
+issue a command or transfer data to the TV, it calls the subroutine
+YMKHDR (for commands) or YGYHDR (for image data) which builds an 8-word
+header that details the operation to be performed.  Then the subroutine
+ZM70XF is called, with this header and any relevant data buffers as inputs.
+ZM70XF in turn calls ZQIO, which is an assembly language routine that has
+the actual system service calls (SS$QIO or SS$QIOW) and is used by almost
+every part of AIPS that involves input or output.   YMKHDR, YGYHDR and
+ZM70XF are invoked only by the Y-routines, or conversely, any software
+that refers to these should be isolated as a Y-routine.  Any deviations
+from this principal should be called to the attention of the programers
+at NRAO !
+     My COMTAL routines are a direct replacement for the supplied IIS
+routines.  They issue calls to the COMTAL device driver (ZBDRIVER) via
+the system service routines (SS$QIOW).  I have put the system service
+call itself in a routine called ZV20XF to avoid cluttering everyting up
+with all that non-FORTRAN stuff, similar in intent to AIPS' ZQIO routine.
+Indeed, one could in fact use ZQIO, which would be closer in conformance
+with AIPS standards, but this standard is to insure compatibility with
+many different types of hardware, and is therefore much more complicated.
+My routines are intended only for VAX computers and COMTAL Vision 1/20
+TV's, so generality is not necessary.  The inputs to ZV20XF are the
+arguments to the QIOW call, as outlined in the documentation for
+ZBDRIVER (appended below).
+     Many of the operations are performed by issuing exactly the same
+commands as one would type at the VISION 1/20 terminal. These routines
+set up the command in a byte array, and pass the array to YCMND.
+     Early versions of these subroutines used the COMTAL supplied FTNVMS
+package of FORTRAN subroutines.  These did little very little other than
+build the control words and call QIOW, and since apparently these routines
+are not commonly available, I have written my subroutines to make the QIOW
+calls directly.
+     The routines are often longer than their NRAO counterparts, as data
+structures are different and need to be translated.  Also, my goal was
+to write software that is as easily understandable to people as possible,
+with speed and efficiancy of secondary importance.  Thus, there is
+undoubtedly room for 'fine tuning', though I doubt that very many
+dramatic improvements visible to the AIPS user can be made.
+
+
+DIRECTORY STRUCTURE
+
+     All of the original IIS Y-routines are stored in the directory
+[AIPS.new.APL.YSUB.IIS].  All of my COMTAL counterparts are stored
+in the directory [AIPS.LOCAL.YSUB].
+     There is one INCLUDE file, called DV20.INC, which defines variables
+that are used in most of the TV routines, which is kept in [AIPS.LOCAL.INCS].
+However, this should be copied into [AIPS.new.INC] before attemtping to
+compile any of the COMTAL Y-routines.  The library [AIPS.new.APL]SUBLIB.OLB
+is where compiled object code for all the Y-routines and FTNVMS is stored.
+I have arranged a command procedure called LYCMRPL that compiles a COMTAL
+Y-routines and places it in the library.
+
+ACCESS TO THE TV
+
+     The AIPS system allocates the TV for its own exclusive use only
+when some operation is to be performed.  This is in contrast to the
+habits of other users, who usually claim exclusive use for themselves
+when they log in.  The reason for AIPS' more complicated scheme is that
+many separate processes in AIPS share the use of the TV.  Thus, different
+users, each logged in at their own terminals, as well as certain detatched
+tasks such as CLEAN, all have access to the TV.  Were any one of them to
+allocate the TV to themselves, it would lock out all other AIPS processes
+as well as non-AIPS users.  AIPS has its own protocols to resolve conflicts
+among AIPS processes.  The dissadvantage to this approach is that AIPS
+has no protection against non-AIPS processes that could allocate the TV;
+if this occurs while someone is using the TV under AIPS, the AIPS user is
+be locked out and AIPS will report an error.  It might be possible
+to broaden the ALLOCATE command to include all AIPS processes, but the
+systems people didn't know of a way, and so far politeness among COMTAL
+users and the reservation system have mitigated any difficulties.  At
+NRAO AIPS is King of the system, so they don't need to worry about this.
+     When an operation is to be performed on the TV, a call is made to
+the subroutine, YTVOPN.  It sets a flag that warns other routines that
+certain set-up procedures need to be invoked, and passes the job of opening
+the TV to the subroutine ZV20OP.  ZV20OP is basicaly identical to the
+NRAO-supplied ZM70OP.
+     When AIPS no longer has immediate need for the TV, it calls YTVCLS,
+which calls ZV20CL.  The reason for this seemingly long chain of
+buck-passing is to segregate all TV handling software to the Y-routines,
+and all machine dependant work to the Z-routines.  This is part of
+NRAO's strategy to make AIPS portable to different computers and peripheral
+devices.  Generaly, the TV is kept assigned while an image is being
+transmitted, or an interactive facility is being used.
+
+
+TRANSMITTING AN IMAGE
+
+     When AIPS decides to transmit an image (or a graphic display), it
+gains access as outlined above.  Subroutine YIMGIO is called to transmit
+each horizontal line of data.  Its main acion is to call my routine YCOMSET,
+which takes care that the COMTAL is set up properly to recieve data.  It
+is here that the image plane is specified, image or graphic selected, number
+of pixels per line is determined, etc.  Most of these things need to be done
+only once for each image, so COMSET clears the flag that YTVOPN set, after
+which most of COMSET is bypassed until the TV is deassigned and re-opened.
+After the set-up rituals are completed, the subroutine YLINETV is called, which
+actually sends the line of data.  This routine is perhaps the messiest of
+the whole lot, as the data structures that AIPS uses are different from
+what the COMTAL expects.  ZV20XF reads the specified line from the TV screen,
+replaces the appropriate pixels with the new data, and sends the whole line
+back.  This allows an image to be superimposed on what is already on the
+screen without disturbing what's outside the boundary of the new image.
+A more sophisticated approach might be to use the window or small area
+feature of the COMTAL, but it would involve changing a lot of the defaults
+in the COMTAL operating system, and the ramifications of this approach
+cannot be confined to one or two subroutines.
+     When AIPS decides to send non-image data or commands to or from the
+COMTAL, it first gains access to the TV (as outlined above), and then
+calls whatever subroutine that performs the desired operation.  YOFM, for
+example, is called to transmit (or read) the pseudocolor enhancement table.
+The TV is then deassigned as outlined above.  Most of these operations are
+simple, and the details are confined to one subroutine.  Control of the
+cursor (or target) is somewhat more complicated, owing partly to the fact
+that our trackball has no buttons.  Smoothing out the cursor handling is
+one area where considerable improvement could be made by someone who is
+intimately familiar with the COMTAL operating system.  I believe that this
+would require detailed knowledge of the LSI-11 assembly language.
+
+
+
+ZB.DOC   COMTAL ZB DRIVER DOCUMENTAION
+======================================
+
+USE OF THE COMTAL DRIVER
+========================
+
+In order to use the COMTAL ZB driver the user must do three calls to
+VAX/VMS system routines. They are the following:
+
+   1. Assign the device
+
+         STATUS = SYS$ASSIGN('_ZBA0:',IZLUN,,)
+
+   2. Write to or read from the COMTAL
+
+         STATUS = SYS$QIOW( ,%VAL(IZLUN),%VAL(IOWP),IOSB, , ,
+        1                  JBUF, %VAL(COMWC), ,%VAL(COMST),%VAL(COMDB), )
+
+      Where: 1.  ---          Event flag number(optional)
+             2.  IZLUN        Unit number assigned by SYS$ASSIGN
+             3.  IOWP/IORP    Write with prime/Read with prime
+
+                             IOWP = '230'X (IO$_WRITEVBLK + IO$_SETFNCT)
+                                               '30'X           '200'X
+                             IORP = '231'X (IO$_READVBLK  + IO$_SETFNCT)
+                                               '31'X           '200'X
+             4.  IOSB         I/O status block
+             5.  ---          not used
+             6.  ---          not used
+
+             P1.  JBUF         Buffer address(by reference)
+             P2.  COMWC        Byte count to transfer
+
+                               If = 0, then only a command is to be
+                                       transferred on the R lines.
+                                       No DMA transfer.
+                                       (2**2 of COMST should be =0)
+                               If <>0, then a DMA transfer is assumed
+                                       (2**2 of COMST should be =1)
+
+             P3.  ----          not used
+             P4.  COMST        Value to be placed in the CSR word of
+                               the ZB interface. This value will be
+                               left shifted in the driver by 1 bit
+                               and the GO bit will be automatically
+                               set by the driver.
+                                Example:
+                                  Mode 1 no DMA   = 1
+                                  Mode 1 with DMA = 5
+                                  Mode 3 with DMA = 7
+             P5.  COMDB        The value to be placed on the R lines.
+             P6.  ----         not used
+
+   3. Deassign the COMTAL
+
+         STATUS = SYS$DASSGN(%VAL(IZLUN))
+

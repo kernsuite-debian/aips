@@ -1,0 +1,410 @@
+         $TITLE DIDSUB
+         $ENTRY DIDSUB,6
+         $EXT MAXDID
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"
+"   DIDSUB is an AP subroutine which CLEANS that portion of a
+"   map residing in the AP.
+"   This version randomizes picking the next component by adding
+"   random noise to the residuals when looking for the peak.
+"
+"        SPAD ENTRY PARAMETERS
+"
+COMP     $EQU   0
+"        COMP IS A LENGTH 4 FLOATING VECTOR:
+"             COMPONENT INTENSITY
+"             X LOCATION (CELLS)
+"             Y LOCATION (CELLS)
+"             CLEAN GAIN
+"
+AMAP     $EQU   1
+"        AMAP IS THE MAP BASE ADDRESS. IT IS STORED AS (LOCATION,INTENSI
+"        LOCATION = 2**14*X+Y (CELLS)
+"        -1<X<NX   -1<Y<NY
+"
+LMAP     $EQU   2
+"        NUMBER OF MAP POINTS
+"
+ABEAM    $EQU   3
+"        ABEAM IS A RECTANGULAR PIECE OF BEAM.  THE Y DIRECTION IS MOST
+"        RAPID VARIABLE: -BY<Y<BY
+"        X VARIES LESS RAPIDLY, -1<X<BX
+"
+BBEAM    $EQU   4
+"        BEAM DESCRIPTION VECTOR, (BX,BY)
+"
+RANDI    $EQU   5.                   "SEE MAXDID FOR DETAILS.
+"        DITHER VECTOR BASE ADDRESS, 0 = NO. RANDOMS.(INTEGER)
+"                                    1 = NEXT ELEMENT (INTEGER)
+"                                    2...RANDOM NUMBERS (REAL)
+"        OTHER SPAD REGISTERS
+"
+BEAM     $EQU   3                             "WHY NOT
+MAPI     $EQU   5
+MAPIP    $EQU   6
+MAPIL    $EQU   7
+SCRAT    $EQU   9.
+TWO      $EQU   10.
+BADR     $EQU   11.
+KMAP     $EQU   12.
+RAND     $EQU   14.                            "STORE RANDI
+"
+"        DATA PAD REGISTERS (ALL INDEXING - NO DPA CHANGES)
+"
+REF      $EQU   -4.
+"        COMPONENT LOCATION
+"
+LIM      $EQU   -3.
+"        BEAM PATCH SIZE
+"
+SEL      $EQU   -2.
+"        SELECTION OF X OR Y
+"
+DATA     $EQU   -1.
+"        YPAD   TEMP STORAGE OF MAP VALUE
+"
+T        $EQU   -1.
+"        XPAD   AMOUNT TO SUBTRACT
+"
+ADDRO    $EQU    1.
+"        YPAD    TEMPORARY STORAGE OF BEAM OFFSET
+"
+SIZE     $EQU    0.
+"        YPAD    MAPSIZE/16384.
+"
+YSIZE    $EQU    0.
+"        XPAD    YSIZE-2
+"
+TEMP     $EQU    3.
+"
+MAX      $EQU    1.
+"
+NULL     $EQU    2.
+"        X- AND Y- PAD ADDRESS OF ZERO
+"
+"        OK, NOW GET EVERYTHING ORGANIZED.
+"
+DIDSUB:  MOV COMP,SCRAT; SETMA                  "FETCH COMPONENT
+         LDDPA; DB=4;                           "TO MAKE THINGS PRETTY
+              MOV LMAP,KMAP
+         SPMDA; DPX(T)<MD;
+              INCMA                             "FETCH X
+         SPMDA; DPX(REF)<MD;
+              INCMA                             "FETCH Y
+         SPMDA; DPY(REF)<MD;
+              INCMA                             "FETCH GAIN
+         SPMDA; FMUL DPX(T),MD;                 "RESIDUAL*GAIN
+              INCMA                             "FETCH SIZE
+         FMUL;
+              MOV BBEAM,SCRAT
+         SPMDA; DPX(SIZE)<MD;
+              FMUL; SETMA                       "FETCH BEAM SIZE
+         DPX(T)<FM                              "COMPONENT=RESIDUAL*GAIN
+         LDTMA; DB=!TWO
+         SPMDA; DPX(LIM)<MD;
+              INCMA
+         SPMDA; DPY(LIM)<MD
+         DPX(TEMP)<DPY(REF)
+         FADD DPY(LIM),DPY(LIM)                "BEAM+BEAM
+         FSUB DPX(TEMP),DPY(LIM)               "(Y-BEAM) TAKE CARE
+                                               "OF ZERO OFFSET
+         FSUBR TM,FA;                          "-(2-2*BEAM)
+              DPY(LIM)<FA                      "2*BEAMSIZE
+         LDTMA; DB=!ONE
+         DPX(MAX)<ZERO
+         MOV RANDI, RAND                       "SAVE RANDI
+         FADD TM,FA                            "1+2*BEAM
+         FSUBR TM,DPY(LIM);                    "2*BEAM-1
+              DPX(YSIZE)<FA
+         DPY(REF)<FA; FADD
+         DPX(TEMP)<FA
+         RPSF XSEL; DPX(SEL)<DB                "LOAD 16383*16384
+         RPSF YSEL; DPY(SEL)<DB                "LOAD 16383
+         RPSF P14; DPY(SIZE)<DB                "LOAD 16384
+         RPSF S14; DPY(TEMP)<DB;
+              BR S14+1
+XSEL:    $FP    268419072.
+YSEL:    $FP    16383.
+P14:     $FP    16384.
+S14:     $VAL   0,1FX,3400X,0
+         FMUL DPX(LIM),DPY(SIZE)              "(BEAM*16384) SCALE X OFFS
+         FMUL DPX(TEMP),DPY(TEMP);
+              MOV COMP,COMP
+         FMUL DPX(REF),DPY(SIZE)
+         MI<DPX(MAX); SETMA                   "CLEAR COMP
+         DPX(LIM)<FM; FMUL
+         MOV BEAM,SCRAT;                      "MAKE A POINTER THAT POINT
+                                              "TO COMP (=0.0) WHICH IS U
+                                              "AS THE BEAM VALUE WHEN A
+                                              "RESIDUAL POINT IS NOT IN
+                                              "BEAM PATCH.
+              DPY(SIZE)<FM;
+              FMUL
+         DPX(REF)<FM
+         SUB COMP,SCRAT;
+              DPX(TEMP)<SPFN
+         LDSP; DB=27.
+         FSUB ZERO,MDPX(TEMP)
+         FADD
+         DPX(NULL)<FA;
+              DPY(NULL)<FA;
+              MOV TWO,TWO
+         LDSP; DB=2
+"
+"        *********    INTRO   **********
+"
+"        LOOP1
+"
+         MOV AMAP,MAPI; SETMA                "GET NEW MAP POINT (LOCATIO
+         DEC KMAP                            "WAIT FOR MEMORY
+         NOP
+         FAND DPX(SEL),MD;                   "SELECT X
+              MOV AMAP,MAPIL                 "SETUP MAP RESIDUAL ADDRESS
+         FAND DPY(SEL),MD;                   "SELECT Y
+              DEC MAPIL
+"
+"        LOOP2
+"
+         FSUBR DPX(REF),FA                   "DX
+         FSUBR DPY(REF),FA                   "DY
+         NOP
+         BFGE .+3                            "SKIP IF DX>0
+         FSUB ZERO,FA                        "REFLECT
+         FSUB DPX(YSIZE),FA
+         FSUBR DPX(LIM),FA;                  "CHECK X LIMIT
+              ADD TWO,MAPI; SETMA;           "GET NEW MAP POINT (LOCATIO
+              FMUL DPY(SIZE),FA              "START ADDRESS CALCULATION
+         FSUBR DPY(LIM),FA;                  "CHECK Y LIMIT
+              DPY(TEMP)<FA;                  "SAVE DY
+              FMUL
+         FADD;
+              FMUL;
+              BFGE .+2                       "SKIP IF Y LOWER LIMIT OK
+         BR NULLU
+         FADD FM,DPY(TEMP);                  "ADDRESS CALCULATION FINISH
+              BFGE NULLU                     "BRANCH IF X OUTSIDE UPPER
+                                             "LIMIT
+         FADD;
+              BFGE NULLU                     "BRANCH IF Y OUTSIDE UPPER
+                                             "LIMIT
+REJOU:   FIX FA                              "FIX BEAM ADDRESS
+         FAND DPX(SEL),MD;                   "SELECT X
+              DEC KMAP                       "COUNT MAP POINTS
+         FAND DPY(SEL),MD;                   "SELECT Y
+              DPY(ADDRO)<FA                  "SAVE BEAM OFFSET
+         BR LOOP3
+"
+NULLU:   FADD ZERO,DPX(NULL)
+         FADD;
+              BR REJOU
+"
+"        LOOP3
+"
+LOOP3:   FSUBR DPX(REF),FA                  "DX
+         FSUBR DPY(REF),FA;                 "DY
+              MOV BADR,BADR
+         DB=DPY(ADDRO); LDSP                "BEAM OFFSET TO SPAD
+         BFGE .+3;                          "SKIP IF DX>0
+              ADD BEAM,BADR; SETMA          "FETCH BEAM VALUE
+         FSUB ZERO,FA                       "REFLECT
+         FSUB DPX(YSIZE),FA
+         FSUBR DPX(LIM),FA;                 "CHECK X LIMIT
+              FMUL DPY(SIZE),FA             "START ADDRESS CALCULATION
+         FSUBR DPY(LIM),FA;                 "CHECK Y LIMIT
+              DPY(TEMP)<FA;                 "SAVE DY
+              FMUL                          "PUSH
+         FSUB;
+              FMUL DPX(T),MD;               "BEAM*COMPONENT
+              BFGE .+2                      "SKIP IF Y LOWER LIMIT OK
+         FADD FM,DPY(TEMP);                 "FINISH BEAM ADDRESS
+              ADD TWO,MAPI; SETMA;          "FETCH NEW MAP POINT LOCATIO
+              BR NULLV2
+         FADD FM,DPY(TEMP);                 "BEAM ADDRESS FINISHED
+              ADD TWO,MAPI; SETMA;          "FETCH NEW MAP POINT LOCATIO
+              BFGE NULLV2                   "BRANCH IF X OUTSIDE UPPER L
+         FADD;
+              BFGE NULLV3                   "BRANCH IF Y OUTSIDE UPPER L
+REJOV:   FIX FA;                            "FIX BEAM ADDRESS
+              MOV AMAP,MAPIP                "SETUP MAP VALUE ADDRESSING
+         FAND DPX(SEL),MD;                  "SELECT X
+              DEC KMAP                      "COUNT MAP POINTS
+         FAND DPY(SEL),MD;                  "SELECT Y
+              DPY(ADDRO)<FA;                "SAVE BEAM OFFSET
+              INC MAPIP;SETMA               "FETCH MAP VALUE
+         BR LOOP
+NULLV2:  FADD ZERO,DPX(NULL)
+         FADD;
+              BR REJOV
+NULLV3:  FADD ZERO,DPX(NULL)
+         FADD;
+              BR REJOV
+"
+"        *******   LOOP   ********
+"
+LOOP:    FSUBR DPX(REF),FA                 "DX
+         FSUBR DPY(REF),FA;                "DY
+              MOV BADR,BADR                "SET SPD
+         DB=DPY(ADDRO); LDSP               "BEAM OFFSET TO SPAD
+         BFGE .+3;                         "SKIP IF DX>0
+              DPY(DATA)<MD;                "SAVE MAP VALUE
+              ADD BEAM,BADR; SETMA         "FETCH BEAM VALUE
+         FSUB ZERO,FA                      "REFLECT
+         FSUB DPX(YSIZE),FA
+         FSUBR DPX(LIM),FA;                "CHECK X LIMIT
+              FMUL DPY(SIZE),FA;           "START ADDRESS CALCULATION
+              ADD BEAM,BADR; SETMA         "FETCH BEAM VALUE
+         FSUBR DPY(LIM),FA;                "CHECK Y LIMIT
+              DPY(TEMP)<FA;                "SAVE DY
+              FMUL                         "PUSH
+         FSUBR FM,DPY(DATA);               "RESIDUAL
+              FMUL DPX(T),MD;              "BEAM*COMPONENT
+              BFGE DOWN                    "BRANCH IF Y LOWER LIMIT OK
+         FADD FM,DPY(TEMP);                "BEAM ADDRESS CALCULATION COM
+              BR NULL2
+UPSY:    FAND DPX(SEL),MD                  "SELECT X
+         DEC KMAP                          "COUNT MAP POINTS
+         FAND DPY(SEL),MD;                 "SELECT Y
+              DPY(ADDRO)<FA;               "SAVE BEAM OFFSET
+              ADD TWO,MAPIP; SETMA;        "FETCH MAP VALUE
+              BGT LOOP                     "LOOP
+         BR CODA                           "END OF LOOP
+DOWN:    FADD FM,DPY(TEMP);                "BEAM ADDRESS CALCULATION COM
+              BFGE NULL2                   "BRANCH IF X OUTSIDE LIMIT
+         ADD TWO,MAPIL; MI<FA; SETMA;      "STORE RESIDUAL
+              BFGE NULL3                   "BRANCH IF Y OUTSIDE UPPER LI
+REJOIN:  ADD TWO,MAPI; SETMA               "FETCH NEW MAP POINT LOCATION
+         FADD
+         FIX FA;                           "FIX BEAM ADDRESS
+              BR UPSY
+"
+"        NULLS=DON'T SUBTRACT RESIDUALS
+"
+NULL2:   FADD ZERO,DPY(NULL);              "LOAD ADDRESS OF ZERO
+              ADD TWO,MAPIL; MI<FA; SETMA; "STORE RESIDUAL
+              BR REJOIN
+NULL3:   FADD ZERO,DPX(NULL);
+              BR REJOIN
+"
+"        ******   CODA  ******
+"
+"        LOOP N-2
+"
+CODA:    FSUBR DPX(REF),FA                 "DX
+         FSUBR DPY(REF),FA;                "DY
+              MOV BADR,BADR
+         DB=DPY(ADDRO); LDSP               "BEAM OFFSET TO SPAD
+         BFGE .+3;                         "SKIP IF DX>0
+              DPY(DATA)<MD;                "SAVE MAP VALUE
+              ADD BEAM,BADR; SETMA         "FETCH BEAM VALUE
+         FSUB ZERO,FA                      "REFLECT
+         FSUB DPX(YSIZE),FA
+         FSUBR DPX(LIM),FA;                "CHECK X LIMIT
+              FMUL DPY(SIZE),FA            "START ADDRESS CALCULATION
+              ADD BEAM,BADR; SETMA         "FETCH BEAM VALUE
+         FSUBR DPY(LIM),FA;                "CHECK Y LIMIT
+               DPY(TEMP)<FA;               "SAVE DY
+              FMUL                         "PUSH
+         FSUBR FM,DPY(DATA);               "RESIDUAL
+              FMUL DPX(T),MD;              "BEAM*COMPONENT
+              BFGE .+2                     "BRANCH IF Y OUTSIDE LOWER LI
+         FADD FM,DPY(TEMP);                "FINISH BEAM ADDRESS CALCULAT
+              BR NULLW2
+         FADD FM,DPY(TEMP);                "BEAM ADDRESS CALCULATION COM
+              BFGE NULLW2                  "BRANCH IF X OUTSIDE UPPER LI
+         ADD TWO,MAPIL; MI<FA; SETMA;      "STORE RESIDUAL
+              BFGE NULLW3                  "BRANCH IF Y OUTSIDE UPPER LI
+REJOW:   FADD
+         FIX FA                            "FIX BEAM ADDRESS
+         FADD
+         DPY(ADDRO)<FA;                    "SAVE BEAM OFFSET
+              ADD TWO,MAPIP; SETMA         "FETCH MAP VALUE
+         SPMDA;
+              BR LOOX
+NULLW2:  FADD ZERO,DPY(NULL);
+              ADD TWO,MAPIL; MI<FA; SETMA; "STORE RESIDUAL
+              BR REJOW
+NULLW3:  FADD ZERO,DPX(NULL);
+              BR REJOW
+"
+"        LOOP N-1
+"
+LOOX:    DPY(DATA)<MD;                     "SAVE MAP VALUE
+              MOV BADR,BADR
+         DB=DPY(ADDRO); LDSP               "BEAM OFFSET TO SPAD
+         ADD BEAM,BADR; SETMA;             "FETCH BEAM VALUE
+              FMUL
+         FMUL; SPMDA                       "PUSH, ETC
+         FSUBR FM,DPY(DATA);               "RESIDUAL
+              FMUL DPX(T),MD               "BEAM*COMPONENT
+         FADD
+         ADD TWO,MAPIL; MI<FA; SETMA       "STORE RESIDUAL
+         ADD TWO,MAPIP; SETMA              "FETCH MAP VALUE
+"
+         BR LOOY;
+              SPMDA                        "OH, WHY HURRY?
+"
+"        LOOP N
+"
+LOOY:    DPY(DATA)<MD                      "SAVE MAP VALUE
+         FMUL
+         FMUL
+         FSUBR FM,DPY(DATA)                "RESIDUAL
+         FADD
+         ADD TWO,MAPIL; MI<FA; SETMA       "STORE RESIDUAL
+"
+         BR AFTER
+"
+"        *******   AFTER WORD  ********
+"
+"        LOCATE NEXT CLEAN COMPONENT
+"
+"        SETUP SPAD FOR MAXDID
+AFTER:   MOV COMP,13.                      "SAVE COMP
+         MOV COMP,3                        "OUTPUT ADDR
+         MOV LMAP,4                        "ELEMENT COUNT
+         MOV AMAP,0                        "MAP ADDRESS
+         INC 0                             "VALUE
+         MOV TWO,1                         "MAP INCREMENT
+         MOV RAND,2                        "DITHER VECTOR
+         JSR MAXDID                        "DITHER MAX. SEARCH
+         MOV 15.,15.; SETMA                "FETCH VALUE, ADDR IN 15.
+         RPSF S14; DPX(TEMP)<DB            "X SCALING FACTOR
+         DEC 15.; SETMA                    "FETCH ADDRESS
+         DPX<MD                            "DPX=VALUE
+         MOV 13.,13.; SETMA; MI<DPX        "STORE VALUE
+         FAND DPX(SEL),MD                  "SELECT X
+         FAND DPY(SEL),MD;                 "SELECT Y
+              INC 13.
+         FMUL DPX(TEMP),FA;                "SCALE X
+              FADD
+         INC 13.; MI<FA; SETMA;            "STORE Y
+              FMUL
+         FMUL
+         DEC 13.; MI<FM; SETMA             "STORE X
+         RETURN
+         $END

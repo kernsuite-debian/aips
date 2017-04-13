@@ -1,0 +1,134 @@
+Catalog Files:            CAf00000.uuu
+
+
+A.  Overview
+
+
+Function:  Catalog files contain directory information for the
+     AIPS files stored on a disk.
+
+Names and Locations:  There is a catalog file on each disk on
+     which maps can be stored.  The catalog refers only to maps
+     and uv files on its own disk volume.  The catalogs have
+     physical names corresponding to "CAf00000", where f is the
+     current fomat code letter (A, B, ...) and can be user owned
+     (.uuu = user number in hex) or public (.uuu omitted).
+
+
+B.  Data Structures and usage notes
+
+
+     File Structure:  Each catalog file contains a one block (256-word)
+header and a number of catalog directory blocks.  The header block
+contains principally the number of catalog blocks in the file;  this is
+set when the file is created or expanded.  The directory blocks contain
+a reference to each catalog entry.  The directory is used to speed
+catalog searches and also contains the status words that register file
+activity.
+
+     A catalog to store N entries must have enough space for
+1 + CEIL[N/NLPR] blocks (i.e. catalog blocks + directory), where NLPR is
+defined below and is 25 on normal machines.
+
+
+     Record Formats:
+
+
+Header Block:
+
+
+OFFSET LENGTH TYPE         DESCRIPTION
+   0      1    I*4   Volume number of disk containing this catalog
+   1      1    I*4   Unused
+   2      1    I*4   Number of catalog blocks in this file
+   3      3    I*4   Date (YYYY, MM, DD) create
+   6      3    I*4   Time (HH, MM, SS) create
+   9      3    I*4   Date (YYYY, MM, DD) last access
+  12      3    I*4   Time (HH, MM, SS) last access
+
+Directory Block:
+
+
+     The Mth directory block contains NLPR entries, each NWPL words,
+indexing the NLPR*(M-1)+1 to the NLPR*M-1 catalog blocks.  In a file
+with N catalog blocks, the first directory block is the 2nd block in
+the file.  The parameters are given by NWPL = 10, NLPR=256 / NWPL.
+
+OFFSET LENGTH TYPE         DESCRIPTION
+   0      1    I*4    User ID number; or -1 if slot is empty
+   1      1    I*4    Map file activity status
+   2      2    I*4(2) Date/Time file was last accessed
+   4      1    I*4    User defined sequence number 1 to 9999
+   5      5    H*4(5) Image ID as:
+                         User defined name, 12 characters
+                         User defined class, 6 characters
+                         Program defined type, 2 characters
+     ...
+
+
+   Directory Usage Notes:
+
+
+   Directory:  Map name and class are user defined character strings
+of 12 and 6 characters that can be used to identify and locate a
+specific map.  The strings are stored as packed characters together
+with the 2-character string which identifies the "physical" map type,
+in their slots in the directory.  The sequence number is similarly
+an arbitrary I*4 reference number.
+
+     The Map Status is an I*4 number registering the activity of
+the map file itself.
+   STATUS = 0    => no programs are accessing the map file
+          = n>0  => n programs are reading the map
+          = -1   => one program is writing into the file
+          = n<0  => 1 + n programs are reading the map, one
+                    program is writing into the file.
+
+   File Type:  This word describes file type.  At present only
+'MA' => map and 'UV' => single- or multi-source uv files are allowed.
+
+
+Usage protocols:
+
+
+     Maintaining the integrity of the catalog entries is essential to
+insure reliable access to the map files.  Thus certain rules should be
+followed when using the catalog.  These rules are coded in to the
+utility routines described below; these routines should be used when
+at all possible to access the catalog.
+
+Rules:
+   1.  Take exclusive use of the catalogue whenever you access it.
+       The required operation should be done quickly and then
+       the catalog file should be closed and released.
+   2.  The status word must be monitered to see if an intended
+       catalog or map operation will disturb an (asynchronous)
+       operation already in progress.
+
+Specifically:  Do not modify a catalog block, nor write into a
+   map file which is not in a rest state (STATUS = 0).
+
+   If you intend to write into a map and STATUS = 0, change the
+status to "WRITE" (STATUS = -1 ) before releasing exclusive use
+of the catalog.
+
+   If you intend to read a map file or catalog block, check to see if
+someone else is writing on it (STATUS < 0).  If so decide whether
+this is acceptable to your program.  If so modify the status to
+indicate use;  STATUS = 1 + STATUS if STATUS > 0
+               STATUS =-1 + STATUS if STATUS < 0.
+
+   Clear status when you have finished your operation.  If you
+were reading, reverse the process just described.  If you
+were writing;  STATUS = - (1 + STATUS)
+
+
+D.  Subroutines
+
+
+      CATDIR  searches, lists, and modifies the catalog directory
+      CATIO   reads and writes catalog blocks and can modify status
+      CATOPN  opens the catalog file on a given volume
+      MCREAT, MAPOPN, MAPCLS, and MDESTR handle most of the
+         catalog bookkeeping while creating, opening, closing,
+         or destroying map files.

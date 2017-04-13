@@ -1,0 +1,910 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1999, 2001, 2003-2005
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#--------------------------------------------------------------------
+# Usage: COMRPL [path/][@]routine[.FOR,.f,.C,.c,.S,.s,.o]
+#               [AIPS-sytle-options] [UNIX-style-options] [file.LOG]
+#
+# Drives preprocesing/compilation/library replacement of AIPS routines.
+# Source code from preprocessing is left in the $PREP area if the module
+# being compiled is in the $AIPS_VERSION directory tree.  Object modules
+# from source in this tree will be moved to a $LIBR subdirectory as
+# defined in $SYSLOCAL/LIBR.DAT (unless NORE[PLACE] is specified).
+# Modules not in the $AIPS_VERSION directory tree will have all files
+# left in the current working directory.
+#
+# Inputs (can appear in any order):
+#
+# 1) [path/][@]routine[.FOR,.f,.C,.c,.S,.s,.o]
+#
+#    At least one (uppercase) routine module name with or without an
+#    extension.  If not a pathname, the current working directory is
+#    assumed and prepended.  Pathnames can be given either literally or
+#    using environment variables defined as directory paths (e.g.
+#    $APLSUB/whatever).
+#
+#    The special character '@', if prepended to the filename, denotes
+#    the name of a file containing a list of module pathnames.
+#
+#    The extension (.FOR, .C, etc.) is effectively ignored since SEARCH
+#    strips it and tries to determine the most up-to-date module form.
+#    SEARCH will also search "path/" and below for the existence of a
+#    routine module more appropriate to the host architecture and, if
+#    necessary, change "path/" and/or the filename extension.  If the
+#    starting "path/" is not a subdirectory of $AIPS_VERSION, the search
+#    is restricted to that directory. Otherwise, the directory search
+#    path is determined from $SYSLOCAL/SEARCHx.DAT (x=0,1,2,3,...)
+#
+# 2) [AIPS-sytle-options]
+#
+#    Recognizable AIPS-style options.  These are usually compiler
+#    options defined in the architecture- and site-specific files
+#    CCOPTS.SH and ASOPTS.SH in $SYSLOCAL, and FDEFAULT.SH/OPTIMIZE.LIS.
+#    The relevant AIPS shell script (FC, AIPSCC, or AIAS) will refer to
+#    these.  Recognized AIPS-style options include:
+#
+#    DEbug   - generate code suitable for debugger(s).
+#    DIrty   - compile letting declarations default (not recommended)
+#    LIst    - generate line numbered listing of source code
+#                (only if compilation is necessary)
+#    MAp     - generate link map
+#    OPTn    - optimization level (n = 0 to 9), also NOOPT
+#    PRofile - generate code suitable for profiling
+#    PUrge   - delete preprocessed file and log files after successful
+#              compilation.  DEBUG forces PURGE to leave source alone.
+#    REplace - move binary to LOAD areas if appropriate.
+#
+#    Uppercase part of option is minimum required for recognition.
+#    The above can be prefixed with NO to negate the option, e.g.
+#    NOPURGE will cancel any deleting of files.
+#
+# 3) [UNIX-style-options]
+#
+#    UNIX-style options are passed on to the local compiler.
+#
+# 4) [file.LOG]
+#
+#    Optional log filename (e.g. AU2.LOG).  If not given, log files are
+#    automatically generated (or appended to) for each routine being
+#    processed.  If purging is enabled either by default or by
+#    specifying PURGE on the command line and all goes well, these
+#    automatic log files are deleted.  If an error occurs, or if the
+#    user specifies a '.LOG' file on the command line, it is either
+#    generated or appended to but never deleted.
+#
+# Other options:
+#
+#  *  You can have two sets of libraries: debug/noopt and
+#     nodebug/optimized.  The debug libraries are created only if the
+#     file $SYSLOCAL/DOTWOLIB exists.
+#
+# This version also updates COMRPL.UPD for the COAOARN site only.  The
+# file specification entered on the command line (or in the at-file) is
+# placed in COMRPL.UPD which is not necessarily the one compiled (SEARCH
+# may find a version that it deems more appropriate).  If the user is
+# aipssrc or aipsmgr, or the variable AIPSRCS is set to "NO", then no
+# update of the rcs file is performed.  Also, no update is done if the
+# COMRPL.UPD file is on a NFS-mounted filesystem for locking reasons.
+#
+# The transact variable holds the name of the directory that contains
+# COMRPL.UPD.  This needs to be changed if the location of COMRPL.UPD is
+# changed.  The freeze variable is only used during the quarterly (sic)
+# update at NRAOAOC.
+#--------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+[ "$PREP" = "" ] && echo "AIPS environment not defined; do CDTST?" && \
+ exit 1
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+[ -w $PREP ] || PREP=`$LPWD` && export PREP
+trap 'rm -f $PREP/COMRPL.$$ $PREP/SEARCH.$$ $PREP/PP.$$ $PREP/AT.$$; \
+   exit 1' 1 2 3 15
+#                                       Umask ideally is this...
+umask 002
+#                                       NRAO/CV rcs parameters
+if [ "$SITE" = COAOARN ] ; then
+   transact=$UPDATE
+   freeze=$UPHOME
+   umask 000
+fi
+#                                       Any command line argument(s)?
+if [ "$*" = "" ] ; then
+   echo "Usage: COMRPL module [module...] [AIPS-opts] [Unix-opts] [log]"
+   echo " "
+   echo "where module is a filename with or without extensions"
+   echo "(.FOR, .f, .C, .c, .S, .s, or .o) or possibly a list file"
+   echo "created with MAKEAT, e.g. @APLSUB.LIS."
+   exit 1
+fi
+#                                       Initialize OPTS, ULOG and local
+#                                       PURGE.
+OPTS=""
+ULOG=""
+PURGE=TRUE
+#                                       Loop on command line arguments
+#                                       parsing information.
+for i
+do
+   case $i in
+#                                       UNIX-style option.  Pass it on.
+      -*) OPTS="$OPTS $i"
+      ;;
+#                                       User specified log filename; add
+#                                       PWD for simple filenames.
+      *.LOG | *.log)
+         case $i in
+            */*) ULOG=$i ;;
+            *)   ULOG=`$LPWD`/$i ;;
+         esac
+      ;;
+#                                       An '@' file list of pathnames.
+      *@*)
+#                                       Form pathname if a $AT is a
+#                                       simple filename.
+         case $AT in
+            */*) AT=`echo $i | sed -e 's/@//'` ;;
+            *)   AT=`echo $i | sed -e 's/@//'`
+                 AT=`$LPWD`/$AT ;;
+         esac
+#                                       Append it to pathname list.
+         if [ -f $AT ] ; then
+            sed -n -e 's/^[^-]/&/p' $AT >> $PREP/COMRPL.$$
+         else
+            echo "COMRPL    : '@' file    $AT"
+            echo "COMRPL    : not found!"
+            rm -f $PREP/COMRPL.$$
+            echo "COMRPL    : Dies of unnatural causes"
+            exit 1
+         fi
+      ;;
+#                                       Pathname.  Append to the list.
+      */*) echo $i >> $PREP/COMRPL.$$
+      ;;
+#                                       File: add PWD, append to list.
+      *.*) echo `$LPWD`/$i >> $PREP/COMRPL.$$
+      ;;
+#                                       To get here, the argument is
+#                                       probably, but not necessarily,
+#                                       an option.  Check it out.
+      *) j=`echo $i | tr '[a-z]' '[A-Z]'`
+#                                       For each option, remove any
+#                                       conflicting option(s), add.
+         case $j in
+            DE | DEB | DEBU | DEBUG)
+               OPTS="`echo $OPTS | sed -e 's/ OPT[0-9]//g'` DEBUG"
+            ;;
+            NODE | NODEB | NODEBU | NODEBUG)
+               OPTS="`echo $OPTS | sed -e 's/ DEBUG//g'` NODEBUG"
+            ;;
+            NOOPT)
+               OPTS="`echo $OPTS | sed -e 's/ OPT[0-9]//g'` NOOPT"
+            ;;
+            LI | LIS | LIST)
+               OPTS="`echo $OPTS | sed -e 's/ NOLIST//g'` LIST"
+            ;;
+            NOLI | NOLIS | NOLIST)
+               OPTS="`echo $OPTS | sed -e 's/ LIST//g'` NOLIST"
+            ;;
+            MA | MAP)
+               OPTS="`echo $OPTS | sed -e 's/ NOMAP//g'` MAP"
+            ;;
+            NOMA | NOMAP)
+               OPTS="`echo $OPTS | sed -e 's/ MAP//g'` NOMAP"
+            ;;
+            OPT[0-9])
+               OPTS="`echo $OPTS | sed \
+                      -e 's/ NOOPT//g' -e 's/ OPT[0-9]//g'` $i"
+            ;;
+            DI | DIR | DIRT | DIRTY)
+               OPTS="`echo $OPTS | sed -e 's/ NODIRTY//g'` DIRTY"
+            ;;
+            NODI | NODIR | NODIRT | NODIRTY)
+               OPTS="`echo $OPTS | sed -e 's/ DIRTY//g'` NODIRTY"
+            ;;
+            PU | PUR | PURG | PURGE)
+               OPTS="`echo $OPTS | sed -e 's/ NOPURGE//g'` PURGE"
+               PURGE=TRUE
+            ;;
+            NOPU | NOPUR | NOPURG | NOPURGE)
+               OPTS="`echo $OPTS | sed -e 's/ PURGE//g'` NOPURGE"
+               PURGE=FALSE
+            ;;
+            RE | REP | REPL | REPLA | REPLAC | REPLACE)
+               OPTS="`echo $OPTS | sed -e 's/ NOREPLACE//g'` REPLACE"
+            ;;
+            NORE | NOREP | NOREPL | NOREPLA | NOREPLAC | NOREPLACE)
+               OPTS="`echo $OPTS | sed -e 's/ REPLACE//g'` NOREPLACE"
+            ;;
+            PR | PRO | PROF | PROFI | PROFIL | PROFILE)
+               OPTS="`echo $OPTS | sed -e 's/ NOPROFILE//g'` PROFILE"
+            ;;
+            NOPR | NOPRO | NOPROF | NOPROFI | NOPROFIL | NOPROFILE)
+               OPTS="`echo $OPTS | sed -e 's/ PROFILE//g'` NOPROFILE"
+            ;;
+            *)
+#                                       If not a recognized AIPS-style
+#                                       option, treat it as a file in
+#                                       current working directory given
+#                                       without an extension and append
+#                                       it to the pathname list.
+               echo `$LPWD`/$i >> $PREP/COMRPL.$$
+            ;;
+         esac
+      ;;
+   esac
+done
+#                                       End of command line parsing.
+#                                       Delete leading blank(s) in
+#                                       $OPTS".
+OPTS=`echo $OPTS | sed 's/^  *//'`
+#                                       Time to get down to business.
+#                                       Any routines to compile/
+#                                       replace?
+if [ ! -f $PREP/COMRPL.$$ ] ; then
+   echo "Usage: COMRPL" \
+      "[path/][@]routine[.FOR,.f,.C,.c,.S,.s,.o]] \\"
+   echo "              [AIPS-sytle-options] [UNIX-style-options] \\"
+   echo "              [file.LOG]"
+   echo "COMRPL    : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Loop through files list.
+#                                       LOOPSTAT *has* to be exported!
+LOOPSTAT="OK"; export LOOPSTAT
+for PATHNAME in `cat $PREP/COMRPL.$$` ; do
+   FILESTAT="OK"
+#                                       Save $PATHNAME in case we are
+#                                       being '@' file driven.
+   ATNAME=$PATHNAME
+#                                       Get the file name.
+   FILE="`echo $PATHNAME | sed -e 's#.*/##' | sed -e 's#\..*##'`"
+#                                       Override debug/opt settings from
+#                                       command line (aips modules only)
+   case $PATHNAME in
+
+      $APLCONTR*)
+#                                       User compilation.
+          OPTX=$OPTS
+      ;;
+      $AIPS_VERSION*)
+#                                       System Compilation.  Check for
+#                                       debug/nodebug indicator...
+          if [ ! -f $SYSLOCAL/DOTWOLIB ] ; then
+             OPTX=$OPTS
+          else
+#                                       Remove command line DEBUG/OPT's
+             OPTX=`echo $OPTS | sed -e 's/[NO]*DEBUG//' \
+                   -e 's/[NO]*OPT[0-9]*//' -e 's/^  */ /'`
+          fi
+      ;;
+      *)
+#                                       User compilation.
+          OPTX=$OPTS
+      ;;
+   esac
+#                                       Set log file name if necessary
+   if [ "$ULOG" = "" ] ; then
+      case $PATHNAME in
+         $APLCONTR*)
+            LOG=`echo $PATHNAME | sed -e 's/\..*//'`.LOG
+         ;;
+         $AIPS_VERSION*)
+            LOG="$PREP/${FILE}.LOG"
+         ;;
+         *)
+            LOG=`echo $PATHNAME | sed -e 's/\..*//'`.LOG
+         ;;
+      esac
+      rm -f $LOG
+   else
+      LOG=$ULOG
+   fi
+#                                       Protect against use on programs.
+   case $PATHNAME in
+
+      $AIPS_VERSION/*/PGM/*)
+#                                       Use COMLNK for programs.
+         echo "COMRPL    : Skipping   $PATHNAME"    | tee -a $LOG
+         echo "COMRPL    : Use COMLNK on programs." | tee -a $LOG
+         continue
+      ;;
+
+   esac
+#                                       Record date.
+   echo "COMRPL    : Date       `date`" | tee -a $LOG
+#                                       Determine proper/fastest
+#                                       module(s) for this system, if
+#                                       any.
+   ALT0="";   ALT1="";   ALT2="";   ALT3="";   ALT4=""
+   ALT5="";   ALT6="";   ALT7="";   ALT8="";   ALT9=""
+   ALTS=`sed -n -e 's/\(.*:\)\([0-9]\)\(:.*\)/\2/p' \
+      $SYSLOCAL/LIBR.DAT | sort -u`
+   rm -f $PREP/SEARCH.$$
+   for ALT in $ALTS
+   do
+      eval ALT$ALT=`SEARCH -q $PATHNAME $ALT 2> $PREP/SEARCH.$$`
+   done
+#                                       Any found?
+   if [ "$ALT0$ALT1$ALT2$ALT3$ALT4$ALT5$ALT6$ALT7$ALT8$ALT9" = "" ]
+   then
+      cat $PREP/SEARCH.$$ | tee -a $LOG
+      rm -f $PREP/COMRPL.$$ $PREP/SEARCH.$$
+      FILESTAT="BAD"
+      continue
+   else
+      rm -f $PREP/SEARCH.$$
+   fi
+#                                       Update transaction file (NRAOAOC
+#                                       only).  Not best place for it...
+   if [ "$SITE" = "COAOARN" -a "$ARCH" = "LINUX" -a \
+        "$HOST" = "DAVE" -a "$UPHOME" = "/home/aipssrc/master" ] ; then
+      case $PATHNAME in
+         $APLCONTR*)
+            ;;
+         $AIPS_VERSION*)
+#                                       Determine if on NFS mount
+#                                       HIGHLY SunOS 5 specific I'm
+#                                       sure.  Is there a better way???
+            if [ -d $transact/ ] ; then
+#                                       old tail grammar for Solaris
+               fname=`df -k $transact | tail -1 | awk '{print $1}'`
+               case $fname in
+                  *:*)
+                     thost=`echo $fname | awk -F: '{print $1}'`
+                     tdisk=`echo $fname | awk -F: '{print $2}'`
+                     echo "COMRPL    : !!!!!!!!! WARNING !!!!!!!!!" \
+                             | tee -a $LOG
+                     echo "COMRPL    : WARNING: transaction file" \
+                          $transact/COMRPL.UPD | tee -a $LOG
+                     echo "COMRPL    : is on an NFS disk ($tdisk)." \
+                             | tee -a $LOG
+                     echo "COMRPL    : You MUST do this on $thost" \
+                          "to record this COMRPL in that file." \
+                             | tee -a $LOG
+                     echo "COMRPL    : !!!!!!!!! WARNING !!!!!!!!!" \
+                             | tee -a $LOG
+                     transact="update/performed/on"
+                  ;;
+               esac
+            fi
+#                                       Make sure transact. file exists.
+            if [ -f $transact/COMRPL.UPD ] ; then
+#                                       whoa!  Check if it's frozen...
+#                                       poor sod who gets to do this..
+               INSTALL_TESTER=pmurphy; export INSTALL_TESTER
+               if [ \( "$LOGNAME" = "$INSTALL_TESTER" \) -a \
+                    \( "$INSTALL_TESTING" = "YES" \) ] ; then
+                  echo "COMRPL    : Detected desperate programmer," \
+                       "ignoring freeze" | tee -a $LOG
+                  updtrans $transact/COMRPL.UPD $PATHNAME `whoami`
+                  if [ $? -ne 0 ] ; then
+                     echo "COMRPL    : Whoops.  Fix that!" | tee -a $LOG
+                  else
+                     echo "COMRPL    : updated $transact/COMRPL.UPD"\
+                          "(despite FREEZE)" | tee -a $LOG
+                  fi
+               elif [ -f $freeze/AIPS_IS_FROZEN.$VERSION ] ; then
+                  echo "COMRPL    : WARNING: $AIPS_VERSION is" \
+                       "currently frozen!" | tee -a $LOG
+                  echo "COMRPL    : will NOT update" \
+                       "$transact/COMRPL.UPD" | tee -a $LOG
+               elif [ "$USER" = aipsmgr -o "$USER" = aipssrc ] ; then
+                  echo "COMRPL    : $USER cannot update RCS logs" | \
+                       tee -a $LOG
+               elif [ "$AIPSRCS" = "NO" ] ; then
+                  echo "COMRPL    : AIPSRCS=NO, not updating" \
+                       "$transact/COMRPL.UPD"
+               else
+#                                       No, it's not frozen, go ahead.
+                  updtrans $transact/COMRPL.UPD $PATHNAME `whoami`
+                  if [ $? -ne 0 ] ; then
+#                                       Problems.  Scream loudly.
+                     echo "COMRPL    : !!!!!!!!! WARNING !!!!!!!!!" \
+                          | tee -a $LOG
+                     echo "COMRPL    : failed to update COMRPL.UPD" \
+                          | tee -a $LOG
+                     echo "COMRPL    : !!!!!!!!! WARNING !!!!!!!!!" \
+                          | tee -a $LOG
+                  else
+#                                       It worked so remind caller.
+                     echo "COMRPL    : updated $transact/COMRPL.UPD"\
+                          | tee -a $LOG
+                  fi
+               fi
+            else
+#                                       Hmm.  No transaction file?
+               echo "COMRPL    : no $transact/COMRPL.UPD" \
+                    | tee -a $LOG
+            fi
+         ;;
+      esac
+   fi
+#                                       Process all proper modules.
+   LAST=""
+   for ALT in $ALTS
+   do
+      PROPER=\$ALT$ALT
+      PROPER=`eval echo $PROPER`
+      if [ "$PROPER" = "" -o "$PROPER" = "$LAST" ] ; then
+         continue
+      fi
+      LAST=$PROPER
+#                                       Different one.
+      if [ "$PATHNAME" != "$PROPER" ] ; then
+         echo "COMRPL    : Substitute $PROPER"   | tee -a $LOG
+         echo "COMRPL    : for        $PATHNAME" | tee -a $LOG
+         PATHNAME=$PROPER
+      fi
+#                                       Extract AREA, i.e., directory.
+      AREA=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+#                                       Form pathname of object module.
+      case $PATHNAME in
+         $APLCONTR*)
+            OFILE="$APLCONTR/${FILE}.o"
+         ;;
+         $AIPS_VERSION*)
+            OFILE="$PREP/${FILE}.o"
+         ;;
+#                                       can this be $AREA/${FILE}.o??
+         *)
+            OFILE="$AREA/${FILE}.o"
+         ;;
+      esac
+#                                       For object modules, simply
+#                                       replace, otherwise compile and
+#                                       replace.
+      case $PATHNAME in
+         *.FOR | *.C | *.S)
+#                                       Preprocess.  PP returns an
+#                                       easily recognizable pathname
+#                                       of the successfully
+#                                       preprocessed file or an error
+#                                       message.
+            PATHNAME=`PP $PATHNAME 2> $PREP/PP.$$`
+            cat $PREP/PP.$$ | tee -a $LOG
+            rm -f $PREP/PP.$$
+            if test "$PATHNAME" = ""
+            then
+               echo "COMRPL    : Preprocessing fails!" | tee -a $LOG
+               rm -f $PREP/COMRPL.$$
+               FILESTAT="BAD"
+               continue
+            fi
+         ;;
+      esac
+#                                       To get here, preprocessing must
+#                                       have been successful or pre-
+#                                       processed form already existed.
+      case $PATHNAME in
+
+         *.f | *.c | *.s)
+#                                       Check for files really in $PREP.
+            case $PATHNAME in
+               $PREP/* | $APLCONTR*)
+               ;;
+               $AIPS_VERSION/*)
+                  PATHNAME=`echo $PATHNAME | sed -e "s#$AREA#$PREP#"`
+               ;;
+            esac
+         ;;
+      esac
+#                                       Compile $PATHNAME with $OPTS.
+      case $PATHNAME in
+
+         *.f)
+#                                       Fortran source. ()s important!
+#                                       If $SYSLOCAL/DOTWOLIB is absent
+#                                       revert to normal compiling.
+            if [ ! -f $SYSLOCAL/DOTWOLIB ] ; then
+               if ( export AREA; FC $OPTS $PATHNAME $LOG ) ; then
+                  PATHNAME=$OFILE
+               else
+#                                       Delete preprocessed code
+                  echo "COMRPL    : Compile failed!" | tee -a $LOG
+                  rm -f $PATHNAME
+                  echo "COMRPL    : Deleted    $PATHNAME" | \
+                        tee -a $LOG
+                  FILESTAT="BAD"
+                  continue
+               fi
+            else
+#                                       Two compiles are needed.  Note
+#                                       the PURGE option is overridden.
+               if (export AREA ; FC $OPTX $PATHNAME NOPURGE $LOG )
+               then
+                  DBGPATHN=$PATHNAME
+                  PATHNAME=$OFILE
+               else
+#                                       Carry on with next module...
+                  echo "COMRPL    : Compilation fails!" | tee -a $LOG
+                  rm -f $PATHNAME
+                  echo "COMRPL    : Deleted    $PATHNAME" | \
+                        tee -a $LOG
+                  FILESTAT="BAD"
+                  continue
+               fi
+#                                       Now for AIPS_VERSION files only,
+#                                       do the debug compile.
+               case $PATHNAME in
+               $APLCONTR*)
+               ;;
+               $AIPS_VERSION*)
+                  echo "COMRPL    : stash $PREP/${FILE}.o" | \
+                        tee -a $LOG
+                  echo "COMRPL    : in    $PREP/${FILE}.TEMP" | \
+                        tee -a $LOG
+                  mv $PREP/${FILE}.o $PREP/${FILE}.TEMP
+                  echo "COMRPL    : Now redo in debug mode" | \
+                        tee -a $LOG
+                  if (export AREA; FC $OPTX NOOPT DEBUG NOPURGE \
+                      $DBGPATHN $LOG)
+                  then
+                     DBUGNAME=$PREP/${FILE}.DEBUG
+                     echo "COMRPL    : move to $DBUGNAME" | \
+                           tee -a $LOG
+                     mv $PREP/${FILE}.o $DBUGNAME
+                     echo "COMRPL    : unstash $PREP/${FILE}.o" | \
+                           tee -a $LOG
+                     mv $PREP/${FILE}.TEMP $PREP/${FILE}.o
+                  else
+                     echo "COMRPL    : Compilation fails!" | \
+                           tee -a $LOG
+                     rm -f $PATHNAME $PREP/${FILE}.o
+                     echo "COMRPL    : Deleted    $PATHNAME" | \
+                           tee -a $LOG
+                     echo "COMRPL    : unstash $PREP/${FILE}.o" | \
+                           tee -a $LOG
+                     mv $PREP/${FILE}.TEMP $PREP/${FILE}.o
+                     FILESTAT="BAD"
+                     continue
+                  fi
+                  ;;
+               esac
+            fi
+         ;;
+
+         *.c)
+#                                       C source.
+#                                       Regular compile.
+            if [ ! -f $SYSLOCAL/DOTWOLIB ] ; then
+               if AIPSCC $OPTS $PATHNAME $LOG ; then
+                  PATHNAME=$OFILE
+               else
+#                                       Delete preprocessed code
+                  echo "COMRPL    : Compile failed!" | tee -a $LOG
+                  rm -f $PATHNAME
+                  echo "COMRPL    : Deleted    $PATHNAME" | \
+                        tee -a $LOG
+                  FILESTAT="BAD"
+                  continue
+               fi
+            else
+               if AIPSCC $OPTX NOPURGE $PATHNAME $LOG
+               then
+                  DBGPATHN=$PATHNAME
+                  PATHNAME=$OFILE
+               else
+#                                       Carry on regardless.
+                  echo "COMRPL    : Compilation fails!" | \
+                        tee -a $LOG
+                  rm -f $PATHNAME
+                  echo "COMRPL    : Deleted    $PATHNAME" | \
+                        tee -a $LOG
+                  FILESTAT="BAD"
+                  continue
+               fi
+#                                       And the debug compile.
+               case $PATHNAME in
+                  $APLCONTR*)
+                  ;;
+                  $AIPS_VERSION*)
+                     echo "COMRPL    : stash $PREP/${FILE}.o" | \
+                           tee -a $LOG
+                     echo "COMRPL    : in    $PREP/${FILE}.TEMP" | \
+                           tee -a $LOG
+                     mv $PREP/${FILE}.o $PREP/${FILE}.TEMP
+                     echo "COMRPL    : now redo in debug mode" | \
+                           tee -a $LOG
+                     if AIPSCC $OPTX NOOPT DEBUG NOPURGE $DBGPATHN $LOG
+                     then
+                        DBUGNAME=$PREP/${FILE}.DEBUG
+                        echo "COMRPL    : move to $DBUGNAME" | \
+                              tee -a $LOG
+                        mv $PREP/${FILE}.o $DBUGNAME
+                        echo "COMRPL    : unstash $PREP/${FILE}.o" \
+                              | tee -a $LOG
+                        mv $PREP/${FILE}.TEMP $PREP/${FILE}.o
+                     else
+                        echo "COMRPL    : Compilation fails!" | \
+                              tee -a $LOG
+                        rm -f $PATHNAME $PREP/${FILE}.o
+                        echo "COMRPL    : Deleted    $PATHNAME" | \
+                              tee -a $LOG
+                        echo "COMRPL    : unstash $PREP/${FILE}.o" \
+                              | tee -a $LOG
+                        mv $PREP/${FILE}.TEMP $PREP/${FILE}.o
+                        FILESTAT="BAD"
+                        continue
+                     fi
+                  ;;
+               esac
+            fi
+         ;;
+
+         *.s)
+#                                       Assembler source.
+            if AIAS $OPTS $PATHNAME $LOG
+            then
+               PATHNAME=$OFILE
+            else
+               echo "COMRPL    : Compilation fails!" | tee -a $LOG
+               rm -f $PATHNAME
+               echo "COMRPL    : Deleted    $PATHNAME" | tee -a $LOG
+               FILESTAT="BAD"
+               continue
+            fi
+         ;;
+      esac
+#                                       If we get here, compile worked,
+#                                       or up-to-date .o file was found.
+#                                       Replace if it's appropriate.
+#                                       Reverse name lookup required,
+#                                       should replace this with REVENV.
+      EV=`PRINTENV | grep -v '[CcPp][Ww][Dd]=' | \
+         grep -v 'OLDPWD=' | grep "=$AIPS_VERSION" | \
+         grep =$AREA$ | grep -v EV= | grep -v ENV= | grep -v 'APLCONTR=' | \
+         grep -v ENV | sed -e 's/=.*//'`
+      RPL=`grep '^'$AREA'$' $SYSLOCAL/SEARCH[0-9].DAT | \
+         sed -e 's/^.*://' | sort -u`
+      case $RPL in
+
+         $AREA)
+#                                       Defined, so copy object module
+#                                       to as many archive directories
+#                                       as proper.  Determine proper
+#                                       archive directories based on EV
+#                                       as found in SYSLOCAL/LIBR.DAT.
+            for N in $ALTS
+            do
+               ALTN=\$ALT$N
+               ALTN=`eval echo $ALTN`
+#                  eval echo ALT$N=\$ALT$N and PROPER=$PROPER"
+               if test "$ALTN" = "$PROPER"
+               then
+                  DIR=`grep ':'$N':\$'$EV'$' $SYSLOCAL/LIBR.DAT | \
+                     sed -e 's/\/SUBLIB.*//'`
+                  DIR=`eval echo $DIR`
+                  if [ ! -d $DIR ] ; then
+                     if [ -f $DIR ] ; then
+                        echo "COMRPL    : $DIR not a directory!" | \
+                              tee -a $LOG
+                        echo "COMRPL    : It is a file, maybe an" \
+                             "object module from failed Install." \
+                              tee -a $LOG
+                        echo "COMRPL    : Cannot proceed! " \
+                             "Contact the AIPS manager!"  | \
+                              tee -a $LOG
+                        echo "COMRPL    : Failed!" | tee -a $LOG
+                        exit 2
+                     fi
+                     echo "COMRPL    : LIBR directory $DIR" | \
+                           tee -a $LOG
+                     echo "COMRPL    : does not exist..." | \
+                           tee -a $LOG
+                     if mkdir $DIR ; then
+                        echo "COMRPL    : created directory $DIR" | \
+                              tee -a $LOG
+                     else
+                        echo "COMRPL    : failed to create $DIR" | \
+                              tee -a $LOG
+                        echo "COMRPL    : Cannot proceed! " \
+                             "Contact the AIPS manager!"  | \
+                              tee -a $LOG
+                        echo "COMRPL    : Failed!" | tee -a $LOG
+                        exit 2
+                     fi
+                  fi
+#                                       Two places for object files
+#                                       ONLY for DOTWOBIN present!!!
+                  if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+                     case $PATHNAME in
+                     $AIPS_VERSION*)
+                        DIRDBG=`echo $DIR | \
+                                  sed -e 's#/LIBR/#/LIBRDBG/#'`
+                        if [ ! -d $DIRDBG ] ; then
+                           if [ -f $DIRDBG ] ; then
+                              echo "COMRPL    : $DIRDBG not a" \
+                                   "directory!" | tee -a $LOG
+                              echo "COMRPL    : Failed!" | \
+                                    tee -a $LOG
+                              exit 2
+                           fi
+                           if mkdir $DIRDBG ; then
+                              echo "COMRPL    : created $DIRDBG" | \
+                                    tee -a $LOG
+                           else
+                              echo "COMRPL    : cannot create " \
+                                   "$DIRDBG" | tee -a $LOG
+                              echo "COMRPL    : Failed!" | \
+                                    tee -a $LOG
+                              exit 2
+                           fi
+                        fi
+#                                       Need to remove the .DEBUG part
+                        DBGDEST=$DIRDBG/$FILE.o
+                        if cp $DBUGNAME $DBGDEST
+                        then
+                           echo "COMRPL    : Copied     $DBUGNAME" \
+                                 | tee -a $LOG
+                           echo "COMRPL    : to         $DBGDEST" \
+                                 | tee -a $LOG
+                           eval ALT$N=""
+                        else
+                           echo "COMRPL    : Copy of    $DBUGNAME" \
+                                 | tee -a $LOG
+                           echo "COMRPL    : to         $DBGDEST"  \
+                                 | tee -a $LOG
+                           echo "COMRPL    : Failed!"              \
+                                 | tee -a $LOG
+                           FILESTAT="BAD"
+                           continue 2
+                        fi
+                        ;;
+                     esac
+                  fi
+#                                       Copy regular object to lib. area
+#                                       Some things will be in $PREP but
+#                                       substitution may already be done
+#                                       Is this in the right place?
+#                                       Should DIRDBG above be done too?
+                  case $PATHNAME in
+                     $PREP/*.o)
+                     ;;
+                     $AIPS_VERSION/*.o)
+                        PATHNAME=`echo $PATHNAME | \
+                                  sed -e "s#$AREA#$PREP#"`
+                     ;;
+                  esac
+                  if cp $PATHNAME $DIR
+                  then
+                     echo "COMRPL    : Copied     $PATHNAME" | \
+                        tee -a $LOG
+                     echo "COMRPL    : to         $DIR"      | \
+                        tee -a $LOG
+                     eval ALT$N=""
+#                        eval echo ALT$N=\$ALT$N"
+                  else
+                     echo "COMRPL    : Copy of    $PATHNAME" | \
+                        tee -a $LOG
+                     echo "COMRPL    : to         $DIR"      | \
+                        tee -a $LOG
+                     echo "COMRPL    : Failed!"              | \
+                        tee -a $LOG
+                     rm -f $PREP/COMRPL.$$
+                     FILESTAT="BAD"
+                     continue 2
+                  fi
+               fi
+            done
+#                                       Delete object module from source
+#                                       code area.  Should never fail!
+            if rm $PATHNAME
+            then
+               echo "COMRPL    : Removed    $PATHNAME" | tee -a $LOG
+            else
+               echo "COMRPL    : Removal of $PATHNAME" | tee -a $LOG
+               echo "COMRPL    : failed!  Continuing." | tee -a $LOG
+               rm -f $PREP/COMRPL.$$
+               continue 2
+            fi
+            case $PATHNAME in
+               $AIPS_VERSION*)
+                  if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+                     if rm $DBUGNAME ; then
+                        echo "COMRPL    : and        $DBUGNAME" | \
+                              tee -a $LOG
+                     else
+                        echo "COMRPL    : Removal of $DBUGNAME" | \
+                              tee -a $LOG
+                        echo "COMRPL    : failed!" | tee -a $LOG
+                        continue 2
+                     fi
+                  fi
+               ;;
+            esac
+
+         ;;
+
+         *)
+            echo "COMRPL    : Directory  $AREA not defined"  | \
+               tee -a $LOG
+            echo "COMRPL    : in         $SYSLOCAL/LIBR.DAT" | \
+               tee -a $LOG
+            echo "COMRPL    : Module     $PATHNAME"          | \
+               tee -a $LOG
+            echo "COMRPL    : Not replaced!"                 | \
+               tee -a $LOG
+         ;;
+
+      esac
+#                                       Clean up and delete .LOG?
+      if [ "$PURGE" = "TRUE" -a "$ULOG" = "" ] ; then
+         echo "COMRPL    : Delete     $LOG" | tee -a $LOG
+         rm -f $LOG
+      fi
+   done
+#                                       If we are being '@' file driven,
+#                                       auto-edit the '@' file prefixing
+#                                       this $PATHNAME with a '-' to
+#                                       indicate it as done.
+   if [ "$AT" != "" ] ; then
+#                                       But ONLY if it worked!
+      if [ "$FILESTAT" = "OK" ] ; then
+         sed -e 's#^'$ATNAME'#-&#' $AT > $PREP/AT.$$
+         cp $PREP/AT.$$ $AT
+         rm $PREP/AT.$$
+         if [ -f $LOG ] ; then
+            echo "COMRPL    : Changed    $ATNAME"  | tee -a $LOG
+            echo "COMRPL    : in         $AT"      | tee -a $LOG
+            echo "COMRPL    : to         -$ATNAME" | tee -a $LOG
+         else
+            echo "COMRPL    : Changed    $ATNAME"
+            echo "COMRPL    : in         $AT"
+            echo "COMRPL    : to         -$ATNAME"
+         fi
+      else
+         if [ -f $LOG ] ; then
+            echo "COMRPL    : Leave      $ATNAME"  | tee -a $LOG
+            echo "COMRPL    : in         $AT"      | tee -a $LOG
+            echo "COMRPL    : unchanged as it FAILED to compile." \
+                                                   | tee -a $LOG
+         else
+            echo "COMRPL    : Leave      $ATNAME"
+            echo "COMRPL    : in         $AT"
+            echo "COMRPL    : unchanged as it FAILED to compile."
+         fi
+      fi
+   fi
+   if [ "$FILESTAT" != "OK" ] ; then
+      LOOPSTAT="BAD"
+   fi
+#                                       Next module.
+done
+if [ \( -f $PREP/COMRPL.$$ \) -a \( "$LOOPSTAT" = "OK" \) ] ; then
+   echo "COMRPL    : Ends successfully"
+   rm $PREP/COMRPL.$$
+   exit 0
+else
+   if [ "$LOOPSTAT" != "OK" ] ; then
+      echo "COMRPL    : at least one module FAILED to compile"
+   fi
+   echo "COMRPL    : Dies of unnatural causes"
+   exit 1
+fi

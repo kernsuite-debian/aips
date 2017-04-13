@@ -1,0 +1,181 @@
+$ OOCAL.001
+$---------------------------------------------------------------
+$! RUN file to define OOCAL proc, self-cal with freq dependent terms
+$# Run Calibration
+$-----------------------------------------------------------------------
+$;  Copyright (C) 2012, 2016
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+$ PROC OOPARMS
+$ return; finish
+$
+PROC CHKIT
+string*12 tmpname
+chkname
+if (error <= 0) then;
+   print inname, inclass, inseq, 'found'; i=i+1; end
+return; finish
+$
+$  HI writing
+PROC OOCAHIST
+vnum = 33 - getpopsn; vget oocal; dohist=-1;
+if (prtask = ' ') then; prtask='oocal';
+  format=0;getdate;comment='DATETIME = ' !! thedate; hinote; end
+comment='WEIGHTIT= '!!char(weightit)!!'  FLAGVER= '!!char(flagver)
+hinote
+comment='REFANT= '!!char(refant)!!'  SOLINT= '!!char(solint)
+hinote
+comment='soltyp= "'!!soltype!!'"  SOLMODE= "'!!solmode!!'"'
+hinote
+comment='NORMALIZ= '!!char(normaliz)!!'  CPARM(2)= '!!char(cparm(2))
+hinote
+if (bparm(3) > 0) then;
+  comment='BPARM(3)= '!!char(bparm(3))
+  hinote
+  comment='IN3NAME= "'!!in3name!!'"  IN3CLASS= "'!!in3class!!'"'
+  hinote
+  comment='IN3SEQ= '!!char(in3seq)!!'  IN3DISK= '!!char(in3disk)
+  hinote
+  comment='IN4NAME= "'!!in4name!!'"  IN4CLASS= "'!!in4class!!'"'
+  hinote
+  comment='IN4SEQ= '!!char(in4seq)!!'  IN4DISK= '!!char(in4disk)
+  hinote; end; return
+finish
+PROC IMSCHIST
+vnum = 33 - getpopsn; vget imscal; dohist=-1;
+if (prtask = ' ') then; prtask='imscal'; end
+format=0; getdate; comment='DATETIME = ' !! thedate; hinote
+comment='IN2NAME= "'!!IN2NAME!!'"  IN2CLASS= "'!!IN2CLASS!!'"'
+hinote
+comment='IN2SEQ= '!!char(in2seq)!!'  IN2DISK= '!!char(in2disk)
+hinote
+comment='BLC= '!!char(blc(1))!!', '!!char(blc(2))
+hinote
+comment='TRC= '!!char(trc(1))!!', '!!char(trc(2))
+hinote
+comment='ICUT= '!!char(icut)!!'  FLUX= '!!char(flux)
+hinote
+comment='NX= '!!char(nx)!!'  NY= '!!char(ny)
+hinote;  oocahist; return
+finish
+$
+$   OOCAL + CALIB self-cal with OOP spectral=dependent options
+$
+PROC OOCAL
+scalar DOWINAIT
+if (outname = ' ') then; outname=inname; end
+tmpname = outname;
+$                                       defaults
+tput oocal; dowinait=dowait; dowait=1
+vnum = 33 - getpopsn; vput oocal
+$                                       check temp file
+i=0; inseq=0; inname=tmpname; inclass='oocal1'; chkit
+if (i>0) then;
+   print 'oocal quitting - delete listed file'
+   vget oocal; return; end
+$                                       oosub
+default oosub; vget oocal; task 'oosub'
+outname tmpname; outclass='oocal1'; outseq 0; outdisk indisk
+factor=1.0; opcode 'div'; go
+$                                       calib
+default calib; vget oocal; task 'calib'
+inname=tmpname; inclass='oocal1'; inse 0;
+clr2name; nmaps=0; doapply=-1;
+aparm(2) = 1; snver=1; go
+$                                       tacop
+default tacop; vget oocal; task 'tacop'
+outname=inname; outclass=inclass; outseq=inseq
+outdisk=indisk; inext='sn'; invers=1; outvers=0
+inname=tmpname; inclass='oocal1'; inseq=0;
+ncount=1; intype='uv' ; go
+$                                       clean up
+if (dokeep <= 0.0) then; zap; end
+$                                       restore state, HI
+vget oocal; dowait=dowinait
+if (prtask <> 'IMSCAL') then; prtask=''; oocahist; end
+return
+finish
+$
+$   IMSCAL - IM2CC followed by OOCAL
+$
+PROC IMSCAL
+scalar DOWINIMS, IMDISK;
+$                                       defaults
+if (outname = ' ') then; outname=in2name; end
+tmpname = outname;
+tput imscal; dowinims=dowait; dowait=1
+vnum = 33 - getpopsn; vput imscal; prtask='imscal'
+$                                       check temp files
+print 'Make sure none of the temp files exist
+i=0; inseq=0; inname=tmpname; inclass='oocal1'; chkit
+x = nx*ny;
+inname=outname; inse=1; intype='ma'; indisk=0
+for j=1:x;
+   if (j < 10) then; inclass = 'IMC00' !! char(j);
+   else if (j < 100) then;  inclass = 'IMC0' !! char(j);
+   else;  inclass = 'IMC' !! char(j); end; end
+ $  print 'check',inname,inclas
+   chkit
+   clrtemp
+   end
+if (i>0) then;
+   print 'imscal quitting - delete listed file'
+   vget imscal; return; end
+$                                       IM2CC
+default im2cc; vget imscal; task 'im2cc'
+inname=in2name; inclass=in2class; inseq=in2seq; indisk=in2disk
+outseq=1; go
+$                                       how many out
+print 'Find out how many files were written
+inname=tmpname; inse=1; intype='ma'; indisk=0
+for j=x:1 by -1;
+   if (j < 10) then; inclass = 'IMC00' !! char(j);
+   else if (j < 100) then;  inclass = 'IMC0' !! char(j);
+   else;  inclass = 'IMC' !! char(j); end; end
+$   print 'check',inname,inclas, x
+   chkname; if (error) then; x=x-1; error=0; end
+   clrtemp
+   end
+print 'Number output maps found
+print x
+$                                       get image disk
+inclass='IMC001'; inse=1; indisk=0; nameget
+imdisk=indisk
+$                                       oocal
+default oocal; vget imscal; task 'oocal'; in2name=tmpname
+in2class='imc001'; in2seq=1; in2disk=imdisk; nmaps=x; flux 0
+invers=1; onefreq=1; oocal
+$                                       clean up
+vget imscal
+inname=tmpname; inse=0; intype='ma'; indisk=imdisk
+for j=1:x;
+   if (j < 10) then; inclass = 'IMC00' !! char(j);
+   else if (j < 100) then;  inclass = 'IMC0' !! char(j);
+   else;  inclass = 'IMC' !! char(j); end; end
+   zap; clrtemp; end
+$
+vget imscal; dowait=dowinims; imschist
+return
+finish

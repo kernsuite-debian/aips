@@ -1,0 +1,285 @@
+; PGEOM
+;---------------------------------------------------------------
+;! Task to transform an image into polar coordinates.
+;# TASK IMAGING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 2005, 2009-2010
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+PGEOM     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+PGEOM    Task to transform an image into polar coordinates.
+INNAME                             Input image (name)
+INCLASS                                        (class)
+INSEQ           0.0      9999.0                (seq. #)
+INDISK          0.0         9.0                (disk unit #)
+OUTNAME                            Output image (name)
+OUTCLASS                                       (class)
+OUTSEQ         -1.0      9999.0                (seq #)
+OUTDISK         0.0         9.0                (disk unit #)
+BLC             0.0      4096.0    Bottom left corner of image
+                                     0=>entire image
+TRC             0.0      4096.0    Top right corner of image
+                                     0=>entire image
+IMSIZE          0.0      2048.0    Output image size in pixels
+APARM                              (1)=ref-x (pix),(2)=ref-y,
+                                   (3)=inclin.ang.,(4)=rot.ang.,
+                                   (5)=border size,(6)=terp.ord,
+                                   (7)=invert.flag,(8)=spir.flag
+                                   (9)=spir.rad. ,(10)=zero flag
+----------------------------------------------------------------
+PGEOM
+Type: Task
+Use:  PGEOM will transform an input image into polar coordinates
+      and back into rectangular coordinates using Everett
+      interpolation (bilinear, bicubic, or biquintic).  PGEOM is
+      capable of doing arbitrary transforms of any size image since it
+      now uses dynamic memory.  It can "correct" for inclination and
+      unwrap spiral objects.  Be aware that the interpolation method
+      causes edges and blanked pixels to expand into the output image.
+Adverbs:
+  INNAME........Input map name.            Standard defaults.
+  INCLASS... ...Input map class.           Standard defaults.
+  INSEQ.........First input map seq no.    0 => highest.
+  INDISK........Input map disk:            0 = any.
+  OUTNAME.......Output map name.           Standard defaults.
+  OUTCLASS......Output map class.          Standard defaults.
+  OUTSEQ........Output map seq no.       0 => highest unique.
+  OUTDISK.......Output map disk.      0 => highest with room.
+  BLC...........The bottom left-hand pixel of the input image
+                which becomes the bottom left corner of the
+                input subimage.  The value (0,0) means (1,1).
+  TRC...........The top right-hand pixel of the input image
+                which becomes the top right corner of the
+                subimage.  The value (0,0) means take the top
+                right hand corner of the image.
+  APARM.........Transformation parameters:
+                1 & 2 = (x, y) location where the "center" is
+                  located.  This need not be the actual center
+                  of the image.  It is simply the reference
+                  point from which the radius and angle are
+                  computed.  THERE IS NO DEFAULT.  These are
+                  the radius zero pixel coords in the input
+                  image (APARM(7) <= 0) or the output image
+                  (APARM(7) > 0).
+                3 = inclination angle - the angle between the
+                  plane of the object and the plane of the
+                  sky (i.e. 0 indicates the object is parallel
+                  to the sky, 90 indicates the object is
+                  perpendicular to the sky).  This parameter
+                  allows for deprojection of objects such as
+                  elliptical galaxies.
+                4 = rotation angle - the angle between the
+                  plane of the object and a horizontal plane.
+                5 = border size.  This parameter specifies the
+                  number of pixels that should be added to each
+                  side of the output picture. Thus, negative
+                  radii pixels can be created for use by the
+                  interpolator.  If APARM(5)<=0 it defaults to
+                  APARM(6)/2 + 1.
+                6 = Order of Everett interpolation formula
+                  [range 1-7: 1=bilinear, 3=bicubic,
+                   5=biquintic, 7=biseptic]       0 => 3.
+                   Higher orders will produce more accurate
+                   interpolations although oddities may appear when
+                   the output cell size is significantly smaller than
+                   the input cell size.  See extensive discussion in
+                   EXPLAIN file.
+                7 = inversion flag. Causes the inverse of the
+                  specified transformation to be performed.
+                  Useful to undo previous operation.
+                8 = spiral flag.  Causes the program to unwrap
+                  a spiral with a specified reference radius.
+                  The reference radius is the radius of the
+                  spiral at the rotation angle specified.  The
+                  program assumes a linear relationship between
+                  the angle and radius of the spiral.
+                9 = spiral radius.  This is the reference radius
+                  for the spiral.  It is the spiral's radius at
+                  the specified rotation angle.  Must be greater
+                  than zero (0.0 => 1.0).
+               10 = zero-flag. If > 0.0, zeroes are used
+                   wherever blanks would normally be created in
+                   the output image.
+----------------------------------------------------------------
+PGEOM - an incomplete explanation.
+(numerical analysis topics below apply to LGEOM and HGEOM too)
+
+On the output headers
+
+The output image (when APARM(7) <= 0, i.e. rectangular to polar)
+has radius on the X axis with increment SQRT (x-incr * y-incr)
+and angle on the Y axis.  If the first two input axes are a sky
+position pair (i.e. longitude and latitude), the angle is the
+position angle measured CCW from north.
+
+Maintaining header information in this transformation is tricky.
+Most AIPS programs will not give correct RA and Decs for pixels
+in the radius-angle output image.  Header information is not
+lost however so long as the input rectangular image has no more
+than 5 axes.  If your header has more than 5, use TRANS to make
+sure that axes 6 and 7 are null (only 1 pixel).
+
+On the Relation of Input Image Size to Output Image Size:
+
+The adverb IMSIZE specifies the dimensions of the output image
+more or less.  When APARM(7) <= 0 (rectangualr to polar), the
+number of rows is IMSIZE(2) + 2*APARM(5) with a default for
+IMSIZE(2) of TRC(2)-BLC(2)+1.  The number of columns is set to
+the maximum of IMSIZE(1) and some side of the input subimage.
+If IMSIZE(1) <= 0, the number of columns is the diagonal of the
+input image in pixels.  One APARM(5) is then added.  When
+APARM(7) > 0 (polar to rectangular), the number of rows is
+IMSIZE(2) - 2*APARM(5) with the same default.  The number of
+columns is IMSIZE(1) with a default of 2 * (TRC(1) - BLC(1) + 1
+-APARM(5)) (note the 2).
+
+A Discussion of Blanking in PGEOM:
+
+Output pixels are computed as a weighted sum of the input
+pixels in the neighborhood of the computed location in the
+input (the interpolation weights depend on the fraction of the
+pixel spacing). If one of the input pixel values in the sum is
+blanked, i.e., indefinite in value, then the whole sum, i.e.
+the output pixel, is blanked. If APARM(9) is true, then instead
+of blank a zero is delivered as the output pixel value. As a
+result, if an isolated pixel in the input is blank it will
+produce blanks (or zeroes) in a region in the output image the
+same size as the interpolating kernel (4x4 pixels for bicubic,
+8x8 for biseptic). This is not nice, but all suggested cures
+considered so far have other difficulties.
+
+There is a special case implemented for the edges of the input
+image. Here PGEOM "reflects" the pixels near the boundary out
+into the terra incognita and uses them for interpolation. This
+means that pixel 1 is copied into the pixel 0 position, pixel 2
+is copied into pixel -1, etc. The effect of this algorithm,
+implemented on all four edges, is that first derivatives of the
+interpolant are zero at all boundaries. NOTE: "Boundary" in
+this case also means the window defined by BLC and TRC.
+
+If the output image is larger than the transformation of the
+input window then the extra area will be blanked (or zeroed).
+
+
+Regarding the Everett Interpolation Formula:
+
+This program computes where in the input image each output pixel
+appears. This location is generally at some arbitrary fractional
+pixel position in x and y, surrounded by four input pixels. The
+program then interpolates in the pixel values surrounding the
+position. For APARM(6)=1  it uses linear interpolation, first in
+in x (twice) and then in y. This is called "bilinear"
+interpolation, and is the default choice.
+
+If APARM(6)=3 two pixels on each side in x and y are used,
+sixteen pixels total. A cubic polynomial is fitted through the
+four pixels in each of the four rows in x, and evaluated at the
+computed x-position. Then a cubic is put through those four
+values (in y) and evaluated. This is "bicubic" interpolation.
+For APARM(6)=5 we use a 6x6 array, 36 pixels total; this is
+"biquintic" interpolation. For APARM(6)=7, we have 8x8, 64 pixels,
+"biseptic" interpolation.
+
+
+Regarding the Numerical Accuracy of Interpolation:
+
+The accuracy of interpolation increases with the order of
+the polynomial, but of course so does the cost of computation.
+As the polynomial order increases the interpolating function
+approaches ever more closely to the sinc function, the perfect
+bandlimited interpolator, as a limit. Bicubic is good enough
+for many ordinary purposes. Biquintic will probably be good
+enough even for high dynamic range data like optical CCD
+imagery and self-calibrated VLA maps. The point is, if we
+want very accurate results we want the "noise" of interpolation
+errors to be less than the observational noise in the data at
+all spatial frequencies of interest.
+
+The interpolation is done by computing a set of interpolating
+weights which are a function of the fractional pixel position
+where the answer is desired. The answer is then computed by
+multiplying the weights by the data. This is a convolution.
+It follows that an interpolator of a given order has a
+corresponding transfer function (i.e. in the terminology
+of aperture synthesis, it acts somewhat like a peculiar,
+probably "bumpy" taper function in the u-v plane). This
+function is always going to be less than unity in the
+neighborhood of the Nyquist frequency of the map. The size
+of this "neighborhood" where the transfer function is
+significantly different from unity is smaller for higher
+order polynomials. It follows that maps which are well
+sampled, say three or four pixels per beam, are easier
+to interpolate accurately.
+
+
+How to Evaluate the Numerical Errors of Interpolation:
+
+DCW is not aware of any proper quantitative treatment of
+these accuracy issues anywhere in the literature. This
+situation is not as bad as it seems because for critical
+work there are two simple tests which can be used to
+estimate the interpolation error:
+
+Test1: compute a simple change, reverse it, then difference
+input and output. E.g., transform the input image into
+polar coordinates, then invert the transformation.  Use COMB
+to subtract the second output from the input. The difference
+is all interpolation noise. If that noise level (due to TWO
+interpolations) is small enough to suit you then you know that
+the noise of the first answer, the rotated image, is even lower
+(only one interpolation). Actually, this test is excessively
+conservative because the transfer function of interpolation is
+SQUARED by the double calculation (NOTE: any multiple
+application of interpolation to data will square, cube, etc.,
+the transfer function of data. Mostly one loses high spatial
+frequencies in the data, but errors creep into the lower
+spatial frequencies, too.)
+
+Test2: compute a small change with one order of interpolation,
+compute again with increased order, then difference the two
+results. E.g., transform the input image into polar coordinates
+with APARM(6)=3 (bicubic), then perform the operation again with
+APARM(6)=5 (biquintic). Use COMB to subtract the the first
+answer from the second. The difference is an estimate of the
+error of bicubic interpolation for your image. An even more
+accurate estimate of the error would be obtained by using
+APARM(6)=7 (biseptic) for the second computation. Although this
+test does not inspire the degree of conviction which Test1 can
+by reproducing the input image, it more than makes up for this
+by giving an estimate of the interpolation error of a SINGLE
+operation.
+
+NOTE: in performing tests such as are suggested above it will
+make sense to use BLC and TRC to select a small region of the
+input image (say, 100-square) which contains interesting
+structure whose details need to be preserved. This will save
+time and make it reasonable to perform both Test1 and Test2,
+and to use biseptic interpolation for Test2. For example, one
+could perform Test1 using biseptic interpolation in order to be
+convinced that it's results are accurate. Then perform Test2
+for bicubic and/or biquintic and compare them to the biseptic
+computation.
+
+See EXPLAIN LGEOM for a discussion of Virtual Memory in PGEOM

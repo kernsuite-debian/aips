@@ -1,0 +1,494 @@
+#!/bin/sh
+# UPDCONFIG
+#-----------------------------------------------------------------------
+#! Local configuration file for UPDATE
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2009, 2012, 2015-2016
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#---------------------------------------------------------------------
+#  Set installation dependent options for the UPDATE procedure. The
+#  following environmental variables must be defined.
+#
+#  ClientName     Name of the client machine
+#
+#  ServerName     Name of server
+#
+#  MasterName     Name of machine with master (and update) files
+#
+#  MasterRoot     AIPS master directory, location of transaction files
+#
+#  ServerRoot     AIPS root directory on server
+#
+#  MaxTries       Number of times to attempt to copy LASTGOOD.DAT
+#                  from the server if it has not changed since the
+#                  last complete update job
+#
+#  MailList       List of people to receive update report
+#
+#  ErrorList      List of people to receive update error log
+#
+#  PrtCommand     Command to print a file (including flags; empty for
+#                 no printing
+#
+#  UpdDoRemove    YES if the midnight job is to actually remove files
+#                 This should only be for when a local system copies
+#                 files from another local system.  Systems that use cvs
+#                 to update from a master want to set this to NO.  The
+#                 removal from libraries will be done any way.  Note,
+#                 if you have different architectures sharing the
+#                 same code tree, and have a midnight job on one of
+#                 the architectures while another is the master,
+#                 you do NOT want to remove files as they are already
+#                 removed.
+#
+#  UpdDoCopy      YES if midnight job is to copy files.  See above.
+#
+#  UpdClient	  YES if this system is slaved off a local master that
+#                 in turn gets its midnight job from _the_ master.
+#
+#  UpdDoNFS       YES if the master area is NFS accessible (true for
+#                 NRAO/CV, false for master jobs elsewhere, may be
+#                 true for client jobs elsewhere.
+#
+#  UpdMini        YES if mini-midnight job is enabled; this filters
+#                 out all COMRPLs and COMLNKs not related to the tasks
+#                 listed in variable UpdMiniPrg.
+#
+#  UpdMiniPrg     A list of the subset of tasks to consider for a mini
+#                 midnight job.  If this is not set, it defaults to
+#                 "AIPNOT:MSGSRV AIPNOT:TEKSRV AIPNOT:TVSERV".
+#                 Setting this here will override that default value.
+#
+#  UpdCVS         YES (uppercase) to enable the use of anonymous
+#                 cvs to fetch the updates; this assumes UpdDoCopy
+#                 (see above) is YES and UpdSSH (below) is NO, and
+#                 it will bitch if that isn't the case.
+#
+#  UpdRsync       YES means do the update via binary rsync with the
+#                 AOC version
+#
+#  cvscmd         Use this to detail the path to the cvs command;
+#                 note: should just be the path, no command line
+#                 arguments. Those are taken care of internally.
+#
+#  cvsroot        Again, tread carefully. This should be set to the
+#                 NRAO master site and not redefined unless you
+#                 set up your own CVS reporitory.
+#
+#  UpdSSH         YES (uppercase, spelled out) to enable use of the
+#                 secure shell (ssh) for running the MNJ.  Now only
+#                 used for copying from a local master to another
+#                 local computer - cvs is used to NRAO's master.
+#
+#  sshcmd         Set this if you need to override the SSH command.
+#                 NOTE: NRAO uses OpenSSH configured in 1,2 mode.  If
+#                 you are using the commercial ssh2 product, you need
+#                 to either get the mnj2 key (tested only from OpenSSH
+#                 client to OpenSSH server at time of writing, and that
+#                 does work), or resort to using the ssh1 command.  We
+#                 recommend using OpenSSH; it's free, and it works.
+#
+#  ClientName and ServerName should be in the form appropriate to
+#  the file transfer protocol used in UPDCOPYSUB.
+#
+#  AIPSUPD calls this script after invoking $HOME/LOGIN.SH and $CDTST.
+#
+#  NRAO version for legacy midnight job sites.  New sites should have
+#  a separate UPDCONFIG in $SYSLOCAL to define at least the three
+#  necessary values: ClientName, MailList, ErrorList.
+#---------------------------------------------------------------------
+if [ "$SITE" = "" ] ; then
+  case $SHELL in
+    *csh) echo "SITE is not defined.  Did you source LOGIN.CSH?";;
+    *sh)  echo "SITE is not defined.  Did you . LOGIN.SH?";;
+    *) echo "SITE is not defined.  Did you forget the LOGIN.SH/CSH?";;
+  esac
+  exit 1
+fi
+MaxTries=5
+PrtCommand=""
+umask 002
+#                                       Default settings, good for most
+#                                       of the MNJ sites.
+ServerName=mnj.aoc.nrao.edu
+MasterName=mnj.aoc.nrao.edu
+RsyncMaster=ftp.aoc.nrao.edu
+MasterRoot=/home/aipssrc/master
+ServerRoot=/AIPS
+Account=aipsmgr
+MasterArch=LINUX
+#                                       These are for remote access
+UpdDoRemove=NO
+UpdDoCopy=YES
+UpdClient=NO
+UpdDoNFS=NO
+UpdSSH=NO
+#                                       SSH command: can be overridden,
+#                                       in the site-specific UPDCONFIG
+#                                       (in $SYSLOCAL)
+sshcmd="ssh -C -q -a -x -i ${HOME}/.ssh/mnj"
+#                                       Full or Mini (TVs only) job?
+UpdMini=NO
+#                                       CVS command: can be overridden,
+#                                       in the site-specific UPDCONFIG
+#                                       (in $SYSLOCAL)
+cvscmd="/usr/bin/cvs"
+cvsroot=":pserver:anoncvs@mnj.aoc.nrao.edu:/home/aipssrc/cvs"
+if [ -f $SYSLOCAL/RSYNC.ME ]; then
+   UpdCVS="NO"
+   UpdRsync="YES"
+else
+   UpdCVS="YES"
+   UpdRsync="NO"
+fi
+
+#                                       NRAO/Charlottesville.  NRAO
+#                                       master is on mnj.aoc.nrao.edu.
+#                                       One client does cvs copy, others
+#                                       don't.
+if [ "$SITE" = "NRAOCV" -o "$SITE" = "VCOARN" ] ; then
+#                                       What follows is for the others:
+   ServerName=valen
+   MasterName=valen
+   MasterArch=LINUX
+   MasterRoot=/home/aips
+   ServerRoot=/home/aips
+   UpdClient=YES
+   UpdDoNFS=YES
+   UpdSSH=NO
+   UpdCVS=NO
+   UpdDoCopy=NO
+   UpdDoRemove=NO
+   ClientName=$HOST
+   MailList="egreisen@nrao.edu,pmurphy@nrao.edu"
+   ErrorList="$MailList"
+   case $HOST in
+#                                       LNX64
+     VALEN)
+        cvscmd=/usr/bin/cvs
+        UpdClient=NO
+        UpdDoCopy=YES
+        UpdCVS=NO
+        ServerName=mnj.aoc.nrao.edu
+        MasterName=mnj.aoc.nrao.edu
+        MailList="egreisen@nrao.edu,pmurphy@nrao.edu"
+        ErrorList=$MailList
+     ;;
+#                                       LNX64
+     ALDERAAN)
+        cvscmd=/usr/bin/cvs
+        UpdClient=NO
+        UpdDoCopy=YES
+        UpdCVS=NO
+        ServerName=mnj.aoc.nrao.edu
+        MasterName=mnj.aoc.nrao.edu
+        MailList=aipsmgr@aoc.nrao.edu
+        ErrorList=$MailList
+     ;;
+#                                       SUL (maybe sometime)
+     FIREBIRD)
+     ;;
+     *)
+        echo "$HOST not defined in UPDCONFIG!"
+        exit 1
+     ;;
+   esac
+
+#                                       NRAO/Tucson downtown
+elif [ "$SITE" = "NRAOTUC" -o "$SITE" = "CUTOARN" ] ; then
+#                                       stuff for secondary machines
+   ServerName=brador
+   MasterName=brador
+   MasterArch=SUL
+   MasterRoot=/home/analysis/aips
+   ServerRoot=/home/analysis/aips
+   UpdClient=YES
+   UpdDoNFS=YES
+   UpdSSH=NO
+   UpdCVS=NO
+   UpdDoCopy=NO
+   UpdDoRemove=NO
+   ClientName=$HOST
+   MailList="egreisen,jmangum"
+   ErrorList="${MailList},aipsmgr@nrao.edu"
+   Account=egreisen
+   case $HOST in
+#                                       SUL
+     BRADOR)
+        cvscmd=/usr/local/bin/cvs
+        UpdDoCopy=YES
+        UpdClient=NO
+        UpdCVS=YES
+	UpdDoNFS=NO
+        MasterName=mnj.aoc.nrao.edu
+        ServerName=mnj.aoc.nrao.edu
+     ;;
+#                                       LINUX
+     CAPEL)
+     ;;
+     PISCO)
+     ;;
+#                                       Assume SOL slave MNJ to jenlan
+     JENLAN)
+        UpdMini=YES
+        UpdMiniPRG="AIPNOT:MSGSRV AIPNOT:TEKSRV AIPNOT:TVSERV AIPNOT:TPMON"
+     ;;
+     *)
+        echo "$HOST not defined in UPDCONFIG!"
+        exit 1
+     ;;
+  esac
+#                                       NRAO/GB removed PPM 2005-03-21
+#                                       One machine there will run a MNJ.
+#                                       NRAO/AOC and VLA
+elif [ "$SITE" = "NRAOAOC" -o "$SITE" = "COAOARN" -o \
+       "$SITE" = "NRAOVLA" ] ; then
+#                                       stuff for secondary machines
+   ServerName=dave
+   MasterName=dave
+   MasterArch=LINUX
+   MasterRoot=/home/AIPS
+   ServerRoot=/home/AIPS
+   UpdClient=YES
+   UpdDoNFS=YES
+   UpdSSH=NO
+   UpdCVS=NO
+   UpdDoCopy=NO
+   UpdDoRemove=NO
+   ClientName=$HOST
+   MailList=aipsmgr@aoc.nrao.edu
+   ErrorList=$MailList
+#                                       The MNJ machines
+   case $HOST in
+#                                       AOC/VLA local master
+     DAVE)
+        cvscmd=/usr/bin/cvs
+        UpdDoCopy=YES
+        UpdClient=NO
+        UpdCVS=YES
+	UpdDoNFS=NO
+        MasterName=mnj.aoc.nrao.edu
+        ServerName=mnj.aoc.nrao.edu
+        MailList=daip@nrao.edu
+        ErrorList=$MailList
+     ;;
+#                                       AOC test master: Linux 3.2.1
+     PRIMATE|ONAGER)
+        cvscmd=/usr/bin/cvs
+        UpdDoCopy=YES
+        UpdClient=NO
+        UpdCVS=YES
+	UpdDoNFS=NO
+        MasterName=mnj.aoc.nrao.edu
+        ServerName=mnj.aoc.nrao.edu
+        MailList=egreisen@nrao.edu
+        ErrorList=egreisen@nrao.edu,aipsmgr@aoc.nrao.edu
+     ;;
+#                                       SUL
+     SHIRE)
+        MailList=aipsmgr@aoc.nrao.edu
+        ErrorList=$MailList
+     ;;
+#                                       LNX64
+     RISHI)
+        MailList=aipsmgr@aoc.nrao.edu
+        ErrorList=$MailList
+     ;;
+#                                       SGI
+     OHSUMI)
+     ;;
+#                                       SGI mini job - not running?
+     EXPLORER)
+        UpdMini=YES
+     ;;
+#                                       VLA site - must copy by rcp or ??
+     MIRANDA)
+        UpdDoCopy=YES
+        UpdDoRemove=YES
+        UpdDoNFS=NO
+        UpdSSH=NO
+     ;;
+     *)
+        echo "$HOST not defined in UPDCONFIG!"
+        exit 1
+     ;;
+   esac
+#                                       Offsite MNJ's (legacy)
+elif [ "$SITE" = "JPL335" ] ; then
+  case $HOST in
+    SGRA)
+      ClientName=sgra
+      MailList="dj@sgra.jpl.nasa.gov,aips@sgra.jpl.nasa.gov"
+      ErrorList="$MailList,aipsmgr@nrao.edu"
+      ;;
+  esac
+
+elif [ "$SITE" = "MPIRBN" -o "$SITE" = "NBRIPM" ] ; then
+  sshcmd="ssh1 -C -q -a -x -i ${HOME}/.ssh/mnj"
+  case $HOST in
+    AIPSSRV)
+      ClientName=aipssrv
+      ;;
+    VLB082)
+      ClientName=vlb082
+      ;;
+    *)
+      ClientName=`uname -n`
+      ServerName=aipssrv
+      MasterName=aipssrv
+      MasterRoot=/homes/AIPS
+      ServerRoot=/homes/AIPS
+      UpdDoRemove=NO
+      UpdDoCopy=NO
+      UpdClient=YES
+      MasterArch=LINUX
+      UpdDoNFS=YES
+      UpdCVS=NO
+      UpdSSH=NO
+      Account=egreisen
+      ;;
+  esac
+  MailList="egreisen@nrao.edu,jsm@mpifr-bonn.mpg.de"
+  MailList="${MailList},alef@mpifr-bonn.mpg.de"
+  ErrorList="${MailList},aipsmgr@nrao.edu"
+elif [ "$SITE" = "CALTECH" ] ; then
+#                                       Inactive
+  ClientName=ikaros.caltech.edu
+  MailList="mcs@astro.caltech.edu"
+  ErrorList="${MailList},aipsmgr@nrao.edu"
+elif [ "$SITE" = "CALSGI" ] ; then
+#                                       Inactive
+  ClientName=cougar
+  MailList="bill@ras.ucalgary.ca"
+  ErrorList="${MailList},aipsmgr@nrao.edu"
+elif [ "$SITE" = "USNO" -o "$SITE" = "ONSU" ] ; then
+#                                       Inactive?
+  MailList="rgaume@usno.navy.mil,aipsmgr@nrao.edu"
+  ErrorList=$MailList
+  UpdSSH=NO
+  case $ARCH in
+    HP2)
+      ClientName=geb
+      UpdSSH=YES
+      ;;
+    IBM)
+      MasterName=geb
+      MasterArch=HP2
+      MasterRoot=/usr/aips
+      ClientName=quasar
+      UpdDoRemove=NO
+      UpdDoCopy=NO
+      UpdClient=YES
+      ServerName=geb
+      ServerRoot=/usr/aips
+      MailList="rgaume@usno.navy.mil"
+      ErrorList="${MailList},aipsmgr@nrao.edu"
+      ;;
+    LINUX)
+      MasterName=geb
+      MasterArch=HP2
+      MasterRoot=/usr/aips
+      ClientName=nuit
+      UpdDoRemove=NO
+      UpdDoCopy=NO
+      UpdClient=YES
+      ServerName=geb
+      ServerRoot=/usr/aips
+      MailList="rgaume@usno.navy.mil"
+      ErrorList="${MailList},aipsmgr@nrao.edu"
+      ;;
+  esac
+elif [ "$SITE" = "VSOP" ] ; then
+#                                       Inactive?
+  case $HOST in
+  HIJIRI)
+    ClientName=hijiri
+    MailList="umemoto@hotaka.mtk.nao.ac.jp"
+    ErrorList="${MailList},aipsmgr@nrao.edu"
+    ;;
+  esac
+elif [ "$SITE" = "NFRA" ] ; then
+#                                       Active
+  case $HOST in
+     jop21)
+        ClientName=jop21
+        MailList="reynolds@jive.nl"
+        ;;
+     jop23)
+        ClientName=jop23
+        MailList="muehle@jive.nl"
+        ;;
+     *)
+        ClientName=`uname -n`
+        MailList="muehle@jove.nl"
+        ;;
+  esac
+  ErrorList="${MailList},aipsmgr@nrao.edu"
+elif [ "$SITE" = "ISAS" ] ; then
+#                                       Inactive.
+  MailList="aips@vsop.isas.ac.jp"
+  ErrorList="${MailList},aipsmgr@nrao.edu"
+  case $HOST in
+    SENJOU) ClientName=senjou ;;
+    HALCA)  ClientName=halca  ;;
+  esac
+elif [ "$SITE" = "UIOWA" ] ; then
+#                                       Inactive.
+  ClientName=denali
+  MailList="rlm@astro.physics.uiowa.edu,aipsmgr@nrao.edu"
+  ErrorList="${MailList}"
+elif [ "$SITE" = "OBSBDX" ] ; then
+  ClientName=alose
+  MailList="nathalie@observ.u-bordeaux.fr,aipsmgr@nrao.edu"
+  ErrorList="${MailList}"
+else
+  if [ ! -f $SYSLOCAL/UPDCONFIG ] ; then
+     echo "UPDCONFIG - using GENERIC setup (no SYSLOCAL/UPDCONFIG found)"
+  fi
+  ClientName=`uname -n | awk -F. '{print $1}'`
+  MailList="$LOGNAME,aipsmgr@nrao.edu"
+  ErrorList=$MailList
+fi
+#                                       This wasn't being honored for
+#                                       the grandfathered-in sites above
+#                                       but it should have been.  Duh.
+if [ -f $SYSLOCAL/UPDCONFIG ] ; then
+#                                       this is now used by MAKE.MNJ
+#                                       and should NOT be a copy of this
+#                                       file!
+# echo "UPDCONFIG - getting additional SYSLOCAL configuration settings"
+  . $SYSLOCAL/UPDCONFIG
+fi
+#                                       Sanity check
+if [ `echo $ClientName | tr '[a-z]' '[A-Z]'` != $HOST ] ; then
+  echo "UPDCONFIG - Config mismatch: client $ClientName, host $HOST"
+  exit 1
+fi
+#                                       Get into serious trade issues
+export ClientName ServerName MasterName MasterRoot ServerRoot MailList
+export ErrorList UpdDoRemove UpdDoCopy UpdClient MaxTries PrtCommand
+export UpdDoNFS MasterArch Account UpdMini UpdMiniPRG UpdSSH sshcmd
+export UpdCVS cvscmd cvsroot UpdRsync RsyncMaster

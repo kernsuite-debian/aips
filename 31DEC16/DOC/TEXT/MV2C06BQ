@@ -1,0 +1,86 @@
+@@
+Batch Queueing file        BQ100000
+
+
+
+A. Overview
+
+
+Function:  The batch queueing file is used to queue jobs to the batch
+versions of AIPS.
+
+Name:  The file is named BQ100000.  It is a permanent file on disk 1
+and must be large enough to hold NBATQS 256-word records.
+
+
+
+B. Data structure
+
+
+     There is one 256-word record in the file for each batch processor:
+record n corresponding to BATQUE = n , processed by AIPSB(m) (i.e.,
+with NPOPS = m = n + 2*NINTRN + 1).
+
+     Each 256-word block contains structures describing 64 jobs.
+These structures have the form:
+
+   FIELD    TYPE      DESCRIPTION
+
+     1      I*4     User number given in the logon
+     2      I*4     Submission time: 256 * 256 * (year-1900)
+                                     + 256 * month + day
+     3      I*4     Submission time: 256 * 256 * hours
+                                     + 256 * minutes + seconds
+     4      I*4     Desired version: 1-3 => OLD, NEW, TST resp.
+
+In addition, the signs and contents of the first two words are used
+to convey the status of the job as:
+
+    word 1  = 0                   no job ("vacant slot")
+    word 1  > 0  word 2  > 0      job waiting to run
+    word 1  > 0  word 2  < 0      job ran and failed
+    word 1  < 0  word 2  = 0      job is being submitted
+    word 1  < 0  word 2  > 0      job is running
+    word 1  < 0  word 2  < 0      job finished - may be reassigned
+
+
+
+C. Usage notes
+
+
+     Job numbers are formed as 100 * n + m , where m is the entry in
+queue n.  It is simply the m'th 4-word block in record n.  The queueing
+algorithm is first-in-first-out with a bias toward new users.  Thus,
+the algorithm first looks for the oldest job submitted under any user
+number other than the previous three users of that queue.  If it finds
+no jobs to run, it repeats the search excluding only the previous two
+user numbers.  And so forth.
+
+
+
+D. Routines and commons
+
+
+     The principal program to access this file is the subroutine BATQ
+which performs all normal operations on the file.  It can "OPEN" a
+job by finding an available job number and setting the values in the
+slot to show that the job is being submitted.  It takes the lowest
+numbered vacant slot or, if there is none, the lowest numbered job
+finished slot.  BATQ can "RUNN" (queue) a job by converting the user
+number to a positive value and inserting the current time.  It can
+"FIND" the next job to run using the algorithm mentioned above and
+setting the entry to job running.  It can also "CLOS" a job by
+clearing the entry or, if it was running, by marking it finished.
+BATQ uses no commons and requires the calling program to maintain the
+list of previous users.  BATQ does update the list on FIND, however.
+Other operations include "WHOO" to find the ID of the current job
+and "FAIL" to mark all currently running jobs as having failed.
+
+     The other subroutine which accesses this file directly is AUB
+(and the BATER version of AUB called CUB).  These routines perform
+on the BQ file the user-oriented functions:
+
+     QUEUES      list job numbers and times in the queue
+     JOBLIST     list contents of submitted job
+     UNQUE       remove job from queue and transfer text of job back
+                 to a batch work file

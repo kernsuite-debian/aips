@@ -1,0 +1,179 @@
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1997, 2001
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*
+proc crosspol
+scalar vlb_slot
+scalar vlb_ant
+scalar vlb_ok
+scalar vlb_low
+scalar vlb_hi
+scalar vlb_ref
+scalar vlb_tim
+vlb_slot=0
+vlb_ok=1
+vlb_low=1
+vlb_hi=1
+vlb_ref=-1
+vlb_tim=-1
+vnum=35
+vput crosspol
+if outdi=0 then outd=ind; end;
+tput crosspol
+$tget uvcop;vput 'uvcop';tget fring; vput 'fring'; tget clcal
+$vput 'clcal';tget indxr; vput 'indxr';tget polsn; vput 'polsn'
+$tget swpol; vput 'swpol'; tget tacop; vput 'tacop'
+tget crosspol
+inext 'cl'; inver 0; keyw 'NO_ANT'; getth; vlb_ant=keyval(1)
+if gainuse=0 then
+  type 'GAINUSE HAS NO DEFAULT'
+  type 'SET GAINUSE AND RUN AGAIN'
+  vlb_ok=-1
+end
+if (refant=0) then
+  type 'REFANT MUST BE EITHER LOWEST OR HIGHEST ANNTENNA #'
+  type 'SELECT A REFANT AND RUN AGAIN'
+  vlb_ok=-1
+end
+if ((basel(1)=0) & (refant <> 1) & (refant <> vlb_ant)) then
+  type 'REFANT MUST BE EITHER LOWEST OR HIGHEST ANNTENNA #'
+  type 'RESET REFANT AND RUN AGAIN'
+  vlb_ok=-1
+end
+for i=1 to vlb_ant;
+  if(baseline(i) <> 0) & (refant > baseline(i)) then
+    vlb_low=-1
+  end
+  if(basel(i) <> 0) & (refant < basel(i))then
+    vlb_hi=-1
+  end
+  if(basel(i)<>0) & (basel(1)<>0) & (refant = basel(i)) then
+    vlb_ref=1
+  end
+end
+if(vlb_low < 0) & (vlb_hi < 0) then
+  type 'REFANT MUST BE EITHER LOWEST OR HIGHEST ANNTENNA #'
+  type 'RESET REFANT AND RUN AGAIN'
+  vlb_ok=-1
+end
+if(vlb_ref < 0) & (refant <> 0) & (basel(1) <> 0) then
+  type 'REFANT MUST BE PART OF BASELINE LIST'
+  type 'RESET BASELINE AND RUN AGAIN'
+  vlb_ok=-1
+end
+for i=1 to 8
+  if(timer(i)<>0)then
+    vlb_tim=1
+  end
+end
+if(vlb_tim<0)then
+  vlb_ok=-1
+  type 'timerange has no default'
+  type 'pick a time range that has strong SNR for RL and LR fringes'
+end
+IF vlb_ok >=0 then
+type 'MAKE COPY OF SELECTED DATA'
+task='UVCOP'; default; tget crosspol;task='uvcop'
+   outn='CROSSPOL TMP'; outc='UVCOP'; outs=666
+runwait('uvcop')
+task 'INDXR';default; tget crosspol; task='indxr'
+   inna='CROSSPOL TMP'; inc='UVCOP'; ins=666; indi=outd;
+runwait('indxr')
+   inex 'SN'; inver=-1;extd
+type 'FRINGE FIT FOR PARALLEL HAND DATA'
+task='FRING';default; tget crosspol; task='fring'
+   inna='CROSSPOL TMP'; inc='UVCOP'; ins=666; indi=outd
+   aparm=2,0; docal=2; snver=1
+runwait('fring')
+type 'CALIBRATE PARALLEL POLARIZATION'
+task='CLCAL'; default; tget crosspol; task='clcal'
+   inna='CROSSPOL TMP'; inc='UVCOP'; ins=666; indi=outd
+   gainv gainu; gainu=maxtab('cl') ;snver=1
+   opcode='CALI'; sourc calsour
+runwait('clcal')
+   vlb_slot=gainu
+type 'SWAP R AND L FOR REFERENCE ANTENNA'
+task='SWPOL';default; tget crosspol; task='swpol'
+   inna='CROSSPOL TMP'; inc='UVCOP'; ins=666; indi=outd
+   outn='CROSSPOL TMP'; outc='SWPOL'; outs=666;
+   ante = refant, 0; gainu=vlb_slot; docalib=2
+runwait('swpol')
+task 'INDXR'; default; tget crosspol; task='indxr'
+   inn='CROSSPOL TMP'; inc='SWPOL'; ins=666; ind=outd
+runwait('indxr')
+   inex 'SN'; inver=-1;extd
+type 'FRINGE FITS FOR CROSS HAND DATA'
+task='FRING'; default; tget crosspol; task='fring'
+   inn='CROSSPOL TMP'; inc='SWPOL'; ins=666; ind=outd
+   aparm=2,0; gainu=vlb_slot; docal=2; snver=1
+   if(baseline(1)=0)then
+     for i=1 to vlb_ant
+       if(i<>refant)then
+         ante = refant, i
+         type 'FIT FOR BASELINE',refant,basel(i)
+         runwait('fring')
+       end
+     end
+   else
+     for i=1:30;
+        if (basel(i)<>refant) & (basel(i) <> 0) then
+          ante = refant, basel(i)
+          type 'FIT FOR BASELINE',refant,basel(i)
+          runwait('fring')
+        end
+      end
+   end
+type 'PROCESS SOLUTIONS'
+task='POLSN'; default; tget crosspol; task='polsn'
+   inn='CROSSPOL TMP'; inc='SWPOL'; ins=666; ind=outd
+   inver=1; outver=2
+runwait('polsn')
+type 'COPY SN TABLE TO ORIGINAL UV DATA'
+task='TACOP'; default; tget crosspol; task='tacop'
+   in2d=outd;outna=inn; outc=inc; outd=ind; outs=ins
+   inn='CROSSPOL TMP'; inc='SWPOL'; ins=666; ind=in2d
+   inex 'SN'; inver =2; ncount=1
+runwait('tacop')
+type 'RUN CLCAL'
+task 'clcal';default; tget crosspol;task 'clcal'
+   snver=maxtab('sn'); gainv gainu; gainu=maxtab('cl')+1
+   opcode 'cali';timer 0; cals '';sour ''; ante base
+runwait('clcal')
+type 'DESTROY TEMPORARY FILES'
+   inty ='UV'; inn='CROSSPOL TMP'; ind=outd; ins=666
+   inclass='UVCOP'; zap
+   inclass='SWPOL'; zap
+type 'SN #' !! char(snver) !!' contains cross pol. delay corrections'
+type 'CL #'!!char(gainu)!!' adds cross pol. delay corrections'
+dowa false
+vnum=35
+$vget 'uvcop';tput uvcop; vget 'fring'; tput fring; vget 'clcal'
+$tput clcal; vget 'indxr';tput indxr; vget 'polsn'; tput polsn
+$vget 'swpol'; tput swpol; vget 'tacop'; tput tacop
+vget crosspol;tput crosspol;tget crosspol
+vnum 0
+END
+return; finish

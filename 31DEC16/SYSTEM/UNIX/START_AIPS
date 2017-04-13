@@ -1,0 +1,642 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1998, 2000-2004, 2006, 2008-2010, 2015
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: START_AIPS [OLD, NEW, or TST]
+#                   [TV=[disp][:][host]] [usock [unew]] [tvok] [notv]
+#                   [DA=host,host,...] [DA=default]
+#                   [TP=tphost,tphost,...] [tpok]
+#                   [PR=lpdev]
+#                   [NORL] [NOEX] [options passed to AIPSEXEC]
+#-----------------------------------------------------------------------
+# This script defines AIPS system variables and starts AIPS.
+#
+# Options: TV=d:h    for the name of an AIPS TV to use.  See TVDEVS.SH.
+#                    "d" is the display host, "h" is the TV host.  The
+#                    default display host will be set by the DISPLAY
+#                    environment variable (or if not set, current host).
+#                    The default TV host is the current (login) host.
+#                    If DISPLAY is, e.g. FOO:10.1, the number is used
+#                    appropriately when launching the servers.
+#          TV=local  Use Unix based sockets for TV and other servers.
+#          TV=local:n Specify which local Unix socket TV to use; n=0
+#                    means a new instance higher than existing numbers.
+#                    NOTE: Use extended hex, e.g. A for 10, Z for 35
+#          USOCK     Obsolete version of TV=local.
+#          UNEW      Obsolete version of TV=local:0
+#          NOTV      if no TV is wanted.  Also inhibits MSGSRV,TEKSRV
+#          TVOK      to inhibit re-launching of TV, msg, tek servers
+#          OLD       for the OLD version of AIPS, passed to AIPSEXEC
+#          NEW       for the NEW version of AIPS, passed to AIPSEXEC
+#          TST       for the TST version of AIPS, passed to AIPSEXEC
+#          CVX       for the CVX version of AIPS, passed to AIPSEXEC
+#          REMOTE    forces NOTV, passed to AIPSEXEC (also REM or TEK)
+#          DA=xxx    Use disks from machine xxx in addition to local
+#                    and required ones.  See DADEVS.SH/PL for more...
+#          TP=xxx    Make sure tape servers are running on machine xxx.
+#          TPOK      Inhibit launching of TPMON's on LOCAL machine
+#          PR=xxx    Select initial printer number xxx (see PRDEVS.LIST)
+#          NORL      Disable use of GNU readline library for AIPS input.
+#          NOEX      Defer AIPS execution; passed to AIPSEXEC
+#
+# Environment Variables:
+#    AIPSREMOTE      Set to the remote shell command.  If this variable
+#                    is non-blank, it will override the definition of
+#                    REMOTE_CMD.  This allows per-user use of, for
+#                    example, the secure shell (ssh) for starting remote
+#                    daemons.
+#                    NOTE: As of March 28, 2001 this script ONLY
+#                    supports the secure shell.  To override this (with,
+#                    e.g. rsh, if you must, and you shouldn't), use the
+#                    AIPSREMOTE variable.
+#
+# Notes:  While every effort is made by this script to figure out if you
+#         are on a remote login link, there is *NO* portable and
+#         reliable way of doing this.  Startup of TV or tape servers on
+#         remote hosts is NOT a feature that is likely to work without a
+#         significant amount of work on the part of the user.
+#
+#         Also, it is ASSUMED that the REMOTE_ROOT (remote host's
+#         AIPS_ROOT) will be /AIPS unless the user has already set it.
+#         Change this default below as needed.
+#         The AIPS users SHOULD be starting their TV's locally first
+#         before initiating a remote AIPS session, and using TVOK on
+#         the aips startup command line.
+#
+#-----------------------------------------------------------------------
+#                                       Set the AIPS root directory.
+AIPS_ROOT=/DEFINE_ME
+#                                       Set what it should be remotely
+#                                       CHANGE THIS if necessary.
+if [ "$REMOTE_ROOT" = "" ] ; then
+   REMOTE_ROOT=$AIPS_ROOT
+fi
+#                                       Specify command used for remote
+#                                       shell (TV startup, TPMON).
+#                                       Only use secure shell!!!
+REMOTE_CMD=ssh
+if [ "$AIPSREMOTE" != "" ] ; then
+   REMOTE_CMD=$AIPSREMOTE
+   case $REMOTE_CMD in
+      *ssh*) ;;
+      *) echo "WARNING: overriding the remote shell command 'ssh'"
+         echo "         with $REMOTE_CMD."
+         echo "         This may raise security concerns." ;;
+   esac
+fi
+case $SITE in
+  NRAO*|*OARN) umask 002;;   # NRAO policy
+  * ) ;;                     # other sites set your own policy here
+esac
+#                                       Only change these if you know
+#                                       what you're doing...
+USEUNIXSOCK=NO
+NEWUNIXSOCK=NO
+#
+# --------------- do not change anything below this line ---------------
+#
+export AIPS_ROOT REMOTE_ROOT USEUNIXSOCK NEWUNIXSOCK UNIXTVN
+#                                       Shortcuts for output text.
+ei1 () {
+  echo "START_AIPS: $*"
+}
+#                                       Posix: echo behaves differently
+#                                       Following trick from Martin
+#                                       Shepherd (mcs@astro.caltech.edu)
+#                                       and Will Deich.
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "START_AIPS: $*"
+  else
+    echo "START_AIPS: $*\c"
+  fi
+}
+spc() {
+  echo " "
+}
+if [ ! -d $AIPS_ROOT ] ; then
+  ei1 "AIPS_ROOT is not a directory; cannot start AIPS."
+  exit 2
+fi
+#                                       Who am I?
+. $AIPS_ROOT/HOSTS.SH
+#
+if [ "$ARCH" = UNKNOWN -o "$ARCH" = "" ] ; then
+  ei1 "$HOST is not defined in HOSTS.LIST; cannot start AIPS."
+  exit 2
+fi
+if grep "^+  $HOST" $AIPS_ROOT/HOSTS.LIST >/dev/null 2>/dev/null ; then
+  : proceed
+else
+  ei1 "$HOST is not a valid AIPS host and cannot run AIPS."
+  exit 1
+fi
+#                                       BROWZ and aipsXtra, add-ons to
+#                                       AIPS from Chris Flatters
+aipsXtra="$AIPS_ROOT/bin/aipsXtra-setup"
+if [ -f $aipsXtra ] ; then
+  . $aipsXtra
+fi
+#                                       Initial selection is no TV.
+TVOPT=""; export TVOPT
+TPOPT=""; export TPOPT
+OPTIONS=""; export OPTIONS
+TVOK=""
+TPOK=""
+LPOPT=0
+REMOTE=""
+UNIXTVN=0
+for option in $* ; do
+  opt=`echo $option | tr '[A-Z]' '[a-z]'`
+  arg=`echo $option | sed -e 's/^...//'`
+#                                       Which version of AIPS to run.
+  case $opt in
+    old)      VERSION=OLD; export VERSION;;
+    new)      VERSION=NEW; export VERSION;;
+    tst|test) VERSION=TST; export VERSION;;
+#                                       CVX became TST in 15APR98...
+    cvx)      VERSION=CVX; export VERSION;;
+#                                       No tv wanted, or already ok
+    notv) TVOPT=NONE;;
+    tvok) TVOK="YES";;
+#                                       Data areas.
+    da=*) DAOPT=$arg; export DAOPT;;
+#                                       TV host and/or display.
+    tv=*)
+      case $arg in
+        local)   USEUNIXSOCK=YES;;
+        local:*)
+          USEUNIXSOCK=YES
+          arg2=`echo $arg | awk -F: '{print $2}' | tr '[a-z]' '[A-Z]'`
+          [ "$DEBUG" = "YES" ] && ei1 "TV=local:$arg2 found"
+          case $arg2 in
+            0) NEWUNIXSOCK=YES;;
+            [1-9A-Z])
+              case $arg2 in
+                [1-9A-Z]) UNIXTVN=$arg2
+                        [ "$DEBUG" = "YES" ] && ei1 "UNIXTVN=$arg2";;
+              esac;;
+            *) ;;
+          esac;;
+        *) TVOPT=$arg;;
+      esac
+      ;;
+#                                       Printer selection.
+    pr=*) LPOPT=$arg; export LPOPT;;
+#                                       Tape server selection or none
+    tp=*) TPOPT=$arg;;
+    tpok) TPOK="YES";;
+#                                       Disable GNU readline library
+    norl) READLINE=NO; export READLINE;;
+#                                       Options to be passed to AIPSEXEC.
+#                                       Defer AIPS execution
+    noex) OPTIONS="$OPTIONS NOEX"; export OPTIONS;;
+#                                       Remote TEK screen
+    remote|rem|tek) OPTIONS="$OPTIONS REMOTE"; TVOPT=NONE; REMOTE=YES;;
+    usock|us) USEUNIXSOCK=YES
+              ei1 "Please use TV=LOCAL instead of USOCK";;
+    unew|un) NEWUNIXSOCK=YES
+             ei1 "Please use TV=LOCAL:0 instead of UNEW";;
+    *) OPTIONS="$OPTIONS $option"; export OPTIONS;;
+  esac
+done
+#                                       Default version of AIPS to run.
+#                                       15JAN95 and later releases need
+#                                       to have TVDEVS.KLUDGE copied to
+#                                       $AIPS_ROOT/TVDEVS.SH if they are
+#                                       to co-exist with older versions.
+[ "$VERSION" = "" ] && VERSION=TST
+export VERSION
+#                                       Define AIPS user environment.
+. $AIPS_ROOT/AIPSPATH.SH
+. $AIPS_ROOT/AIPSASSN.SH
+#                                       TV socket choices
+if [ $USEUNIXSOCK = YES ] ; then
+  if [ $NEWUNIXSOCK = YES ] ; then
+    ei1 "Will start a new Unix Socket based TV"
+  else
+    if [ "$UNIXTVN" != "0" ] ; then
+      utn=`REHEX $UNIXTVN`
+      ei1 "Will use Unix Socket based TV number $utn"
+    else
+      ei1 "Will use or start first available Unix Socket based TV"
+    fi
+  fi
+else
+  if [ $NEWUNIXSOCK = YES ] ; then
+    USEUNIXSOCK=YES
+    ei1 "Will start a new Unix Socket based TV"
+  else
+    NEWUNIXSOCK=NO
+  fi
+fi
+if [ $USEUNIXSOCK = YES ] ; then
+  if [ "$DISPLAY" = "" ] ; then
+    ei1 "You must have DISPLAY defined to use local TV's"
+    exit 1
+  else
+    hname=`$AIPS_ROOT/SETNAME`
+    TVOPT="`echo $DISPLAY | awk -F: '{print $1}'`:$hname"
+    MYOS=`uname -s`
+    if [ $MYOS = "Darwin" ] ; then
+	    TVOPT=`echo $TVOPT | sed -e 's$/$.$g'`
+    fi
+  fi
+fi
+#                                       See how many printers there are.
+lpfile=$NET0/PRDEVS.LIST
+if [ -f $lpfile ] ; then
+  LPDEVS=`grep '^[^# ]' $lpfile | grep -v '$PRINTER' | wc -l`
+  LPDEVS=`eval echo $LPDEVS`
+  export LPDEVS
+else
+#                                       We need this file!
+  ei1 "Cannot proceed: $lpfile file not found!"
+  exit 1
+fi
+#                                       Printer choice if more than one
+if [ $LPDEVS -gt 1 ] ; then
+  n=$LPOPT
+  if [ $LPOPT -ge 1 -a $LPOPT -le $LPDEVS ] ; then
+#                                       Get single printer definition
+    : ok
+  elif [ $LPOPT -ne 0 ] ; then
+    ei1 "Sorry, there is no printer number $LPOPT (only 1 - $LPDEVS)"
+    n=0
+  fi
+  if [ $n -eq 0 ] ; then
+    spc
+    echo "You have a choice of $LPDEVS printers.  These are:"
+    spc
+    echo "    No. [ type  ] Description"
+    echo "-------------------------------------------------------------"
+    grep '^[^# ]' $lpfile | awk '{
+            skipit=0;
+            for (k=4; k<=NF; k++) {
+               if ($k ~ /\$/) skipit=1;
+            }
+            if (skipit == 0) {
+               printf("    %2d. [%7s] ", NR, $2);
+               for (j=4; j<=NF; j++) printf "%s ", $j;
+               printf("\n");
+            }
+         }'
+    echo "-------------------------------------------------------------"
+#                                       While user is mulling over this,
+#                                       figure out the default
+    ndef=`grep '^[^# ]' $lpfile | awk '{if ($3 ~ /DEF/) print NR}' | \
+     head -n 1`
+    [ "$ndef" = "" ] && ndef=1
+#                                       and any BIG printer
+    nbig=`grep '^[^# ]' $lpfile | awk '{if ($3 ~ /BIG/) print NR}' | \
+     head -n 1`
+    if [ "$nbig" != "" ] ; then
+       BIGPRINT=$nbig
+       export BIGPRINT
+#                                       Haven't tested this in all cases
+       BIGTHRESH=`grep '^[^# ]' $lpfile | \
+                  awk '{if ($3 ~ /BIG/) print $3}' | head -n 1 | \
+                  sed -e 's/BIG=\([0-9]\{1,5\}\).*/\1/'`
+    fi
+    spc
+    n=0
+    while [ $n -eq 0 ] ; do
+      ni1 "Enter your choice, or the word QUIT [default is $ndef]: "
+      read n
+      [ "$n" = "" ] && n=$ndef
+      [ $n = "QUIT" -o $n = "quit" ] && exit
+      if [ "$n" -lt 1 -o "$n" -gt $LPDEVS ] ; then
+        ei1 "Please enter a number from 1 to $LPDEVS (or QUIT)"
+        spc
+        n=0
+      fi
+    done
+  fi
+else
+  n=1
+  if [ "$LPOPT" != "" ] ; then
+    [ "$LPOPT" = 0 ] && LPOPT=1
+    if [ "$LPOPT" != "1" ] ; then
+      ei1 "Only one printer configured, cannot choose printer $LPOPT"
+    fi
+  fi
+fi
+LPDEV=$n
+LPNAM=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $1}'`
+PRTYPE=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $2}'`
+LPOPT=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') print $3}'`
+LPDESC=`grep '^[^# ]' $lpfile | awk '{if (NR == '$n') for (j=4; j<=NF; j++) printf "%s ", $j;}'`
+export LPDEV LPNAM PRTYPE LPOPT LPDESC
+ei1 "Your initial AIPS printer is the $LPDESC"
+ei1 " - system name $LPNAM, AIPS type $PRTYPE"
+#                                       Allocate data disks.
+spc
+ei1 "User data area assignments:"
+if [ -f "$HOME/.dadevs.$SITE" ] ; then
+   DADEVS_FILE="$HOME/.dadevs.$SITE"
+elif [ -f "$HOME/.dadevs" ] ; then
+   DADEVS_FILE="$HOME/.dadevs"
+elif [ -f "$DA00/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$DA00/DADEVS.LIST"
+elif [ -f "$NET0/DADEVS.LIST.$SITE" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST.$SITE"
+elif [ -f "$NET0/DADEVS.LIST" ] ; then
+   DADEVS_FILE="$NET0/DADEVS.LIST"
+else
+   DADEVS_FILE=""
+fi
+export DADEVS_FILE
+#                                       If have perl, do it the fast way
+pid=$$
+if [ "$AIPSTMP" = "" ] ; then
+   tmpfil=/tmp/DADEVS.$pid
+else
+   tmpfil=$AIPSTMP/DADEVS.$pid
+fi
+[ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+if [ -f $tmpfil ] ; then
+  . $tmpfil
+  rm -f $tmpfil
+else
+#                                       If not or if it broke, fall back
+  . $SYSUNIX/DADEVS.SH
+fi
+if [ "$NVOL" = "0" -o "$DA01" = "" ] ; then
+  ei1 "Cannot start AIPS because there are no defined data areas!"
+  ei1 "(check DADEVS.LIST or .dadevs files, or AIPSASSN.\*)"
+  exit 1
+fi
+
+#                                       Define Tape drives
+. $SYSUNIX/TPDEVS.SH
+#                                       Use default TV display?  Check
+#                                       for blank or :* in command line.
+case $TVOPT in "" | :*)
+#                                       Are we sitting in front of a
+#                                       workstation?
+  [ "$TERM" = "" ] && TERM=unknown
+  case $TERM in
+    sun*|*xterm*|*hpterm|dtterm|iris*|Eterm|screen)
+#                                       Is this a slogin from a display
+#                                       workstation?  First check if
+#                                       DISPLAY is set.
+#                                       Secure shell may be forwarding X
+#                                       If so, do this
+      if [ "$DISPLAY" != "" ] ; then
+         if [ "$SSH_CLIENT" != "" ] ; then
+#                                       Get the IP address
+            case $ARCH in
+               SOL | SUL)
+                  WORKST=`echo $SSH_CLIENT | awk '{print $1}'`
+                  ;;
+               *)
+                  WORKST=`echo ${SSH_CLIENT##*:} | awk '{print $1}'`
+                  ;;
+            esac
+#                                       Now convert to hostname if poss.
+#                                       (nslookup replaced by host cmd!)
+#                                       Yes, this is a hack.
+            PATH=$PATH:/usr/sbin
+            case $ARCH in
+               *LINUX|LNX64|*BSD*|MAC*)
+                  WORKST=`host $WORKST | awk '{print $NF}' | sed -e 's/\.$//'`;;
+               *) WORKST=`nslookup $WORKST | grep '^Name:' | awk '{print $2}'`;;
+            esac
+#                                       Finally, get simple hostname
+            WORKST=`echo $WORKST | awk -F. '{print $1}'`
+#                                       If SSH_CONNECTION not CLIENT
+         elif [ "$SSH_CONNECTION" != "" ] ; then
+#                                       Get the IP address
+            case $ARCH in
+               SOL | SUL)
+                  WORKST=`echo $SSH_CONNECTION | awk '{print $1}'` ;;
+               *)
+                  WORKST=`echo ${SSH_CONNECTION##*:} | awk '{print $1}'` ;;
+            esac
+#                                       Now convert to hostname if poss.
+#                                       (nslookup replaced by host cmd!)
+#                                       Yes, this is a hack.
+            PATH=$PATH:/usr/sbin
+            case $ARCH in
+               *LINUX|LNX64|*BSD*|MAC*)
+                  WORKST=`host $WORKST | awk '{print $NF}' | sed -e 's/\.$//'`;;
+               *) WORKST=`nslookup $WORKST | grep '^Name:' | awk '{print $2}'`;;
+            esac
+#                                       Finally, get simple hostname
+            WORKST=`echo $WORKST | awk -F. '{print $1}'`
+#                                       display, no ssh apparently
+         else
+            WORKST=`echo $DISPLAY | awk -F: '{print $1}'`
+#                                       Tackle <blank>:* and unix:*...
+            [ "$WORKST" = "unix" -o "$WORKST" = "" ] && \
+               WORKST=`$AIPS_ROOT/SETNAME`
+            case $ARCH in
+               MACINT|MACPPC)
+                 [ `echo $WORKST | grep "^/\(private/\)*tmp"` ] && \
+                    WORKST=`$AIPS_ROOT/SETNAME`
+                 ;;
+            esac
+         fi
+#                                       DISPLAY not set.  Sigh... See if
+#                                       we can find where user came from
+#                                       This method WILL fail often.  On
+#                                       AIX 3.1 and Solaris 2.3, utmp is
+#                                       not properly cleared out and
+#                                       hence the "head -n 1".
+      else
+        cmd="who am i"
+#                                       HP's do it differently.
+        [ "$ARCH" = "HP" ] && cmd="who -R am i"
+        [ "$ARCH" = "HP2" ] && cmd="who -R am i"
+#                                       Get the remote host field if any
+        WORKST=`$cmd | head -n 1 | awk -F\( '{print $2}' | sed -e 's/)//'`
+#                                       If none, use simple hostname
+        [ "$WORKST" = "" ] && WORKST=`$AIPS_ROOT/SETNAME`
+#                                       Tackle as many possibilities as
+#                                       possible.
+        case $WORKST in
+          :* | unix:*)   WORKST=`$AIPS_ROOT/SETNAME` ;;
+          *:*)           WORKST=`echo $WORKST | awk -F: '{print $1}'` ;;
+          [0-9]*.[0-9]*) ;;
+          *.*)           WORKST=`echo $WORKST | awk -F. '{print $1}'` ;;
+        esac
+#                                       This should NEVER happen, but...
+        [ "$WORKST" = "${USER-$LOGNAME}" ] && \
+           WORKST=`$AIPS_ROOT/SETNAME`
+      fi
+      ei1 "I am GUESSING you are at a workstation called $WORKST"
+      if [ $USEUNIXSOCK = YES ] ; then
+         ei1 " - but have chosen to run the TV locally on $HOST"
+      else
+         TVOPT=$WORKST$TVOPT
+      fi
+      ;;
+    *)
+#                                       Reserved terminals (rarely used)
+      ttynam="`tty 2>/dev/null`"
+      if [ "$ttynam" = "$RESSTT1" ] ; then
+        ei1 "You are at reserved terminal 1."
+        TVOPT=$TVTT1
+      elif [ "$ttynam" = "$RESSTT2" ] ; then
+        ei1 "You are at reserved terminal 2."
+        TVOPT=$TVTT2
+      elif [ "$ttynam" = "$RESSTT3" ] ; then
+        ei1 "You are at reserved terminal 3."
+        TVOPT=$TVTT3
+      else
+#                                       Disable image display.
+        TVOPT=NONE
+        ei1 "You do not seem to be at a workstation (TERM=$TERM)"
+      fi
+      ;;
+  esac
+  export TVOPT
+  ;;
+esac
+#                                       Start AIPS TV Servers (if any).
+[ "$DEBUG" = "YES" ] && ei1 "Using $AIPS_ROOT/TVDEVS.SH"
+. $AIPS_ROOT/TVDEVS.SH
+if [ "$TVOPT" != NONE ] ; then
+#                                       Determine TV servers to use.
+  case $TVALT in
+#                                       Don't do it on hardwired TV's.
+    TVALT?4) ;;
+    *)
+      if [ "$TVOK" = "YES" ] ; then
+        ei1 "Assuming TV servers are already started (you said TVOK)"
+      else
+        if [ "$TVHOST" = "`$AIPS_ROOT/SETNAME`" ] ; then
+          ei1 "Starting TV servers on $TVHOST asynchronously"
+          if [ "$USEUNIXSOCK" = YES ] ; then
+            if [ "$NEWUNIXSOCK" = YES ] ; then
+              ei1 " - WITH Unix Sockets (new instance) as requested..."
+            else
+              ei1 " - WITH Unix Sockets as requested..."
+            fi
+            $AIPS_ROOT/START_TVSERVERS $TVOPT $VERSION UNIX &
+          else
+            ei1 " - with Internet Sockets..."
+            $AIPS_ROOT/START_TVSERVERS $TVOPT $VERSION INET &
+          fi
+        elif [ "$TVHOST" != NONE ] ; then
+#                                       Do it on the remote host.
+#                                       Need .rhosts setup to do this.
+          ei1 "Checking if $TVHOST is reachable via $REMOTE_CMD..."
+          if $REMOTE_CMD $TVHOST echo "Checking" >/dev/null 2>/dev/null
+          then
+            ei1 "Yes it is.  Telling $TVHOST to start VERSION=$VERSION"
+            ei1 "TV servers asynchronously with INET Socket..."
+            ei1 "******************************************************"
+            ei1 "IF THIS FAILS, start AIPS yourself by hand on $TVHOST."
+            ei1 "******************************************************"
+            $REMOTE_CMD $TVHOST -n \
+             $REMOTE_ROOT/START_TVSERVERS $TVOPT $VERSION INET &
+          else
+            ei1 "Cannot start remote TV servers on $TVHOST, sorry!"
+            ei1 "remote command gave this error:"
+            $REMOTE_CMD $TVHOST echo "This won't work"
+            case $REMOTE_CMD in
+              *ssh*)
+                ei1 "check your secure shell setup, in particular"
+                ei1 "whether you have a passphrase enabled.  You may"
+                ei1 "wish to try '$REMOTE_CMD -v $TVHOST pwd' to see"
+                ei1 "what the problem is."
+                ;;
+              *)
+                ei1 "You may want to consider using the secure shell"
+                ei1 "for remote startup of AIPS TVs.  If you cannot,"
+                ei1 "start an AIPS session on $TVHOST first, then come"
+                ei1 "back here and say 'aips tv=$TVHOST tvok'"
+                ;;
+            esac
+          fi
+        fi
+      fi
+      ;;
+  esac
+fi
+if [ "$TVOPT" = NONE ] ; then
+  ei1 "No TV selected; operating in dumb terminal mode."
+fi
+#                                       Start local tape servers.
+if [ "$TPOK" = "YES" ] ; then
+  ei1 "Assuming TPMON daemons are running or not used (you said TPOK)"
+else
+  ei1 "Starting TPMON daemons on $HOST asynchronously..."
+  $AIPS_ROOT/START_TPSERVERS &
+fi
+#                                       Start AIPS tape servers.
+if [ "$TPOPT" != "" ] ; then
+#                                       Convert to lowercase, and strip
+#                                       non-alphanumerics.
+  TPOPT=`echo $TPOPT | tr '[A-Z]' '[a-z]' | sed -e 's/[^a-z0-9]/ /g'`
+  for TPHOST in $TPOPT ; do
+    ei1 "Checking if I can reach tape host $TPHOST via $REMOTE_CMD..."
+    if $REMOTE_CMD $TPHOST echo "Checking" >/dev/null 2>/dev/null ; then
+      ei1 "Yes I can.  Telling $TPHOST to start TPMON servers..."
+      ei1 "(This will allow you to use tape drives on $TPHOST)"
+      ei1 "******************************************************"
+      ei1 "IF THIS FAILS, start AIPS yourself by hand on $TVHOST."
+      ei1 "******************************************************"
+      $REMOTE_CMD $TPHOST -n $REMOTE_ROOT/START_TPSERVERS &
+    else
+      ei1 "Cannot start remote tape servers on $TPHOST, sorry!"
+      ei1 "remote command gave this error:"
+      $REMOTE_CMD $TPHOST echo "This won't work"
+      case $REMOTE_CMD in
+         *ssh*)
+            ei1 "check your secure shell setup, in particular"
+            ei1 "whether you have a passphrase enabled.  You may"
+            ei1 "wish to try '$REMOTE_CMD -v $TPHOST pwd' to see"
+            ei1 "what the problem is."
+            ;;
+         *)
+            ei1 "You may want to consider using the secure shell"
+            ei1 "for remote startup of TPMON daemons.  If you cannot,"
+            ei1 "start an AIPS session on $TPHOST first, then come"
+            ei1 "back here and use the 'tpok' option in your startup."
+            ei1 "(see 'man aips' or HELP AIPS for more details)"
+            ;;
+      esac
+    fi
+  done
+fi
+#                                       Environment variables for X11
+#                                       programs started within AIPS
+if [ -z "$XBMLANGPATH" ] ; then
+  XBMLANGPATH=$AIPS_ROOT/bitmaps/%B
+else
+  XMBLANGPATH=$AIPS_ROOT/bitmaps/%B:$XBMLANGPATH
+fi
+if [ -z "$XFILESEARCHPATH" ] ; then
+  XFILESEARCHPATH=$AIPS_ROOT/%T/%N
+else
+  XFILESEARCHPATH=$XFILESEARCHPATH:$AIPS_ROOT/%T/%N
+fi
+export XBMLANGPATH
+export XFILESEARCHPATH
+#                                       Finally, start AIPS.
+exec AIPSEXEC $OPTIONS

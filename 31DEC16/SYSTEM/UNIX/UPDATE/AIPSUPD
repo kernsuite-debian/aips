@@ -1,0 +1,487 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Update AIPS areas
+## UPDATE UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1997, 2000-2002, 2004-2005, 2009, 2016
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Update specified versions of AIPS according to transaction files
+#   on a remote server.  The AIPS versions to be updated should be
+#   given as command line arguments, for example
+#
+#   AIPSUPD CVX TST NEW
+#
+#   Version names other than OLD, NEW or TST will be ignored.
+#
+#   This script may be run manually or under the control of the Unix
+#   cron utility (see cron(1)).  If interactive, it's quite verbose.
+#
+#   WARNING!  This script will (re)define the AIPS environment.  It has
+#   to, as it might be invoked from the c shell and inherit the
+#   incorrect $CDTST definition.  Use bash; it's better :-)
+#-----------------------------------------------------------------------
+#                                       Define pgmr env. variables.
+#                                       If it's not here, CHANGE ME!!!
+if [ "$AIPS_ROOT" = "" ] ; then
+   echo 'AIPSUPD - the AIPS_ROOT variable is not defined.  Help!'
+   exit 1
+fi
+if [ -f $AIPS_ROOT/LOGIN.SH ] ; then
+   . $AIPS_ROOT/LOGIN.SH
+elif [ "$HOME" != "" ] ; then
+   if [ -f $HOME/LOGIN.SH ] ; then
+      . $HOME/LOGIN.SH
+   else
+      echo "AIPSUPD - Please edit $0; no LOGIN.SH found in $HOME/"
+      exit 1
+   fi
+else
+   echo "AIPSUPD - Please edit $0; cannot find LOGIN.SH in $AIPS_ROOT"
+   exit 1
+fi
+#                                       Local configuration
+#                                       Now referenced by the master
+#                                       version of UPDCONFIG
+if [ -f UPDCONFIG ] ; then
+   . UPDCONFIG
+elif [ -f $UPDUNIX/UPDCONFIG ] ; then
+   . $UPDUNIX/UPDCONFIG
+else
+   echo "AIPSUPD - cannot find $UPDUNIX/UPDCONFIG"
+   echo "AIPSUPD - something is badly wrong!  Cannot proceed."
+   exit 1
+fi
+if [ "$1" = "" ] ; then
+  echo "AIPSUPD - no version specified on command line"
+  exit 2
+fi
+
+# Sanity check on UpdCVS.
+if [ "$UpdCVS" = YES ] ; then
+  if [ "$UpdDoCopy" != YES ] ; then
+    echo "AIPSUPD - UpdCVS is YES but UpdDoCopy isn't!"
+    exit 3
+  fi
+  if [ "$UpdSSH" = YES ] ; then
+    echo "AIPSUPD - both UpdSSH and UpdCVS are YES, one must fall!"
+    echo "AIPSUPD - UpdSSH is still sort of supported, for clients"
+    echo "AIPSUPD - chained to a local master without NFS, but UpdCVS"
+    echo "AIPSUPD - is a different ball of wax."
+    exit 4
+  fi
+  if [ "$UpdClient" = YES ] ; then
+    echo "AIPSUPD - UpdCVS and UpdClient are both YES; UpdCVS is"
+    echo "AIPSUPD - for clients slaved to the main NRAO master"
+    echo "AIPSUPD - only, not for clients slaved to a local master,"
+    echo "AIPSUPD - which is what UpdClient implies."
+    exit 5
+  fi
+fi
+
+#                                       Set RunTime to current date in
+#                                       YYYYMMDD.HHMMSS format, and set
+#                                       names for update and error logs.
+#                                       This is an ATOMIC OPERATION!
+#                                       (excuse the zippy-like tone :-)
+#                                       It defines the time used for
+#                                       reference on transactions.
+#                                       MNJ Systems should use NTP.
+RunTime=`date -u +%Y%m%d.%H%M%S`
+export RunTime
+#                                       Process each version given on
+#                                       the command line; ignore non-
+#                                       standard version names:
+
+for Vers
+   do
+   if [ \( X$Vers = XCVX \) -o \
+        \( X$Vers = XTST \) -o \
+        \( X$Vers = XNEW \) -o \
+        \( X$Vers = XOLD \) ] ; then
+#                                       Set env. vars for this version.
+      eval \$CD$Vers >/dev/null 2>/dev/null
+      if [ -d $AIPS_VERSION/$ARCH/UPDATE ] ; then
+         [ -t 1 ] && echo "AIPSUPD - cd $AIPS_VERSION/$ARCH/UPDATE"
+         cd $AIPS_VERSION/$ARCH/UPDATE
+      else
+         [ -t 1 ] && echo "AIPSUPD - cd $UPDUNIX, no $ARCH-specific dir"
+         cd $UPDUNIX
+      fi
+      LogFile=$AIPS_VERSION/$ARCH/UPDATE/UPD$RunTime.LOG; export LogFile
+      ErrorFile=$AIPS_VERSION/$ARCH/UPDATE/UPD$RunTime.ERR; export ErrorFile
+      if [ -t 1 ] ; then
+         echo "AIPSUPD - RunTime is $RunTime"
+         echo "AIPSUPD - LogFile is $LogFile"
+         echo "AIPSUPD - ErrorFile is $ErrorFile"
+      fi
+#                                       Make sure dot is in path.
+      PATH=.:$PATH; export PATH
+#                                       Clean out junk from last time:
+      rm -f $LogFile *.ERR *.UNQ
+      touch $LogFile
+#                                       (temporary?) heads up...
+
+      if [ "$UpdCVS" = YES ] ; then
+        echo "AIPSUPD - Using CVS for copying files." >>$LogFile
+        [ -t 1 ] && echo "AIPSUPD - Using CVS for copying files."
+      elif [ "$UpdRsync" = YES ] ; then
+        echo "AIPSUPD - Using rsync (not CVS) for copying files." >>$LogFile
+        [ -t 1 ] && echo "AIPSUPD - Using rsync (not CVS) for copying files."
+      elif [ "$UpdSSH" = YES ] ; then
+         if [ "$UpdDoNFS" = YES ] ; then
+            echo "AIPSUPD - if NFS copying fails,"\
+                 "the SECURE SHELL will be used instead." \
+             >>$LogFile
+            [ -t 1 ] && echo "AIPSUPD - if NFS copying fails,"\
+                             "the SECURE SHELL will be used instead."
+         else
+            echo "AIPSUPD - Using the SECURE SHELL for copying files." \
+             >>$LogFile
+            [ -t 1 ] && echo \
+             "AIPSUPD - Using the SECURE SHELL for copying files."
+         fi
+      else
+         if [ "$UpdDoNFS" = YES ] ; then
+            echo "AIPSUPD - NOTE: if NFS copying fails," \
+                 "will NOT use SECURE SHELL." >>$LogFile
+            [ -t 1 ] && echo "AIPSUPD - NOTE: if NFS copying fails,"\
+                             "will NOT use SECURE SHELL."
+         else
+            echo "AIPSUPD - WARNING: using scp for copying files" \
+                 " - accounts must match." >>$LogFile
+             [ -t 1 ] && \
+             echo "AIPSUPD - WARNING: using scp for copying files" \
+                " - accounts must match."
+         fi
+      fi
+#                                       Get version name (15MMMYY):
+      VerName=`echo $AIPS_VERSION | awk -F/ '{print $NF}'`
+      export VerName
+#                                       Get dates of last completed
+#                                       operations:
+      LASTREMOVE=`cat LASTREMOVE.DAT`; export LASTREMOVE
+      LASTCOPY=`cat LASTCOPY.DAT`;     export LASTCOPY
+      LASTCOMRPL=`cat LASTCOMRPL.DAT`; export LASTCOMRPL
+      LASTCOMLNK=`cat LASTCOMLNK.DAT`; export LASTCOMLNK
+#                                       Copy transaction files from
+#                                       server and process them to
+#                                       isolate changes relevant to
+#                                       this machine since the last
+#                                       update:
+      export Vers
+
+      # SWW - 2002-01-07, start of great cvs tweak.
+      # If they are using CVS, call UPDCVS to grab the files,
+      # then at each next major chunk of the process, skip it
+      # if obsolete, or make sure it doesn't try to grab the
+      # files again.
+
+      if [ "$UpdCVS" = YES ] ; then
+         [ -t 1 ] && echo "AIPSUPD - calling UPDCVS"
+          UPDCVS
+          StatVar=$?
+
+         # If things went wrong here, then either the
+         # cvs update failed to work, or it merged some
+         # files it should have updated. Either way,
+         # no sense in plugging on.
+
+         if [ ! "$StatVar" = "0" ] ; then
+            echo "AIPSUPD - UPDCVS failed, Status=$StatVar" | \
+               tee -a $ErrorFile >> $LogFile
+            [ -t 1 ] && echo "AIPSUPD - UPDCVS failed, Status=$StatVar"
+            UPDERROR
+            exit 1
+         else
+            echo "AIPSUPD - UPDCVS apparently worked" >> $LogFile
+         fi
+      elif [ $UpdRsync = "YES" ] ; then
+        basen=`basename $AIPS_VERSION`
+        [ -t 1 ] && echo "UPDRSYNC: rsync UPDATE"
+        echo "UPDRSYNC: rsync UPDATE"           >> $LogFile
+        rsync -vcaz --timeout=480 $RsyncMaster::$basen/UPDATE/* $AIPS_VERSION/UPDATE >>$LogFile
+        rsync -vcaz --timeout=480 $RsyncMaster::$basen/UPDATE/* $AIPS_VERSION/$ARCH/UPDATE >>$LogFile
+      fi
+
+      # UPDCONTROL does some stuff besides just grabbing the UPD
+      # files, so even if UpdCVS is true, it should be run.
+      [ -t 1 ] && echo "AIPSUPD - calling UPDCONTROL"
+      UPDCONTROL
+      StatVar=$?
+      [ -t 1 ] && echo "AIPSUPD - UPDCONTROL done"
+      if [ "$StatVar" = "0" ] ; then
+         Status=OK
+      else
+#                                       Abort if things are bad at this
+#                                       stage:
+         Status=FAILED
+         echo "AIPSUPD - UPDCONTROL failed, Status=$StatVar." | \
+            tee -a $ErrorFile >> $LogFile
+         [ -t 1 ] && echo "AIPSUPD - UPDCONTROL failed, Status=$StatVar."
+         UPDERROR
+         exit 1
+      fi
+
+
+#                                       Intercept changes to AREAS.DAT
+#                                       in SYSAIPS and quit if screwup
+
+      # If UpdCVS, then CVS should have handled this and and
+      # we can skip this section. 2002-01-07, SWW.
+      if [ "$UpdCVS" != YES -a  "$UpdRsync" != YES ] ; then
+         if [ "$UpdDoCopy" = YES ] ; then
+            [ -t 1 ] && echo "AIPSUPD - calling UPDAREAS"
+            UPDAREAS
+            if [ -s UPDAREAS.ERR ] ; then
+               Status=FAILED
+               [ -t 1 ] && echo "AIPSUPD - UPDAREAS failed."
+               echo "AIPSUPD - UPDAREAS failed." | \
+                  tee -a $ErrorFile >> $LogFile
+               UPDERROR
+               exit 1
+            fi
+         fi
+      fi
+#                                       Remove obsolete files:
+#
+      LASTGOOD=`cat LASTGOOD.DAT.$ServerName`; export LASTGOOD
+#                                       ...and only if things are kosher
+#                                       Won't happen anymore...
+
+      if expr $LASTREMOVE \< $LASTGOOD > /dev/null ; then
+         [ -t 1 ] && \
+            echo "AIPSUPD - calling UPDREMOVE (watch those libraries)"
+         UPDREMOVE
+         if [ $? -eq 0 ] ; then
+            [ -t 1 ] && echo "AIPSUPD - UPDREMOVE apparently worked"
+            cp LASTGOOD.DAT.$ServerName LASTREMOVE.DAT
+            LASTREMOVE=`cat LASTREMOVE.DAT`
+            Status=OK
+         else
+            [ -t 1 ] && echo "AIPSUPD - UPDREMOVE apparently FAILED"
+            echo "AIPSUPD - UPDREMOVE apparently FAILED" | \
+               tee -a $ErrorFile >> $LogFile
+            Status=FAILED
+         fi
+      else
+#                                       lastgood more recent
+         if [ -t 1 ] ; then
+            echo "AIPSUPD - dates wrong: LASTREMOVE is $LASTREMOVE"
+            echo "AIPSUPD -          and   LASTGOOD is $LASTGOOD"
+         fi
+         echo "AIPSUPD - dates wrong: LASTREMOVE = $LASTREMOVE" | \
+            tee -a $ErrorFile >> $LogFile
+         echo "AIPSUPD -          and LASTGOOD   = $LASTGOOD" | \
+            tee -a $ErrorFile >> $LogFile
+         Status=FAILED
+      fi
+
+#                                       Copy altered files from server:
+      if [ "$UpdCVS" != YES -a "$UpdRsync" != YES ] ; then
+         if [ "$UpdDoCopy" = YES ] ; then
+            if expr $LASTCOPY \< $LASTREMOVE > /dev/null ; then
+               [ -t 1 ] && echo "AIPSUPD - calling UPDCOPY"
+               UPDCOPY
+               if [ $? -eq 0 ] ; then
+                  [ -t 1 ] && echo "AIPSUPD - UPDCOPY apparently worked"
+                  cp LASTREMOVE.DAT LASTCOPY.DAT
+                  cp LASTCOPY.DAT LASTGOOD.DAT
+                  LASTCOPY=$LASTREMOVE
+                  Status=OK
+               else
+                  [ -t 1 ] && echo "AIPSUPD - UPDCOPY apparently FAILED"
+                  echo "AIPSUPD - UPDCOPY apparently FAILED" | \
+                     tee -a $ErrorFile >> $LogFile
+                  Status=FAILED
+               fi
+            else
+               if [ -t 1 ] ; then
+                  echo "AIPSUPD - dates wrong: LASTREMOVE is $LASTREMOVE"
+                  echo "AIPSUPD -          and LASTCOPY   is $LASTCOPY"
+               fi
+               echo "AIPSUPD - dates wrong: LASTREMOVE = $LASTREMOVE" | \
+                  tee -a $ErrorFile >> $LogFile
+               echo "AIPSUPD -          and LASTCOPY   = $LASTCOPY" | \
+                  tee -a $ErrorFile >> $LogFile
+               Status=FAILED
+            fi
+         else
+            [ -t 1 ] && echo "AIPSUPD - No COPY, don't worry, be happy"
+            cp LASTREMOVE.DAT LASTCOPY.DAT
+            cp LASTCOPY.DAT LASTGOOD.DAT
+            LASTCOPY=$LASTREMOVE
+            Status=OK
+         fi
+      else
+         cp LASTREMOVE.DAT LASTCOPY.DAT
+         cp LASTCOPY.DAT LASTGOOD.DAT
+         LASTCOPY=$LASTREMOVE
+         Status=OK
+      fi
+#                                       Binary rsynch requested
+      if [ $UpdRsync = "YES" ] ; then
+         UPDRSYNC
+#                                       POPSDAT, XAS etc remakes
+         UPDUPDATE
+         Status=OK
+         cp LASTCOPY.DAT LASTCOMRPL.DAT
+         LASTCOMRPL=$LASTCOPY
+         cp LASTCOMRPL.DAT LASTCOMLNK.DAT
+         LASTCOMLNK=$LASTCOMRPL
+#                                       Else Compile changed subroutines:
+      else
+#                                       POPSDAT, XAS etc remakes
+         UPDUPDATE
+         if expr $LASTCOMRPL \< $LASTCOPY > /dev/null ; then
+            [ -t 1 ] && echo "AIPSUPD - calling UPDCOMRPL"
+            UPDCOMRPL
+            [ -t 1 ] && echo "AIPSUPD - UPDCOMRPL done, check for errors"
+#                                       Check for COMRPL errors:
+            File=`grep '^[^-]' COMRPL.AT | head -1`
+            if [ "$File" = "" ] ; then
+               [ -t 1 ] && echo "AIPSUPD - All in COMRPL.AT marked as done"
+               cp LASTCOPY.DAT LASTCOMRPL.DAT
+               LASTCOMRPL=$LASTCOPY
+               Status=OK
+            else
+               num=`grep '^[^-]' COMRPL.AT | wc -l`
+               [ -t 1 ] && echo "AIPSUPD - $num in COMRPL.AT NOT done"
+               echo "AIPSUPD - COMRPL $File" | \
+                  tee -a $ErrorFile >> $LogFile
+               echo "AIPSUPD - failed!" | \
+                  tee -a $ErrorFile >> $LogFile
+               Log=`basename $File | sed -e 's/\..*/.LOG/'`
+               if [ -f $PREP/$Log ] ; then
+                  num=`cat $PREP/$Log | wc -l`
+                  if [ $num -lt 125 ] ; then
+                     cat $PREP/$Log | tee -a $ErrorFile >>$LogFile
+                  else
+                     echo "AIPSUPD - first 125 lines of $PREP/$Log follow" \
+                     | tee -a $ErrorFile >> $LogFile
+                     head -125 $PREP/$Log | tee -a $ErrorFile >>$LogFile
+                  fi
+               else
+                 echo "AIPSUPD - Cannot find $PREP/$Log logfile!"
+               fi
+               Status=FAILED
+            fi
+         else
+            if [ -t 1 ] ; then
+               echo "AIPSUPD - dates wrong: LASTCOPY   is $LASTCOPY"
+               echo "AIPSUPD -          and LASTCOMRPL is $LASTCOMRPL"
+            fi
+            echo "AIPSUPD - dates wrong: LASTCOPY   = $LASTCOPY" | \
+               tee -a $ErrorFile >> $LogFile
+            echo "AIPSUPD -          and LASTCOMRPL = $LASTCOMRPL" | \
+               tee -a $ErrorFile >> $LogFile
+            Status=FAILED
+         fi
+#                                       Only do COMLNK if COMRPL was OK
+         if [ "$Status" = OK ] ; then
+#                                       Compile changed programs:
+            if   expr $LASTCOMLNK \< $LASTCOMRPL > /dev/null ; then
+               [ -t 1 ] && echo "AIPSUPD - calling UPDCOMLNK"
+               UPDCOMLNK
+               [ -t 1 ] && echo "AIPSUPD - UPDCOMLNK done, check errors"
+#                                       Check for COMLNK errors:
+               File=`grep '^[^-]' COMLNK.AT | head -1`
+               if [ "$File" = "" ] ; then
+                  [ -t 1 ] && echo "AIPSUPD - all files in COMLNK.AT done"
+                  cp LASTCOMRPL.DAT LASTCOMLNK.DAT
+                  LASTCOMLNK=$LASTCOMRPL
+                  Status=OK
+#                                       TPMON hard links
+                  File=`grep '^-.*/TPMON' COMLNK.AT | head -1`
+                  if [ "$File" != "" ] ; then
+                     echo "AIPSUPD - TPMON links need redone..." >> $LogFile
+                     for i in $LOAD/TPMON[0-9A-Z] ; do
+                        if rm $i ; then
+                           if ln $LOAD/TPMON.EXE $i ; then
+                              : fine
+                           else
+                              echo \
+                              "AIPSUPD - symlink $i -> TPMON.EXE FAILED" \
+                               >> $LogFIle
+                           fi
+                        else
+                           echo \
+                           "AIPSUPD - FAILED to remove $i and relink to",\
+                           "new TPMON.EXE" >> $LogFile
+                        fi
+                     done
+                  fi
+               else
+                  num=`grep '^[^-]' COMLNK.AT | wc -l`
+                  [ -t 1 ] && echo "AIPSUPD - $num in COMLNK.AT NOT done"
+                  echo "AIPSUPD - COMLNK $File" | \
+                    tee -a $ErrorFile >> $LogFile
+                  echo "AIPSUPD - failed!" | \
+                    tee -a $ErrorFile >> $LogFile
+                  Log=`basename $File | sed -e 's/\..*/.LOG/'`
+                  if [ -f $PREP/$Log ] ; then
+                     num=`cat $PREP/$Log | wc -l`
+                    if [ $num -lt 125 ] ; then
+                       cat $PREP/$Log | tee -a $ErrorFile >>$LogFile
+                    else
+                       echo "AIPSUPD -  125 lines of $PREP/$Log follow" \
+                         | tee -a $ErrorFile >> $LogFile
+                       head -125 $PREP/$Log | tee -a $ErrorFile >>$LogFile
+                    fi
+                 else
+                    echo "AIPSUPD - Cannot find $PREP/$Log logfile!"
+                 fi
+                 Status=FAILED
+              fi
+           else
+              if [ -t 1 ] ; then
+                 echo "AIPSUPD - dates wrong: LASTCOMLNK is $LASTCOMLNK"
+                 echo "AIPSUPD -          and LASTCOMRPL is $LASTCOMRPL"
+              fi
+              echo "AIPSUPD - dates wrong: LASTCOMLNK = $LASTCOMLNK" | \
+                 tee -a $ErrorFile >> $LogFile
+              echo "AIPSUPD -          and LASTCOMRPL = $LASTCOMRPL" | \
+            tee -a $ErrorFile >> $LogFile
+              Status=FAILED
+           fi
+         else
+            echo "AIPSUPD - UPDCOMRPL failed, NOT doing any COMLNK's!" | \
+              tee -a $ErrorFile >> $LogFile
+         fi
+      fi
+#                                       Report any errors:
+      if [ "$Status" != OK ] ; then
+         [ -t 1 ] && echo "AIPSUPD - Status is not OK, calling UPDERROR"
+         UPDERROR
+         [ -t 1 ] && echo "AIPSUPD - UPDERROR done, reset Status to OK"
+         Status=OK
+      fi
+#
+      [ -t 1 ] && echo "AIPSUPD - calling UPDREPORT"
+      UPDREPORT
+      [ -t 1 ] && echo "AIPSUPD - UPDREPORT done, MNJ finished."
+   fi
+done
+exit 0

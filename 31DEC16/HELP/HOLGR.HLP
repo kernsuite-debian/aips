@@ -1,0 +1,346 @@
+; HOLGR
+;---------------------------------------------------------------
+;! Read & process holography visibility data to telescope images
+;# TASK UV ANALYSIS IMAGING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1996, 2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+HOLGR     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+HOLGR:  Task to read and process holography visibility data
+INFILE
+                                   Input data file name.
+OUTNAME                            Output image name.
+OUTDISK         0.0         9.0    Output disk number.
+UVTAPER         0.0                Data tapering: (1) type,
+                                   (2) width in cells to 0.5
+OPTYPE                             Telescope type: 'PFOC' prime
+                                   focus, 'SUBR' subreflector
+FACTOR          0.0       100.0    Magnification
+APARM                              Operating parameters.
+                                    1: Frequency (GHz).
+                                    2: Satellite elevation, deg.
+                                       Use -1 for sidereal obj.
+                                    3: Antenna diameter, m.
+                                    4: Subreflector diameter, m.
+                                    5: Focal length, m.
+                                    6: Offset of the antenna
+                                       vertex in x, in metres.
+                                    7: As for 6 in y.
+                                    8: As for 6 in z.
+                                    9: 10000 * Ref ant. +
+                                       100 * target ant. + IF#.
+                                    10: Stokes (RR=1, LL=2)
+                                       (9) and (10) used only
+                                       if INFILE is not of form
+                                       'AREA:FILE'
+BPARM                              Data reduction parameters.
+                                    1: Required map size, m.
+                                    2: No. of pixels on a side
+                                       of the output map (power
+                                       of 2, maximum 512).
+                                    3: Min. antenna scan angle
+                                    4: Max. antenna scan angle
+                                       0 => all data used.
+                                       <0 => circular maximum.
+                                    5: Amplitude scaling factor
+                                    6: Fourier transform sign
+                                    7: Minimum antenna aperture
+                                       < 0 => circular min.
+                                    8: Maximum antenna aperture
+                                       < 0 => Circular max.
+                                       (7,8) used for focus and
+                                       pointing calculations.
+                                    9: Correction control flags:
+                                       read the HELP!
+                                    10: >0 => logarithmic ampl.
+                                        <0 => linear amplitudes.
+CPARM                              Parameters for the gridding
+                                   operation (see HELP).
+DPARM                              Output maps, >0 => Save this.
+                                    1,2: Regridded amplitude and
+                                         phase of the observed
+                                         antenna beam pattern.
+                                      3: Weights used in the
+                                         regridding procedure.
+                                    4,5: Derived amplitude and
+                                         phase of the aperture
+                                         voltage distribution.
+                                    6,7: Amplitude and phase of
+                                         the point-spread func.
+                                      8: Focus model corrections.
+                                      9: Surface deviation map.
+                                     10: Antenna power pattern
+                                         (See HELP!)
+XPARM                              Additional data reduction
+                                   parameters.
+                                    1,2: Cross-talk correction.
+                                    3-6: Offset beam correction.
+                                      7: Amplitude threshold for
+                                         phase unwrapping.
+----------------------------------------------------------------
+HOLGR
+Type: Task
+Use:  HOLGR processes holography data.  It Fourier transforms the
+      complex antenna pattern to produce the complex voltage
+      distribution in the aperture plane of the antenna.
+
+      Data defining the amplitude and phase of the antenna e pattern
+      is obtained from a text file.  The input data consists of four
+      free format ASCII encoded values per record:
+         1) Azimuth offset from source (degrees)
+         2) Elevation offset from source (degrees)
+         3) Amplitude (Volts or dB)
+         4) Phase (degrees)
+
+      HOLGR can compute and apply a variety of corrections to the
+      data:
+         1) The offset of the antenna vertex from the intersection of
+            the azimuth and elevation axes.  Such an offset produces a
+            ramp in the antenna pattern phase.
+         2) A pointing offset.  This produces a ramp in the aperture
+            voltage distribution function.
+         3) The offset of the antenna feed.  This produces a
+            characteristic signature in the aperture voltage
+            distribution function.
+
+      Computation of the above corrections is predicated on reliable
+      phase unwrapping; that is removing phase jumps of 360 degrees
+      from the antenna pattern phase (for 1), or aperture voltage
+      distribution function (for 2 and 3).  HOLGR can reliably remove
+      closed areas of phase discontinuities but does not attempt to
+      resolve unclosed areas (see EXPLAIN).
+
+      HOLGR provides a choice of Fourier transforms, either DFT
+      (direct) or FFT (fast).  For the FFT, the antenna pattern data
+      must be interpolated onto a regular grid using a variety of
+      interpolation functions specified in CPARM.
+
+      Up to ten different AIPS image files will be produced according
+      to the options specified in DPARM.
+
+      In the following description, (x,y) are distances in the antenna
+      aperture plane and (l,m) are the corresponding direction
+      cosines.  Do "EXPLAIN HOLGR" for a fuller description of the
+      coordinate systems used.
+
+Adverbs:
+  INFILE......Input visibility file name in the form AREA:FILE, where
+              AREA is a directory logical name or environment
+              variable, and FILE is an operating system specific file
+              name.  If INFILE = 'ANT' or is blank, then INFILE will
+              be set to
+                          'FITS:HOLOnn-mmssii'
+              where nn is the moving antenna number and mm is the
+              reference antenna number (= 0 if more than one reference
+              antenna is used), ss is the Stokes, and ii is the IF.
+              If INFILE contains only a logical name, as INFILE =
+              'AREA:', then 'AREA:HOLOnn-mmssii' will be used. The
+              values of nn, mm, ss, and ii come from APARMs (9) and
+              (10).
+  OUTNAME.....Output image name (12 characters).  If the last 7
+              characters are blank, they are set to 'nn-mmss'.
+  OUTDISK.....Output disk number.
+  UVTAPER.....Tapering of data during the gridding process:
+              (1) Type: 1 Gaussian, 2 Exponential, 3 Linear
+              (2) Radius in cells for taper of 0.5.  0 => N/3.
+              (Remember that the max radius of the data must be
+              < N/2 just to avoid aliasing.)
+  OPTYPE......The model used for removing the effects of primary focus
+              offset.  'PFOC' = Prime Focus. 'SUBR' = Cassegrain
+              system
+  FACTOR......The magnification.  Used only if OPTYPE = 'SUBR'
+
+Operating parameters: all are required (NO defaults).
+  APARM(1)....Observing frequency (GHz).
+  APARM(2)....Satellite elevation, degrees. Set = -1. for VLA data
+              (true l,m); set = +1. for sky az,el; set = actual
+              elevation for true az,el
+  APARM(3)....Antenna diameter, in meters.  Used only for blanking the
+              phase map and computing the gain.
+  APARM(4)....Subreflector diameter, in meters.  Used only for
+              blanking the phase map and computing the gain.
+  APARM(5)....Focal length, in meters.  This is used in correcting for
+              the focus and feed offset, and in computing the surface
+              deviation map.
+  APARM(6-8)..Offset of the antenna vertex in (x,y,z) from the
+              intersection of the azimuth and elevation axes, in
+              meters
+  APARM(9)....10000 * Reference antenna number + 100 * 2nd (moving)
+              antenna number + IF number.  Used only for default names
+              (i.e., if INFILE = 'AREA:')
+  APARM(10)...Stokes ID (1 - 4 => RR, LL, RL, LR).  Used only for
+              default names (i.e., if INFILE = 'AREA:')
+
+Data reduction control parameters.
+  BPARM(1)....Required map size, in meters.
+  BPARM(2)....Number of pixels on a side of the output map
+              (power of 2, maximum 512).
+  BPARM(3,4)..Range of |l| and |m| to use for transform.
+  BPARM(5)....Scaling factor for the input amplitudes.
+  BPARM(6)....Fourier transform control.  If negative, the phase read
+              from the data file is negated.  If the absolute value is
+              2, a direct Fourier transform will be done, otherwise,
+              an FFT.
+  BPARM(7,8)..Range of |x| and |y| used in correcting for pointing,
+              focus, and feed offset.  Negative values denote a range
+              of SQRT(x*x + y*y).  See also BPARM(9).
+  BPARM(9)....Decimal encoded control parameters
+                  1: Inhibit the "phase closure" part of the phase
+                     unwrapping of the antenna pattern (A_PHA) map
+                  2: Inhibit all phase unwrapping of A_PHA.
+                 10: inhibit determination of a phase ramp in the l-m
+                     data and use APARM(6,7,8) instead,
+                100: Inhibit the "phase closure" part of the phase
+                     unwrapping of the antenna aperture (V_PHA) map
+                200: Inhibit all phase unwrapping of V_PHA.
+               1000: inhibit correction for pointing, focus, and
+                     feed offset.
+               2000: inhibit focus and feed offset (but solve for
+                     pointing).
+               4000: Disable the zero phase offset term.
+  BPARM(10)...Switch for logarithmic or linear data
+              >= 0 for logarithmic data (as for PKS)
+              < 0  for linear data (for the VLA).
+
+Regridding parameters.
+  CPARM(1)....Type of interpolation to apply in gridding 'l'.
+                1: Pillbox, (don't use for regularly sampled data)
+                2: Exponential,
+                3: Sinc,
+                4: Sinc*Exponential,
+                5: Spheroidal (default).
+
+                   NEGATE to obtain natural weighting.
+                   (default = uniform)
+
+  CPARM(2)....Support radius in l, in cells.
+  CPARM(3-5)..Parameters defining the interpolation function
+              in 'l'. Do HELP UVnTYPE for n=1,2,3,4,5.
+  CPARM(6-10).Corresponding parameters for 'm'.
+
+Output option flags.
+  The particular map will be stored if the associated DPARM is greater
+  than zero.  If all are <= 0, DPARM(4,5) will both be set to 1.
+  DPARM(1,2)..Regridded amplitude and phase of the observed antenna
+              beam voltage pattern (A_AMP, A_PHA).
+  DPARM(3)....Weights used in the regridding procedure (WGT) -
+              includes the weights for uniform (vs natural) weighting.
+  DPARM(4,5)..Derived amplitude and phase of the aperture voltage
+              distribution, (V_AMP, V_PHA). The focus model, if
+              requested, will be removed from the phase image.
+  DPARM(6,7)..Amplitude and phase of the point-spread function.  This
+              indicates the blurring in the derived aperture voltage
+              map (P_AMP, P_PHA).
+  DPARM(8)....Map of the phase corrections removed by the focus model
+              (MODEL).
+  DPARM(9)....Map of the surface deviations of the antenna (V_DEV).
+              Units are in meters. The focus offset model, if
+              requested, will be removed.
+  DPARM(10)...The interpolated antenna power pattern (A_PWR).  Set it
+              = to the desired interpolation factor, with anything >0
+              and < 2 => 2.  Must be a power of 2 <= 2048 / NPIX,
+              where NPIX = BPARM(2).
+
+Additional data reduction parameters.
+  XPARM(1,2)..Cross-talk correction; a constant offset may arise in
+              the observed antenna beam voltage pattern due to
+              cross-talk between the signals from the reference and
+              target antennas.  This produces a spike of the specified
+              amplitude and phase at the center of the aperture
+              voltage distribution map.
+  XPARM(3-6)..Offset beam correction; large maps may sometimes
+              encompass a nearby satellite which appears as an offset
+              beam in the A_AMP map.  This may be removed during data
+              gridding by specifying the azimuth and elevation offsets
+              (deg), and the amplitude factor and phase offset (deg).
+              Uniform weighting must be used.
+  XPARM(7)....Amplitude threshhold for unwrapping the V_PHA map.
+              Pixels in the V_PHA map with corresponding amplitude in
+              the V_AMP map below this threshhold will be treated as
+              being blank for the purpose of phase unwrapping only.
+----------------------------------------------------------------
+HOLGR:   Process antenna holography data.
+Author:  Mark Calabretta
+Related tasks: UVHOL, HOLOG, PANEL
+
+Coordinate systems:
+
+   Antenna aperture coordinates are described by a right-handed
+   system, (x,y,z), centred on the point of intersection of the
+   azimuth and elevation axes.  The xy-plane is parallel to the
+   aperture plane; the x-axis is parallel to the elevation axis and
+   increases to the right as the dish is seen from above.  The y-axis
+   increases towards the top of the dish; the z-axis points skyward
+   more-or-less along the optical axis.
+
+   (l,m,n) are the direction cosines which correspond to the (x,y,z)
+   coordinates.  Note that the (l,m) plane is projected onto the sky
+   with the l-axis in the direction of decreasing azimuth and the
+   n-axis towards increasing elevation.  It is therefore left-handed
+   as seen from the earth.
+
+   The azimuth and elevation offsets in the data file refer to the
+   position of the telescope beam on the sky.
+
+   A POSITIVE azimuth offset samples a point in the antenna pattern at
+   a NEGATIVE azimuth offset and this corresponds to a POSITIVE value
+   of l.
+
+   A POSITIVE elevation offset samples a point in the antenna pattern
+   at a NEGATIVE elevation offset and this corresponds to a NEGATIVE
+   value of m.
+
+   If the satellite is at (Az0,El0) and the antenna is pointing at
+   (Az,El) the (l,m,n) coordinates are
+      l =  sin(Az-Az0)*cos(El0)
+      m = -cos(Az-Az0)*cos(El0)*sin(El) + sin(El0)*cos(El)
+      n =  cos(Az-Az0)*cos(El0)*cos(El) + sin(El0)*sin(El)
+
+Phase unwrapping:
+
+   The algorithm used for phase unwrapping is based on an equivalence
+   operator defined such that two pixels are equivalent iff there is a
+   path between them which does not cross a discontinuity.  The path
+   is restricted to horizontal and vertical steps between neighbouring
+   pixels.  A discontinuity is defined as a phase step of greater than
+   180 degrees.
+
+   This equivalence operator partitions the phase map into a number of
+   equivalence classes referred to as "patches".  Adjacent patches can
+   be made equal to each other via the addition or subtraction of an
+   integral multiple 360 degrees.
+
+   While the algorithm is reliable it does not attempt to resolve
+   open-ended discontinuities.  The extent to which phase unwrapping
+   succeeds can be judged by the "phase unwrapping index" reported
+   before and after HOLGR attempts to unwrap a phase map.  This
+   consists of a simple count of the total number discontinuous
+   boundaries between neighbouring pixels.
+
+   In the "phase closure" part of the unwrapping algorithm these
+   open-ended discontinuities are reduced to the shortest path
+   connecting the end-points.
+----------------------------------------------------------------

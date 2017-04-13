@@ -1,0 +1,370 @@
+% AIPSMEM116.TEX
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2010
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;         Internet email: aipsmail@nrao.edu.
+%;         Postal address: AIPS Project Office
+%;                         National Radio Astronomy Observatory
+%;                         520 Edgemont Road
+%;                         Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+%\documentstyle{article}
+\documentclass{article}
+\setlength{\topmargin}{-8mm}
+\setlength{\textwidth}{160mm}
+\setlength{\textheight}{220mm}
+\setlength{\oddsidemargin}{0mm}
+\setlength{\evensidemargin}{45mm}
+\setlength{\parindent}{3em}
+\setlength{\unitlength}{10mm}
+\usepackage[dvips]{graphics, color}
+\usepackage{epsfig}
+%\input{epsf.sty}
+%\def\plotfiddle#1#2#3#4#5#6#7{ % \begin{picture}(10,8)
+%    \centering \leavevmode
+%    \vbox to#2{\rule {0pt}{#2}}
+%    \special{psfile=#1 voffset=#7 hoffset=#6 vscale=#5 hscale=#4 angle=#3}}
+%               % \end{picture}
+% \plotfiddle {taper.ps}{60mm}{0}{1}{1}{0}{0}
+%\def\plotone#1{\begin{picture}(12,7)(-2,-0.8)
+%                  \centering \leavevmode
+%                  \epsfysize=7\unitlength \epsfbox{#1}
+%               \end{picture}}
+\def\plotone#1{\centering \leavevmode
+                  \epsfysize=7\unitlength \epsfbox{#1} \hfil}
+\def\plottwo#1#2{\centering \leavevmode
+                  \epsfxsize=7\unitlength \epsfbox{#1} \hfil
+                  \epsfxsize=7\unitlength \epsfbox{#2}}
+\newcommand{\nl}{\newline}
+\newcommand{\AIPS}{{$\cal AIPS\/$}}
+\newcommand{\whatmem}{\AIPS\ Memo \memnum}
+\newcommand{\boxit}[3]{\vbox{\hrule height#1\hbox{\vrule width#1\kern#2%
+\vbox{\kern#2{#3}\kern#2}\kern#2\vrule width#1}\hrule height#1}}
+%
+\newcommand{\memnum}{116}
+\newcommand{\memtit}{RFI Mitigation in \AIPS; the new task UVRFI}
+\title{
+   \vskip -35pt
+   \fbox{{\large\whatmem}} \\
+   \vskip 28pt
+   \memtit \\}
+
+%\title{EVLA Memo 146 \\ RFI Mitigation in AIPS. The New Task UVRFI \\ }
+%\vspace{2 mm}
+
+\author{ L.~Kogan, F. Owen$^1$
+\vspace{2 mm}\\
+\small (1) - National Radio Astronomy Observatory, Socorro, New Mexico,
+USA\\}
+\date{June 2010}
+\vspace{2mm}
+\begin{document}
+\maketitle
+
+\vspace{5mm}
+\begin{abstract}
+Recently Ramana Athrea published a new algorithm (\cite{ram}) based
+on the difference at fringe rates of a source in the sky and ground-based
+RFI. His algorithm works only for ground-based and constant-amplitude RFI
+ during a solution interval. We modified
+his algorithm to include a possible change of the RFI's amplitude
+during the solution interval and developed another algorithm based on
+H\"{o}gbom CLEANing of the Fourier transform of the time series of the
+SOURCE+RFI visibilities. These
+algorithms allow us to mitigate RFI originating from more than one
+source moving with different nonzero speeds relatively the array
+(e.g. ground-based and satellite-based RFI). The new algorithms are
+implemented in AIPS
+(\cite{aip}) in the task UVRFI. The result of testing this task is
+demonstrated using the EVLA data at L and 4 band. It is also shown that
+self-averaging of RFI can reduce its impact on imaging even if the solution
+interval in the correlator is too small to allow self-averaging before imaging.
+\end{abstract}
+
+\section{Introduction}
+Sources of RFI generally have different fringe rates than astronomical
+sources of interest to astronomers. This
+difference has been exploited by many researches to separate and
+excise RFI. (see for example (\cite{cor}, \cite{per}).
+The visibility for the given interferometer baseline, frequency
+channel, polarization, time is determined by the following expression:
+\begin{equation}
+        Vis_{obs} = Vis_{source} \cdot \exp j \omega_{frso} t + Vis_{rfigr}  + Vis_{rfisat1} \cdot \exp j \omega_{frsat1} t + .....
+        \label{eq:visobs}
+\end{equation}
+\begin{tabbing}
+where~  \=  $Vis_{source}$ is the visibility of an astronomical source; \\
+        \>  $Vis_{rfigr}$ is the visibility
+            caused by the ground based RFIs; \\
+        \>  $Vis_{rfisat1}$ is the visibility
+            caused by  RFI from satellite 1; \\
+        \>  $ \omega_{frso}$ is the fringe rate of the source, caused
+            by earth rotation; \\
+        \>  $ \omega_{frsat1}$ is the fringe rate of the RFIs, caused
+            by the motion of  satellite 1; \\
+\end{tabbing}
+Note that the fringe rate caused by ground-based RFI is equal
+to zero, because the ground-based RFIs do not move relatively the
+ground-based array.\\
+Practically any array correlator multiplies the observed visibility by
+the fringe stopping complex exponent $\exp -j \omega_{frso}t$. As a
+result  the source fringes are stopped but the ground-based RFI is
+rotated at that rate and the correlator output visibility can be
+described by the following expression:
+
+\begin{equation}
+        Vis_{cor} = Vis_{source} + Vis_{rfigr} \cdot \exp -j \omega_{frso} t  + Vis_{rfisat1} \cdot \exp j (\omega_{frsat1}-\omega_{frso}) t + ...
+        \label{eq:viscor}
+\end{equation}
+The problem we need to solve is formulated as:\\
+{\bf Given a correlator output time series for a given baseline
+  resulting from astronomical sources and RFI during some solution
+  interval, our goal is to find the astronomical source visibility during that solution interval!}
+
+\section{Athrea's approach to the problem}
+Athrea  (\cite{ram}) considered  RFI which is caused only by ground-based RFI.
+Therefore, the trajectory (in time) of the  correlator output in the
+complex plane will be a circle with radius equal to the RFI
+amplitude, which is considered constant, e.g. equation
+(\ref{eq:viscor}) for $Vis_{rfisat1}=0$). Fitting the three parameters:
+radius of the circle, and the two coordinates of the circle center,
+the resulting coordinates of the circle center are the solution for the
+source complex visibility without RFI.
+
+\section{How good are the circles in practice?}
+In this section we look at the quality of the ``circles'' using the
+EVLA data at L band, kindly provided by Michael Rupen. The data are the result
+of several minutes  observation of 3C345 by the EVLA in the D
+configuration. The
+new EVLA WIDAR correlator was used to obtain the data with sampling at time
+of 0.1 second and 256 frequency channels.
+In figure (\ref{fig:vissp}) we show a plot of the frequency spectrum for one
+baseline and polarization during one time interval of 10 seconds. The central
+part of the spectrum (free of RFI) shows good behavior of both
+amplitude and phase.
+%figure 1
+\begin{figure}[h]
+  \begin{center}
+  \plotone {MRUPEN_SPECTR90.EPS}
+  \end{center}
+ \caption{The visibility spectrum for one baseline of the EVLA L-band
+ data}
+                  \label{fig:vissp}
+\end{figure}
+The left part of the spectrum is full of spikes caused by the
+Distance Measuring Equipment (DME) used at the aircraft radio navigation. The right part of the spectrum has very strong RFI caused by the
+group of satellites.
+The plot in the left top corner of the figure \ref{fig:cir} shows the
+trajectory of the complex visibility at channel 224 during 10 seconds
+(100 points), which would be expected to be a circle in the ideal case. This
+'circle' looks rather like a spiral.  We call this  a ``circle'' since it
+is the best example of a quasi-circle and the other ``circles'' appear
+to be much worse.
+%figure2,3
+\begin{figure}[h]
+  \begin{center}
+  \epsfig{figure=CIRCLE1.PS, scale=0.25}
+  \epsfig{figure=CIRCLE2.PS, scale=0.25}
+  \epsfig{figure=CIRCLE3.PS, scale=0.25}
+  \epsfig{figure=CIRCLE7.PS, scale=0.25}
+  \epsfig{figure=CIRCLE5.PS, scale=0.25}
+  \epsfig{figure=CIRCLE6.PS, scale=0.25}
+  \end{center}
+\caption{Shapes of the ``circles'' for the L-band EVLA data}
+\label{fig:cir}
+\end{figure}
+The first five plots correspond to the satellite RFI (the same channel
+224, different 10s time intervals). The sixth plot corresponds to
+DME (channel 31). {\em So, looking at this set of circles we can
+  conclude that concept of circles may be used to mitigate RFI only in
+  the special case of ground-based RFI, when the RFI amplitude is
+  really constant during the solution interval.}\\
+Two reasons of the RFI amplitude variability can be offered: \\
+1. The variable signal levels broadcast by the satellites and \\
+2. Even if the satellites were stationary in the sky, the array
+antennas track the astronomical source and thus the antenna sidelobes
+sweep across the satellite position, modulating the strength of the RFI.
+
+%figure 3,4
+
+\section{The new AIPS task UVRFI}
+The new AIPS task UVRFI offers the following two algorithms to mitigate RFI: \\
+1. 'CIRC' a l'a Athrea\\
+~~A spiral with four unknown parameters (initial radius, linear
+increment of the radius, and  two coordinates of the center) is fitted to
+the data using the non-linear-least-square-method. The two coordinates of
+the center are used as a solution for the astronomical source
+visibility, free of RFI\\
+2. 'CEXP'\\
+This model is represented by the sum of several spectral components
+with complex amplitudes:
+\begin{equation}
+        Vis_{cor} = Vis_{source} + RFI_{1} \cdot \exp j \omega_{1} t + RFI_{2} \cdot \exp j \omega_{2} t +...
+        \label{eq:cexp}
+\end{equation}
+A simple, one dimensional, version of  H\"{o}gbom CLEAN algorithm is
+used to fit complex delta functions to the Fourier transform of the
+observed visibility time-series during each solution interval. The
+final solution is the value of the cleaned Fourier transform at zero
+frequency. No CLEANing is allowed at zero frequency to prevent the
+subtraction of the signal itself.
+Additionally, UVRFI flags the RFI caused by DME using the fact
+that DME RFI on the frequency axis looks like a set of delta
+functions. See the left part of  the figure \ref{fig:vissp} for example.
+
+\clearpage
+\begin{figure}[h]
+\plottwo {RF-10S90.EPS} {UVRFI90.EPS}  \caption{The visibility
+  spectrum for one baseline of the EVLA L-band data. The left plot is
+  the output of the AIPS task UVAVG (vector averaging in 10s). The
+  right plot is the output of UVRFI task. OPTYPE = 'CEXP'. Solution interval = 10s}
+                  \label{fig:2spec}
+\end{figure}
+\begin{figure}[h]
+\plottwo {INIMAP.EPS} {UVRFIMAP.EPS}  \caption{Comparison of the
+  images for EVLA L-band data. The left plot is the image
+  after UVAVG  (vector averaging in 10s). The right plot is the
+  image after UVRFI task. OPTYPE = 'CEXP'. Solution interval = 10s}
+                  \label{fig:2imag}
+\end{figure}
+
+\section{Test of the task UVRFI at L band using the EVLA data}
+
+We compared UVRFI result using 10s solution interval (100 time points)
+using 'CEXP'
+with UVAVG (vector averaging) during the same 10 second  intervals.
+The two plots at the figure \ref{fig:2spec} show  advantage of the
+UVRFI output (right plot): the DME RFIs are flagged completely; the
+satellite RFI is lower by factor 3-4. We should note
+that the vector averaging itself suppresses the RFI by self-averaging
+but not as much as with UVRFI.  So the comparison
+could be even more in favor of UVRFI if the less averaging was done
+in UVAVG. In Figure \ref{fig:2imag}
+we compare the images using the vector averaging (UVAVG) and task UVRFI
+('CEXP'). The image at the right plot (UVRFI) is obviously better!
+
+\section{Test of the task UVRFI at 4 band ($\lambda=4m$) using the Bill Cotton's  data}
+\begin{figure}[t!]
+  \begin{center}
+  \epsfig{figure=BILLCIRCLE1.PS, scale=0.25}
+  \epsfig{figure=BILLCIRCLE2.PS, scale=0.25}
+  \epsfig{figure=BILLCIRCLE3.PS, scale=0.25}
+  \epsfig{figure=BILLCIRCLE4.PS, scale=0.25}
+  \epsfig{figure=BILLCIRCLE5.PS, scale=0.25}
+  \epsfig{figure=BILLCIRCLE6.PS, scale=0.25}
+  \end{center}
+\caption{Shapes of the circles. 4- band data(given by B. Cotton.)}
+\label{fig:cirb}
+\end{figure}
+Bill Cotton provided us 74MHz data, which are from the VLSS survey with the VLA. The huge RFIs in the  initial data  were partially mitigated by B. Cottons algorithm (\cite{bil}). \\
+The plots at figure \ref{fig:cirb} show the example of 'circles' corresponded to the B.Cotton's data. The data were sampled at time with 10s interval. The 'circles' include 360s time interval (36 points).
+We compared UVRFI result using 360s solution interval (36 time points)
+with UVAVG (vector averaging) during the same 360 sec intervals.
+Two plots in figure \ref{fig:2specb} show  advantage of the UVRFI output (right plot):  the RFI amplitude is lower by factor 3-4; variance of phase is two times less. 'CEXP' was used. We should note that the vector averaging itself suppress the RFI. Figure \ref{fig:2imagb}
+compares images using vector averaging (UVAVG) with the output of the task UVRFI ('cexp').
+The same solution interval 360s was used for the both plots. The  right plot (UVRFI) is obviously better!
+\begin{figure}
+\plottwo {BILL-UVAVGPOSM90.EPS} {BILL-UVRFIPOSM90.EPS}  \caption{The visibility spectrum for one baseline of  Cotton's data(4-band). The left plot is the output of the UVAVG task (vector averaging in 360s). The right plot is the output of the UVRFI task. OPTYPE = 'CEXP'. Solution interval = 360s}
+                  \label{fig:2specb}
+\end{figure}
+\begin{figure}
+\plottwo {BILLAVG-FACET1.PS} {BILLRFI-FACET1.PS}  \caption{Comparison of the images for  Cotton's data(4-band). The left plot is the image using UVAVG task (vector averaging in 360s). The right plot is the image using UVRFI. OPTYPE = 'CEXP'. Solution interval = 360s}
+                  \label{fig:2imagb}
+\end{figure}
+
+
+
+
+\section{Self-averaging of the RFI in process of imaging.}
+As we discussed previously, the visibility caused by the ground-based
+RFI produces a 'circle' in the complex plane. Therefore RFI can be
+self-averaged during vector averaging in the correlator. The effect of this
+self-averaging can be estimated by number of periods of the fringe rate in
+the correlator solution interval. At low frequency, the
+fringe period can be large in comparison with the correlator solution
+interval, and therefore the self-averaging of RFI in the correlator
+will not be so effective.  The same argument was used by R. Athrea  (\cite{ram}).
+He wrote: {\em ``It is often claimed that interferometric fringe
+  stopping itself washes out RFI, but this is not entirely appropriate
+  for low frequency array.''}
+We saw confirmation of this statement by comparing the vector
+averaging with different averaging times (AIPS task UVAVG). It might
+be expected that
+the impact of RFI would be much higher for smaller averaging time. But {\bf the
+  quality of the images obtained using the different averaging time
+  was not different!} The explanation of this effect is that the
+griding step in the imaging carries out the averaging in some cases.
+The following equation elucidates this.
+If the visibility caused by RFI is described by the following equation:
+\begin{equation}
+      RFI = A \cdot \exp j\omega_{fr}t_i
+        \label{eq:rfis}
+\end{equation}
+then the relevant dirty map $DM_{rfi}$ is equal:
+\begin{equation}
+   DM_{rfi} = A \cdot \sum_i \exp j\omega_{fr}t_i \cdot \exp j2\pi(U_il+V_im)
+        \label{eq:dm}
+\end{equation}
+If $U_i, V_i$ are 'constant' inside of the time interval $T_{imag}$, then
+\begin{equation}
+   DM_{rfi} = A \cdot \sum_k \exp j2\pi(U_kl+V_km) \cdot \sum_i \exp j\omega_{fr}t_{i,k}
+        \label{eq:dm1}
+\end{equation}
+
+\begin{tabbing}
+where~  \=  i is the preaverage time interval number; \\
+        \>  k is the time interval of $T_{imag}$ number \\
+\end{tabbing}
+{\bf Therefore the effect of self-averaging of RFI may not be limited
+  by the correlator averaging interval but rather by the grid cell size for
+  the FFT used for imaging, where both $U$ and $V$ are effectively constant.}
+
+
+
+
+\section{Conclusions}
+The new AIPS task UVRFI uses the two algorithms to mitigate RFI: \\
+CIRC function, based on modification of Ramana Athrea algorithm, fits a
+spiral to the observed visibility curve in the complex plane.\\
+CEXP function subtracts a set of the complex exponential delta
+functions representing RFIs, using a simple CLEAN algorithm applied to
+the Fourier transform of the complex visibility time-series. \\
+The second algorithm demonstrates the better result for the two datasets
+we studied and allows us to mitigate more than one source of RFI
+(e.g. ground-based, satellite-based).\\
+The utility of RFI mitigation algorithm is complicated by the
+non-circular nature of the RFI in the complex plane. \\
+In some cases, the effect of RFI may be reduced by self-averaged during imaging.
+
+
+\begin{thebibliography}{99}
+\bibitem {ram} Ramana Athrea, A New Approach to Mitigation of Radio Frequency Interference in Interferometric Data, Astrophysical Journal, vol 696, May 2009, p 885
+\bibitem {aip} NRAO Astronomical Image Processing System
+\bibitem {bil} Bill Cotton, Low Frequency Interference on the VLA and its Removal,  OBIT development memo series No 16, November 16, 2009
+\bibitem {cor} T.J. Cornwell, R.A. Perley, K. Golap, S. Bhatnagar, RFI excision in synthesis imaging without a reference signal, EVLA memo 86, NRAO, December 2004.
+\bibitem {per} R.A. Perley, T.J. Cornwell, Removing RFI through Astronomical Image Processing, EVLA memo 61, NRAO, July 2003.
+\end{thebibliography}
+
+\end{document}
+
+
+
+
+

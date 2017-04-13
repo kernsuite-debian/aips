@@ -1,0 +1,625 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1998, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: AIPSCC [directory-path/][@]source[.C,.c] [AIPS-sytle-options]
+#           [UNIX-style-options] [file.LOG]
+#--------------------------------------------------------------------
+# Perform the C language compilations under UNIX/AIPS.
+# For AIPS system compiles (i.e. within the $AIPS_VERSION directory tree
+# except for $APLCONTR), object files from successful compilations are
+# moved to the proper $LIBR subdirectory, if any.  For all other
+# compiles (usually in one's personal workspace), the object file is
+# left in the same directory as the source code.  Temporary files are
+# located in $PREP.
+#
+# Inputs (can appear in any order):
+#
+#    1) [directory-path/][@]source[.c]
+#
+#       At least one (uppercase) preprocessed 'C' source with or without
+#       the '.c' extension.  If not a pathname, the current working
+#       directory is assumed and prepended.  The special character '@',
+#       if prepended to the filename, denotes the name of a file
+#       containing a list of such source module pathnames.
+#
+#    2) [AIPS-sytle-options]
+#
+#       These are translated into local syntax based on the definitions
+#       in the host specific $SYSLOCAL/CCOPTS.SH file.  Recognized
+#       AIPS-style options include:
+#
+#       DEbug   - generate code suitable for debugger(s).
+#       DIrty   - compile letting declarations default (not recommended)
+#       LISt    - generate source code listing (only for compilation)
+#       MAp     - generate link map
+#       OPTn    - optimization level (n = 0 to 9), also NOOPT
+#       PRofile - generate code suitable for profiling
+#       PUrge   - delete .c, .log files and object module after
+#                 successful compilation.  DEBUG causes PURGE to leave
+#                 the preprocessed source intact, however.
+#       REplace - move object module to proper $LIBR subdirectory
+#
+#       Uppercase part of option is minimum required for recognition.
+#       The above can be prefixed with NO to negate the option, e.g.
+#       NOPURGE will cancel any deleting of files.
+#
+#    3) [UNIX-style-options]
+#
+#       These are passed on to the local C compiler.
+#
+#    4) [file.LOG]
+#
+#       Optional log filename of the form '*.LOG'.  If not given, log
+#       files are automatically generated (or appended to) for each
+#       source being processed.  If purging is enabled either by default
+#       or by specifying PURGE on the command line and all goes well,
+#       these automatic log files as well as preprocessed forms of the
+#       source involved are deleted.  If the user specifies a '.LOG'
+#       file on the command line, it is either generated or appended to
+#       but never deleted.
+#
+# Generic UNIX version.
+#--------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f $PREP/CC.${HOST}.$$ $PREP/CC.${HOST}.LIS \
+ $PREP/AT.${HOST}.$$; exit 1' 1 2 3 15
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Any command line argument(s)?
+if [ "$*" = "" ] ; then
+   echo "Usage: AIPSCC [directory-path/][@]source[.C,.c]" \
+      "[AIPS-sytle-options] \\"
+   echo "          [UNIX-style-options] [file.LOG]"
+   exit 1
+fi
+#                                       Get host 'C' compiler
+#                                       definitions.
+. $SYSLOCAL/CCOPTS.SH
+#                                       Initialize internal variables.
+AIPSCCOPTS=$COMP
+OPTS=""
+ULOG=""
+#                                       Parse arguments.
+for i
+do
+   case $i in
+      *.LOG | *.log)
+         case $i in
+            */*) ULOG=$i;;
+            *)   ULOG=`$LPWD`/$i;;
+         esac
+      ;;
+      *@*)
+#                                       An '@' file list of pathnames.
+#                                       Form pathname if a $AT is a
+#                                       simple filname.
+         case $AT in
+            */*) AT=`echo $i | sed -e 's/@//'` ;;
+            *)   AT=`echo $i | sed -e 's/@//'`
+                 AT=`$LPWD`/$AT ;;
+         esac
+         if [ -s $AT ] ; then
+#                                       Append it to pathname list.
+            sed -n -e 's/^[^-]/&/p' $AT >> $PREP/CC.${HOST}.$$
+         else
+            echo "AIPSCC    : '@' file    $AT"
+            echo "AIPSCC    : not found or zero size!"
+            rm -f $PREP/CC.${HOST}.$$
+            echo "AIPSCC    : Dies of unnatural causes"
+            exit 1
+         fi
+      ;;
+      *.C | *.c | *.* | */*)
+#                                       Source module.
+         case $i in
+            */*.c | */*.C) echo $i       >> $PREP/CC.${HOST}.$$ ;;
+            *.c | *.C)     echo `$LPWD`/$i >> $PREP/CC.${HOST}.$$ ;;
+#                                       Bad extension.  Skip.
+            *.* | */*.*) ;;
+#                                       No extension/type.  Try one...
+            *) if [ -f ${i}.C -o -f ${i}.c ] ; then
+                  NEWEST `$LPWD`/$i.C `$LPWD`/$i.c >> $PREP/CC.${HOST}.$$
+               else
+                  echo "AIPSCC    : Neither    ${i}.C"
+                  echo "AIPSCC    : nor        ${i}.c"
+                  echo "AIPSCC    : found!"
+                  rm -f $PREP/CC.${HOST}.$$
+                  echo "AIPSCC    : Dies of unnatural causes"
+                  exit 1
+               fi
+            ;;
+         esac
+      ;;
+#                                       Unix-style option
+      -*) AIPSCCOPTS="$AIPSCCOPTS $i"
+	  OPTS="$OPTS$i " ;;
+#                                       possible AIPS options
+      *) case $i in
+            [Dd][Ee] | [Dd][Ee][Bb] | [Dd][Ee][Bb][Uu] | \
+            [Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'DE(BUG)'.
+#                                       Turn on debug mode.
+               OPTS="$OPTS$i "
+               XLATE='$DEBUG'
+               OPTION=`eval echo $XLATE`
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+            [Nn][Oo][Dd][Ee] | [Nn][Oo][Dd][Ee][Bb] | \
+            [Nn][Oo][Dd][Ee][Bb][Uu] | [Nn][Oo][Dd][Ee][Bb][Uu][Gg])
+#                                       Some form of 'NODE(BUG)'.
+#                                       Turn off debug mode.
+               OPTS="$OPTS$i "
+               XLATE='$DEBUG'
+               OPTION=`eval echo $XLATE`
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Ll][Ii] | [Ll][Ii][Ss] | [Ll][Ii][Ss][Tt])
+#                                       Some form of 'LI(ST)'
+#                                       Turn on source list
+#                                       generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               LIST=TRUE
+            ;;
+
+            [Nn][Oo][Ll][Ii] | Nn][Oo][Ll][Ii][Ss] | \
+            [Nn][Oo][Ll][Ii][Ss][Tt])
+#                                       Some form of 'NOLI(ST)'
+#                                       Turn off source list
+#                                       generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               LIST=FALSE
+            ;;
+
+            [Mm][Aa] | [Mm][Aa][Pp])
+#                                       Some form of 'MA(P)'
+#                                       Turn on link map generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$MAP'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Mm][Aa] | [Nn][Oo][Mm][Aa][Pp])
+#                                       Some form of 'NOMA(P)'
+#                                       Turn off link map generation.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$MAP'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Oo][Pp][Tt][0-9])
+#                                       Some form of 'OPT[0-9]'
+#                                       Turn on specified optimization
+#                                       level.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE=\$$i
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Oo][Pp][Tt][0-9])
+#                                       Some form of 'NOOPT[0-9]'
+#                                       Turn off specified
+#                                       optimization level.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE=\$`echo $i | sed -e 's/..//'`
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e "s/ *$OPTION//"`
+            ;;
+#                                       MRC 91/Oct/11:
+            [Nn][Oo][Oo][Pp][Tt])
+#                                       Some form of 'NOOPT'.
+#                                       Suppress all optimization.
+#                                       Record option.
+               OPTS="$OPTS$i "
+               OPTION=$NOOPT
+               if [ "$OPTION" != "" ] ; then
+#                                       Edit out of AIPSCCOPTS.
+                  AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+                  AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+               fi
+#                                       Edit out all possible
+#                                       optimization flags from
+#                                       AIPSCCOPTS.
+               TMP="$OPT0 $OPT1 $OPT2 $OPT3 $OPT4 $OPT5 $OPT6 $OPT7"
+               TMP="$TMP $OPT8 $OPT9"
+               for OPT in $TMP
+               do
+                  AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPT'//g'`
+               done
+            ;;
+
+            [Dd][Ii] | [Dd][Ii][Rr] | [Dd][Ii][Rr][Tt] | \
+            [Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'DI(RTY)'
+#                                       Turn on default declarations.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DIRTY'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Dd][Ii] | [Nn][Oo][Dd][Ii][Rr] | \
+            [Nn][Oo][Dd][Ii][Rr][Tt] | [Nn][Oo][Dd][Ii][Rr][Tt][Yy])
+#                                       Some form of 'NODI(RTY)'
+#                                       Turn off default declarations.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$DIRTY'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+            ;;
+
+            [Pp][Uu] | [Pp][Uu][Rr] | [Pp][Uu][Rr][Gg] | \
+            [Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'PU(RGE)'
+#                                       Turn on module purging.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               PURGE=TRUE
+            ;;
+
+            [Nn][Oo][Pp][Uu] | [Nn][Oo][Pp][Uu][Rr] | \
+            [Nn][Oo][Pp][Uu][Rr][Gg] | [Nn][Oo][Pp][Uu][Rr][Gg][Ee])
+#                                       Some form of 'NOPU(RGE)'
+#                                       Turn off module purging.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               PURGE=FALSE
+            ;;
+
+            [Rr][Ee] | [Rr][Ee][Pp] | [Rr][Ee][Pp][Ll] | \
+            [Rr][Ee][Pp][Ll][Aa] | [Rr][Ee][Pp][Ll][Aa][Cc] | \
+            [Rr][Ee][Pp][Ll][Aa][Cc][Ee])
+#                                       Some form of 'RE(PLACE)'
+#                                       Turn on module replacement in
+#                                       AIPS system libraries.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               REPLACE=TRUE
+            ;;
+
+            [Nn][Oo][Rr][Ee] | [Nn][Oo][Rr][Ee][Pp] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll] | [Nn][Oo][Rr][Ee][Pp][Ll][Aa] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll][Aa][Cc] | \
+            [Nn][Oo][Rr][Ee][Pp][Ll][Aa][Cc][Ee])
+#                                       Some form of 'NORE(PLACE)'
+#                                       Turn off module replacement in
+#                                       AIPS system libraries.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+               REPLACE=FALSE
+            ;;
+
+            [Pp][Rr] | [Pp][Rr][Oo] | [Pp][Rr][Oo][Ff] | \
+            [Pp][Rr][Oo][Ff][Ii] | [Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'PR(OFILE)'
+#                                       Turn on execution profiling.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$PROFILE'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+
+            [Nn][Oo][Pp][Rr] | [Nn][Oo][Pp][Rr][Oo] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff] | [Nn][Oo][Pp][Rr][Oo][Ff][Ii] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll] | \
+            [Nn][Oo][Pp][Rr][Oo][Ff][Ii][Ll][Ee])
+#                                       Some form of 'NOPR(OFILE)'
+#                                       Turn off execution profiling.
+
+#                                       Record option.
+               OPTS="$OPTS$i "
+#                                       Translate/evaluate.
+               XLATE='$PROFILE'
+               OPTION=`eval echo $XLATE`
+#                                       Edit out of AIPSCCOPTS.
+               AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/ *'$OPTION'//'`
+#                                       Append to AIPSCCOPTS.
+               AIPSCCOPTS="$AIPSCCOPTS $OPTION"
+            ;;
+
+            [Ss][Aa] | [Ss][Aa][Vv] | [Ss][Aa][Vv][Ee])
+#                                       Some form of 'SA(VE)' - ignore
+            ;;
+
+            [Nn][Oo][Ss][Aa] | [Nn][Oo][Ss][Aa][Vv] | \
+            [Nn][Oo][Ss][Aa][Vv][Ee])
+#                                       Some form of 'NOSA(VE)' - ignore
+            ;;
+
+            *)
+#                                       Not a recognizable AIPS-style
+#                                       option.  Try some C extensions,
+#                                       if it exists, add to the list.
+               if [ -f $i.C -o -f $i.c ] ; then
+                  NEWEST `$LPWD`/$i.C `$LPWD`/$i.c >> $PREP/CC.${HOST}.$$
+               else
+                  echo "AIPSCC    : Neither    `$LPWD`/$i.C"
+                  echo "AIPSCC    : nor        `$LPWD`/$i.c"
+                  echo "AIPSCC    : found!"
+                  rm -f $PREP/CC.${HOST}.$$
+                  echo "AIPSCC    : Dies of unnatural causes"
+                  exit 1
+               fi
+            ;;
+
+         esac
+
+      ;;
+
+      *)
+#                                       User error.
+         echo "Usage: AIPSCC [directory-path/][@]source[.C,.c]" \
+            "[AIPS-sytle-options] \\"
+         echo "              [UNIX-style-options] [file.LOG]"
+         rm -f $PREP/CC.${HOST}.$$
+         echo "AIPSCC    : Dies of unnatural causes"
+         exit 1
+      ;;
+
+   esac
+
+done
+#                                       Squeeze out extra blanks from
+#                                       AIPSCCOPTS.
+AIPSCCOPTS=`echo $AIPSCCOPTS | sed -e 's/  */ /g'`
+#                                       Any source modules to compile?
+if [ ! -f $PREP/CC.${HOST}.$$ ] ; then
+   echo "Usage: AIPSCC [directory-path/][@]source[.C,.c]" \
+      "[AIPS-sytle-options] \\"
+   echo "              [UNIX-style-options] [file.LOG]"
+   echo "AIPSCC    : Dies of unnatural causes"
+   exit 1
+fi
+#                                       Compile modules one at a
+#                                       time.
+cat $PREP/CC.${HOST}.$$ | \
+{
+   while read PATHNAME
+   do
+#                                       Save $PATHNAME in case we are
+#                                       being '@' file driven.
+      ATNAME=$PATHNAME
+#                                       Make sure the source module
+#                                       actually exists.
+      if [ -f $PATHNAME ] ; then
+#                                       Separate directory and
+#                                       filename.
+         FILE=`basename $PATHNAME | sed -e 's/\..*//'`
+#                                       MRC 91/Jun/20:
+         case $PATHNAME in
+	    $APLCONTR*)
+ 	       DIR="$APLCONTR"
+            ;;
+            $AIPS_VERSION*)
+               DIR="$PREP"
+            ;;
+            *)
+               DIR=`echo $PATHNAME | sed -e 's#\(/.*\)/.*#\1#'`
+            ;;
+         esac
+#                                       If log filename specified,
+#                                       append to it.  If not, form
+#                                       log filename from $DIR and
+#                                       $FILE, then delete any
+#                                       extant version.
+         if [ "$ULOG" = "" ] ; then
+            LOG=$DIR/$FILE.LOG
+            rm -f $LOG
+         else
+            LOG=$ULOG
+         fi
+#                                       Need to preprocess?
+         case $PATHNAME in
+
+            *.C)
+#                                       Preprocess.  PP returns an
+#                                       easily recognizable pathname
+#                                       of the successfully
+#                                       preprocessed file or an error
+#                                       message.
+               PATHNAME=`PP $PATHNAME 2> $PREP/PP.${HOST}.$$`
+               cat $PREP/PP.${HOST}.$$ | tee -a $LOG
+               rm -f $PREP/PP.${HOST}.$$
+               if [ "$PATHNAME" = "" ] ; then
+                  echo "AIPSCC    : Preprocessing fails!" | \
+                     tee -a $LOG
+                  rm -f $PREP/CC.${HOST}.$$
+                  break
+               fi
+            ;;
+
+         esac
+#                                       List source code?
+         if [ "$LIST" = "TRUE" ] ; then
+#                                       'cat -n ...' not available
+#                                       everywhere.
+            grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+               >> $PREP/CC.${HOST}.LIS
+         else
+#                                       Delete any extant
+#                                       $DIR/$FILE.LIS file.
+            rm -f $DIR/$FILE.LIS
+         fi
+#                                       Delete any extant
+#                                       $DIR/$FILE.o file.
+         rm -f $DIR/$FILE.o
+#                                       Change to $DIR so that
+#                                       object module is created
+#                                       in the same directory as
+#                                       the source code.
+         cd $DIR
+#                                       Record input in $LOG.
+         echo "AIPSCC    : Date       `date`"                   | \
+            tee -a $LOG
+         echo "AIPSCC    : Interpret  AIPSCC $OPTS \\"          | \
+            tee -a $LOG
+         echo "AIPSCC    :            $PATHNAME"                | \
+            tee -a $LOG
+         echo "AIPSCC    : as         LIST=$LIST PURGE=$PURGE"  | \
+            tee -a $LOG
+         echo "AIPSCC    : plus       $COMPILER $AIPSCCOPTS \\" | \
+            tee -a $LOG
+         echo "AIPSCC    :            $PATHNAME"                | \
+            tee -a $LOG
+#                                       Compile.
+         $COMPILER $AIPSCCOPTS $PATHNAME 2>&1 | \
+            awk -f $SYSUNIX/WIDTH132.AWK  | tee -a $LOG
+#                                       Did it work?
+         if [ -f $DIR/$FILE.o ] ; then
+#                                       Success!
+#                                       If we are being '@' file
+#                                       driven, auto-edit the '@'
+#                                       file prefixing this
+#                                       $PATHNAME with a '-' to
+#                                       indicate it as done.
+            if [ "$AT" != "" ] ; then
+               sed -e 's#^'$ATNAME'#-&#' $AT > $PREP/AT.${HOST}.$$
+               cp $PREP/AT.${HOST}.$$ $AT
+               rm $PREP/AT.${HOST}.$$
+               echo "AIPSCC    : Changed    $ATNAME"  | tee -a $LOG
+               echo "AIPSCC    : in         $AT"      | tee -a $LOG
+               echo "AIPSCC    : to         -$ATNAME" | tee -a $LOG
+            fi
+#                                       Good news.
+            echo "AIPSCC    : Compile of $PATHNAME" | tee -a $LOG
+            echo "AIPSCC    : ends successfully."   | tee -a $LOG
+            if [ "$LIST" = "TRUE" ] ; then
+               echo "AIPSCC    : Generated  $DIR/$FILE.LIS" | \
+                  tee -a $LOG
+               cat $LOG          >  $DIR/$FILE.LIS
+               echo ""           >> $DIR/$FILE.LIS
+               cat $PREP/CC.${HOST}.LIS >> $DIR/$FILE.LIS
+            fi
+            rm -f $PREP/CC.${HOST}.LIS
+#                                       Delete $PATHNAME?
+            if [ "$PURGE" = "TRUE" ] ; then
+               echo "AIPSCC    : Delete     $PATHNAME" | tee -a $LOG
+               rm -f $PATHNAME
+            fi
+#                                       If non-user-specified log
+#                                       file, delete it.
+            if [ "$ULOG" = "" ] ; then
+               echo "AIPSCC    : Delete     $LOG"  | tee -a $LOG
+               rm -f $LOG
+            fi
+            continue
+         else
+#                                       Failure.
+            echo "AIPSCC    : Compile of $PATHNAME"      | tee -a $LOG
+            echo "AIPSCC    : ends with fatal error(s)!" | tee -a $LOG
+            if [ "$LIST" = "TRUE" ] ; then
+#                                       Preprend .LOG files to
+#                                       source listing already
+#                                       created above.
+               echo ""           >> $LOG
+               cat $PREP/CC.${HOST}.LIS >> $LOG
+               rm -f $PREP/CC.${HOST}.LIS
+            else
+#                                       Automatically generate a
+#                                       source listing and append it
+#                                       to the .LOG file.
+               echo "" \
+                  >> $LOG
+               grep -n '.' $PATHNAME | sed -f $SYSUNIX/LINENO.SED \
+                  >> $LOG
+            fi
+            echo "AIPSCC    : Examine    $LOG"
+            echo "AIPSCC    : and        $PATHNAME"
+            rm -f $PREP/CC.${HOST}.$$
+            break
+         fi
+      else
+#                                       Non-existent source module.
+         echo "AIPSCC    : File       $PATHNAME"
+         echo "AIPSCC    : not found!"
+         rm -f $PREP/CC.${HOST}.$$
+         break
+      fi
+   done
+}
+if [ -f $PREP/CC.${HOST}.$$ ] ; then
+   echo "AIPSCC    : Ends successfully"
+   rm $PREP/CC.${HOST}.$$
+   exit 0
+else
+   echo "AIPSCC    : Dies of unnatural causes"
+   exit 1
+fi

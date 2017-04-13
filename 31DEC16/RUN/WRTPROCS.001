@@ -1,0 +1,235 @@
+$  WRTPROCS
+$---------------------------------------------------------------
+$! Procedures for easy-to-learn VLBA data reduction
+$# RUN POPS FITS UV IMAGE-UTIL
+$-----------------------------------------------------------------------
+$;  Copyright (C) 2002-2003, 2008, 2010
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*
+PROCEDURE FITDISK
+*-----------------------------------------------------------------------
+*    Write files to disk using (with FITTP) an automatically g
+*    enerated name based on the AIPS file name.
+*
+* Inputs:
+*   INNAME      input file name
+*   INCLASS     input file class
+*   INSEQ       input file sequence number
+*   INDISK      input file disk number
+*   DATAOUT     logical name for output directory
+*   FORMAT      FITTP input
+*   BLOCKING    FITTP input
+*
+*-----------------------------------------------------------------------
+scalar jinna
+scalar jincl
+scalar jout
+scalar oldwait
+scalar inp_ok
+*
+tput fitdisk
+oldwait=dowait
+dowait=1
+inp_ok=1
+if substr(dataout,1,1) = ' ' then
+  inp_ok=-1
+  type 'DATAOUT must be set to a logical directory name'
+  type 'reset DATAOUT and run again'
+end
+if substr(inname,1,1) = ' ' then
+  inp_ok=-1
+  type 'INNAME must be set, set INNAME and try again'
+end
+if substr(inclass,1,1) = ' ' then
+  inp_ok=-1
+  type 'INCLASS must be set, set INCLASS and try again'
+end
+if inp_ok > 0 then
+  task 'fittp'; default; tget 'fitdisk'; task 'fittp'
+  outna=inname; outcl=inclass; outseq=inseq
+  jinna=length(inname)
+  for j=jinna to 1 by -1
+     if substr(inname,j,j)=' ' then
+           substr(inname,j,j)='_'
+     end
+  end
+  jincl=length(inclass)
+  for j=jincl to 1 by -1
+     if substr(inclass,j,j)=' ' then
+           substr(inclass,j,j)='_'
+     end
+  end
+  jout=length(dataout)
+  if substr(dataout,jout,jout) <> ':' then
+    dataout=dataout!!':'
+    jout=jout+1
+    tput 'fitdisk'
+  end
+  dataout=substr(dataout,1,jout)!!substr(inname,1,jinna)!!'.'
+  jout=length(dataout)
+  dataout=substr(dataout,1,jout)!!substr(inclass,1,jincl)!!'.'
+  jout=length(dataout)
+  dataout=substr(dataout,1,jout)!!char(inseq)
+  inna=outname; incl=outclass; inseq=outseq
+  go fittp
+end
+dowait=oldwait; tget fitdisk;clrtemp
+return; finish
+*
+PROCEDURE WRTDISK
+*-----------------------------------------------------------------------
+*    Write files to disk (with FITTP) using an automatically
+*    generated name based on disk and cno, to be read in with
+*    READISK.
+*
+* Inputs:
+*   INDISK      input file disk number
+*   NFILES      first cno
+*   NCOUNT      last cno
+*   DATAOUT     logical name for output directory
+*   FORMAT      FITTP input
+*   BLOCKING    FITTP input
+*
+*-----------------------------------------------------------------------
+scalar oldwait
+scalar inp_ok
+scalar catnum
+scalar jout
+*
+tput wrtdisk
+oldwait=dowait
+dowait=1
+inp_ok=1
+if substr(dataout,1,1) = ' ' then
+  inp_ok=-1
+  type 'DATAOUT must be set to a logical directory name'
+  type 'set DATAOUT and run again'
+end
+if indisk = 0 then
+  inp_ok=-1
+  type 'DATAIN must be set'
+  type 'set DATAIN and run again'
+end
+if nfile <= 0 then; nfile=1; end
+if ncount <= 0 then; ncount=nfile; end
+jout=length(dataout)
+if substr(dataout,jout,jout) <> ':' then
+  dataout=dataout!!':'
+  jout=jout+1
+  tput 'wrtdisk'
+end
+if inp_ok > 0 then
+  for catnum=nfiles to ncount
+    task 'fittp'; default; tget 'wrtdisk'; task 'fittp'
+    egetname catnum
+    if ^ error then
+      dataout=dataout!!'DISK'
+      if indisk < 10 then
+        dataout=dataout!!'0'
+      end
+      dataout=dataout!!char(indisk)!!'C'
+      if catnum < 1000 then;
+        dataout=dataout!!'0'
+      end
+      if catnum < 100 then;
+        dataout=dataout!!'0'
+      end
+      if catnum < 10 then;
+        dataout=dataout!!'0'
+      end
+      dataout=dataout!!char(catnum)
+      go fittp
+    end
+    clrtemp
+  end
+end
+dowait=oldwait; tget wrtdisk
+return; finish
+*
+PROCEDURE READISK
+*-----------------------------------------------------------------------
+*   Read files from disk (with FITLD) using an automatically generated
+*   name based on OLD disk and cno written by WRTDISK
+*   Inputs:
+*      OLDVOL      input file disk number
+*      DATAIN      logical name for input directory
+*      NFILES      first number to load
+*      NCOUNT      last number to load
+*      OUTDISK     AIPS disk to write file
+*      DOUVCOMP    FITLD input
+*-----------------------------------------------------------------------
+scalar oldwait, inp_ok, catnum, jout, OLDVOL, cat1, cat2
+*
+oldwait=dowait
+dowait=-1
+tput readisk
+inp_ok=1
+if substr(datain,1,1) = ' ' then
+   inp_ok=-1
+   type 'DATAIN must be set to a logical directory name'
+   type 'set DATAIN and run again'
+   end
+if OLDVOL = 0 then
+   inp_ok=-1
+   type 'OLDVOL must be set'
+   type 'set OLDVOL and run again'
+   end
+if nfile <= 0 then; nfile=1; end
+if ncount <= 0 then; ncount=nfile; end
+jout=length(datain)
+if substr(datain,jout,jout) <> ':' then
+   datain=datain!!':'
+   tput 'readisk'
+   end
+if inp_ok > 0 then
+  cat1=nfiles; cat2=ncount
+  for catnum=cat1 to cat2
+    task 'fitld'; default; tget 'readisk'; task 'fitld'
+    ncount = 0; nfiles = 0
+    datain=datain!!'DISK'
+    if OLDVOL < 10 then
+      datain=datain!!'0'
+    end
+    datain=datain!!char(OLDVOL)!!'C'
+    if catnum < 1000 then;
+      datain=datain!!'0'
+    end
+    if catnum < 100 then;
+      datain=datain!!'0'
+    end
+    if catnum < 10 then;
+      datain=datain!!'0'
+    end
+    datain=datain!!char(catnum)
+    go fitld; wait fitld
+    clrtemp
+  end
+end
+dowait=oldwait; tget readisk
+return; finish

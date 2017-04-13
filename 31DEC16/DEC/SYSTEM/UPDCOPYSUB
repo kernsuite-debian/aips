@@ -1,0 +1,147 @@
+#!/bin/sh
+#UPDCOPYSUB
+#-----------------------------------------------------------------------
+#! Copy a file from the server
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1996
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Copy a named file from the server
+#
+#   Inputs:
+#      $1            pathname of file on server
+#      $2            pathname of output file on client
+#
+#      $ServerName   name of server
+#      $MasterName   name of master system (for UPD/UPD.SUM files)
+#      $ServerRoot   name of aips root area on server
+#      $ClientName   name of client
+#      $LogFile      name of update log file
+#      $ErrorFile    name of error log file
+#      $Account      Account name on remote system (Server and Master)
+#                    (defaults to aipsmgr if not set in UPDCONFIG).
+#
+#   At CV, ServerName and MasterName are both baboon (94/03/04).
+#
+#   NFS version, uses cp instead of rcp if it can.  Reverts to rcp on
+#   error.  NFS code relies on the pathname being the same on the server
+#   and the client.  This is true for any machine that mounts the
+#   relevant partition from the master machine (polaris:/AIPS).
+#
+#   92.03.10: only try NFS if test -f succeeds on file.
+#   92.03.30: use MasterName for the 5 *.UPD files.  This logic is
+#             still a bit flawed, especially the nfs portion.
+#   94.03.04: get *.UPD.SUM from MasterName as well as *.UPD.
+#   96.02.21: Use aipsmgr@ in the remote copy commands.  Could be done
+#             more generally sometime...
+#-------------------------------------------------------------------
+Tries=0
+Done=False
+[ "$Account" = "" ] && Account="aipsmgr"
+rcmd="rsh"
+[ "$ARCH" = "HP" ] && rcmd="remsh"
+#                                       See if ServerRoot is NFS mounted
+#                                       and if file is visible
+serv=`df $ServerRoot 2>/dev/null |
+      grep $ServerRoot | awk -F: '{print $1}'`
+[ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: serv is $serv"
+if [ \( -f $1 \) -a \( "$serv" = "$ServerName" \) ] ; then
+   [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: $Serverroot visible"
+   while [ \( "$Done" = "False" \) -a \( "$Tries" != "5" \) ] ; do
+      if [ -r $2 ] ; then
+	 if [ ! -w $2 ] ; then
+	    if `chmod u+rwx $2` ; then
+	       : " it worked"
+	    else
+	       echo "UPDCOPYSUB: Cannot change mode on $2" >> $LogFile
+	       exit 2
+	    fi
+	 fi
+      fi
+      cp $1 $2
+      [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: cp $1 $2 done"
+      Newer=`find $2 -newer $LogFile -print 2> /dev/null`
+#                                       If the copy was successful
+#                                       then Newer contains the name
+#                                       of the output file.
+      case $Newer in
+         $2) chmod 775 $Newer; Done=True
+             [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: done" ;;
+          *) sleep 10
+	     [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: not newer" ;;
+      esac
+      Tries=`expr $Tries + 1`
+   done
+   if [ "$Done" = "False" ] ; then
+      echo "UPDCOPYSUB: Copy of ${ServerName}:$1" >> $LogFile
+      echo "UPDCOPYSUB: did not work using NFS.  Trying $rcmd..." \
+       >> $LogFile
+      Tries=0
+   fi
+fi
+if [ "$Done" = "False" ] ; then
+   [ "$UPDEBUG" = "YES" ] && echo "UPDCOPYSUB: doing it the hard way"
+   while [ \( "$Done" = "False" \) -a \( "$Tries" != "5" \) ] ; do
+      if [ -r $2 ] ; then
+         if [ ! -w $2 ] ; then
+            if `chmod u+rwx $2` ; then
+               : " it worked"
+            else
+               echo "UPDCOPYSUB: Cannot change mode on $2" >> $LogFile
+               exit 3
+            fi
+         fi
+      fi
+      case $2 in
+         *.UPD | *.UPD.SUM)
+            $rcmd ${Account}@$MasterName:$1 $2 ;;
+         *)
+            $rcmd ${Account}@$ServerName:$1 $2 ;;
+      esac
+      Newer=`find $2 -newer $LogFile -print 2> /dev/null`
+#                                       If the copy was successful, then
+#                                       Newer contains output filename.
+#                                       Checksum would be better....
+         case $Newer in
+            $2) chmod 775 $Newer; Done=True ;;
+             *) sleep 10 ;;
+         esac
+         Tries=`expr $Tries + 1`
+   done
+fi
+if [ "$Done" = "True" ] ; then
+   echo "UPDCOPYSUB: Copied $1" >> $LogFile
+   echo "UPDCOPYSUB: to     ${ClientName}:$2" >> $LogFile
+   Status=0
+else
+   echo "UPDCOPYSUB: Copy of $1" | tee -a $ErrorFile >> $LogFile
+   echo "UPDCOPYSUB: to      ${ClientName}:$2" | tee -a $ErrorFile \
+    >> $LogFile
+   echo "UPDCOPYSUB: failed after $MaxTries attempts." \
+    | tee -a $ErrorFile >> $LogFile
+   Status=1
+fi
+exit $Status

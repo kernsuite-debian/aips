@@ -1,0 +1,198 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1996, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: MAKEAT directory
+# --------------------------------------------------------------------
+# Given a starting directory corresponding to an AIPS directory
+# environment variable, attempts to create a file containing source code
+# pathnames in that directory and below it that are appropriate to the
+# architecture.  The list is written to a file with the same name as
+# corresponding environment variable and with an extension of '.LIS'.
+# For example, if the user types 'MAKEAT $APLUNIX', it will try to
+# generate a list of UNIX Z-routine source code pathnames for those
+# directory names that are found in the system specific files
+# $SYSLOCAL/SEARCH[0-9].DAT.  The reverse environment variable lookup
+# can be a little flaky and probably should use $SYSUNIX/REVENV instead
+# of PRINTENV and grep (too many possible exceptions).
+#
+# LINUX test version.  This thing was buggy.
+# --------------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Argument given?
+if [ "$1" = "" ] ; then
+   echo "Usage: MAKEAT directory"
+   exit 1
+fi
+#                                       Is argument a directory?
+if [ ! -d $1 ] ; then
+   echo "MAKEAT    : $1 is not a directory!"
+   exit 1
+fi
+#                                       Get environment variable name
+#                                       that corresponds to $1.  FLAKY!
+LNAME=`PRINTENV | grep $1$ | grep -v '^ENV=' | grep -v '^$LPWD=' \
+                | sed -e 's/=.*//'`
+if [ "$LNAME" = "" ] ; then
+   echo "MAKEAT    : Cannot find env. variable for $1"
+   exit 1
+fi
+#                                       Clean up on error.
+trap 'rm -f $PREP/MAKEAT.$$ $PREP/$LNAME.$$; exit 1' 1 2 3 15
+#                                       Figure out alternate load areas
+#                                       if any.  Should be 0.  Ignore
+#                                       any comments in LIBR.DAT.
+ALTS=`cat $SYSLOCAL/LIBR.DAT | grep -v '^#' | awk -F: '{print $2}' \
+                             | sort -u`
+#                                       Are $SYSLOCAL/SEARCH[0-9].DAT
+#                                       up to date?
+for ALT in $ALTS ; do
+   NEWEST=`NEWEST $SYSLOCAL/LIBR.DAT $SYSLOCAL/SEARCH$ALT.DAT`
+   if [ "$NEWEST" = "$SYSLOCAL/LIBR.DAT" ] ; then
+      echo "MAKEAT    : Remake     $SYSLOCAL/SEARCH$ALT.DAT" 1>&2
+      echo "MAKEAT    : from newer $SYSLOCAL/LIBR.DAT"       1>&2
+      rm -f $PREP/SEARCH$ALT.$$; touch $PREP/SEARCH$ALT.$$
+      sed -n -e 's/^\$.*:'$ALT'://p' $SYSLOCAL/LIBR.DAT | \
+      while read VAR ; do
+         DEF=`eval echo $VAR`
+         if [ "$DEF" = "" ] ; then
+            echo "MAKEAT    : Variable   $VAR undefined!"     1>&2
+            echo "MAKEAT    : Remake of  $SYSLOCAL/SEARCH$ALT.DAT" \
+                                                              1>&2
+            echo "MAKEAT    : cannot be completed!"           1>&2
+            echo "MAKEAT    : Inform the AIPS system manager" \
+               "immediately!"                                 1>&2
+            rm -f $PREP/SEARCH$ALT.$$
+            exit 1
+         else
+            echo $DEF >> $PREP/SEARCH$ALT.$$
+            if [ "$?" != "0" ] ; then
+               echo "MAKEAT    : Cannot append to $PREP/SEARCH$ALT.$$"
+               exit 1
+            fi
+         fi
+      done
+#                                       For some reason, the status
+#                                       on some systems like Linux
+#                                       is 1 here instead of zero.
+#                                       Check the file instead.
+#      badstat=$?
+#      if [ "$badstat" = "0" ] ; then
+      if [ -s $PREP/SEARCH$ALT.$$ ] ; then
+#                                       Form new $SYSLOCAL/SEARCHn.DAT
+#                                       only if all went well above.
+#                                       Otherwise, use old one.
+         sort -ru -o $PREP/SEARCH$ALT.$$.NEW $PREP/SEARCH$ALT.$$
+         cp $PREP/SEARCH$ALT.$$.NEW $SYSLOCAL/SEARCH$ALT.DAT
+      else
+         echo "MAKEAT    : $PREP/SEARCH$ALT.$$ is missing or empty!"
+         exit 1
+      fi
+      rm -f $PREP/SEARCH$ALT.$$ $PREP/SEARCH$ALT.$$.NEW
+   elif test "$NEWEST" != "$SYSLOCAL/SEARCH$ALT.DAT"
+   then
+      echo "MAKEAT    : NEWEST is $NEWEST???"
+      echo "MAKEAT    : This is TOO weird."
+      exit 1
+   fi
+done
+#                                       Grind away
+echo "MAKEAT    : Making     $LNAME.LIS"
+rm -f $LNAME.LIS $PREP/$LNAME.$$
+touch $LNAME.LIS $PREP/$LNAME.$$
+#                                       Make a list of all
+#                                       unpreprocessed source modules
+#                                       in and under the specified
+#                                       starting directory.
+
+#                                       Provide for artificial
+#                                       distinction of non-standard
+#                                       source code areas.
+case $1 in
+
+   */NOTST* | */OOP*)
+#                                       Non-standard starting
+#                                       directory specified.
+      find $1 \( -name '*.FOR' -o -name '*.C' -o -name '*.S' \) \
+         -print | sed -e 's/.*\//& /' | sed -e 's/\/ / /' | sort \
+         > $PREP/MAKEAT.$$
+   ;;
+
+   *)
+#                                       Not a non-standard starting
+#                                       directory.
+      find $1 \( -name '*.FOR' -o -name '*.C' -o -name '*.S' \) \
+         -print | grep -v '\/NOTST\/' | grep -v '\/OOP\/' | \
+         sed -e 's/.*\//& /' | \
+         sed -e 's/\/ / /' | sort > $PREP/MAKEAT.$$
+   ;;
+
+esac
+#                                       Extract from this a non-redundant
+#                                       list of routine names.
+for ALT in $ALTS
+do
+   sed -e 's/\(.*  *\)\([^\.]*\)\(.*\)/\2/' $PREP/MAKEAT.$$ | sort -u | \
+   {
+      while read MODULE
+      do
+#                                       Get the pathnames for all
+#                                       versions of $MODULE sorted
+#                                       in reverse order (i.e., lowest
+#                                       to highest directory nodes).
+         grep ' '$MODULE'\.' $PREP/MAKEAT.$$ | sort -r | \
+         {
+            while read LINE
+            do
+#                                       Check $SYSLOCAL/SEARCH$ALT.DAT
+#                                       to see if $DIR is defined.  If
+#                                       so, first definition found is
+#                                       the directory containing the
+#                                       proper source module for the
+#                                       host implementation of AIPS,
+#                                       so echo this and go on to the
+#                                       next routine.
+               DIR=`echo $LINE | sed -e 's/ .*//'`
+               if grep $DIR$ $SYSLOCAL/SEARCH$ALT.DAT > /dev/null
+               then
+                  FILE=`echo $LINE | sed -e 's/.*  *//'`
+                  echo $DIR/ $FILE >> $PREP/$LNAME.$$
+                  break
+               fi
+            done
+         }
+      done
+   }
+done
+#                                       Eliminate redundant module
+#                                       pathnames.
+sort -u $PREP/$LNAME.$$ | sed -e 's/ //g' > $LNAME.LIS
+rm -f $PREP/MAKEAT.$$ $PREP/$LNAME.$$

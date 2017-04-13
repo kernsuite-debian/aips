@@ -1,0 +1,617 @@
+; KRING
+;---------------------------------------------------------------
+;! fringe fit data to determine antenna calibration, delay, rate
+;# TASK CALIBRATION AP VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-2004, 2006, 2009-2010, 2012, 2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+KRING     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+KRING:  Task to fringe-fit data
+INNAME                             INPUT UV name      (required)
+INCLASS                                     class
+INSEQ                                       sequence #
+INDISK                                      disk #
+CALSOUR                            Select by source name ''=>all
+QUAL                                         qualifier   -1=>all
+CALCODE                                      calcode     ''=>all
+SELBAND                            Bandwidth to select     (kHz)
+SELFREQ                            Frequency to select     (MHz)
+FREQID                             Freq. ID to select   < 1=>all
+TIMERANG                           Time range to use      0=>all
+BCHAN                              Lowest channel number  0=>all
+ECHAN                              Highest channel number 0=>all
+ANTENNAS                           Antennas to select     0=>all
+DOFIT                              Antennas to solve for  0=>all
+SUBARRAY                           Subarray               0=>all
+UVRANGE                            Range of uv distance
+                                   for full weight        0=>all
+WTUV                               Weight outside UVRANGE 0=>0.0
+WEIGHTIT          0.0        3.0   Modify data weights function
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL table #
+DOPOL            -1.0       10.0   If >0 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+FLAGVER                            FG table #
+DOBAND                             >0 apply BP table
+                                                 See HELP DOBAND
+BPVER                              BP table #
+SMOOTH                             Spectral smoothing function
+                                                 See HELP SMOOTH
+IN2NAME                            CLEAN map name     (optional)
+IN2CLASS                                     class
+IN2SEQ                                       sequence #
+IN2DISK                                      disk #
+INVERS                                       CC table #
+NCOMP                                        # CC's/field to use
+FLUX                                         CC flux cutoff
+NMAPS                                        # Clean map files
+CMETHOD                                      Modeling method:
+                                             'DFT','GRID',' '
+CMODEL                             Model type: 'COMP','IMAG'
+                                   'SUBI' (see HELP re images)
+SMODEL                             Source model, 1=flux,2=x,3=y
+                                                 See HELP SMODEL
+REFANT                             Reference antenna
+SEARCH                             Fringe search list.
+SOLINT                             Soln. interval (min)    0=>10
+SOLSUB                             Solution subinterval
+SOLMIN                             Min solution interval
+SOLTYPE                            'NOLS' => do FFT only
+                                   'NOFT' => do LS only
+                                   other => do FFT + LS
+SOLMODE                            NRD = indep. rates/delays
+                                   NR  = indep. rates, no delays
+                                   ND  = indep. delays, no rates
+                                   R   = one rate, no delays
+                                   RD  = one rate/mb-delay
+                                   RDS = one rate,mb-/sb-delays
+                                   RI  = one rate/iono-delay
+                                   TD  = mb-delay + dispersion
+                                   default = NRD, see HELP
+DOIFS              0.0      64.0   1 => 1 solution for all IFs
+                                   2 => 2 solutions, 1 each for
+                                        IFs by halves
+                                   N => N solutions, 1 each for
+                                        NIF/N IFs
+                                   0 -> 1  (use 1 for T, S)
+                                   SOLMODE must include N to do
+                                   each IF individually (DOIFS
+                                   is ignored)
+OPCODE                             'ZRAT' => zero rates
+                                        for more, See HELP KRING
+CPARM                              1 min T_int(sec) 0 => 2
+                                   2 delay win(ns)  0 => Nyquist
+                                   3 rate win(mH)   0 => Nyquist
+                                   4 SNR cutoff     0 => 3
+                                                  -1 => pass all
+                                   5 FFT baseline stacking?
+                                                    0 => yes
+                                                    1 => no
+                                   6 search to which antennas?
+                                                    0 => all
+                                     1 => only those on SEARCH
+                                               list
+                                   7 >0 average RR and LL
+                                   8 <=0 rereference solutions
+                                   9 max SOLINT (min) 0=>10
+                                   10 >0 try extrapolation and
+                                              reverse traverse
+                                     [possibly broken, see HELP]
+SNVER                              Output SN table, 0=>new table
+ANTWT                              Ant. weights (0=>1.0)
+
+BIF                                First IF included when
+                                   when SOLMODE has no N
+EIF                                Last IF included when
+                                   when SOLMODE has no N
+PRTLEV                             Print level: 0-> count solns
+                                   1-> LS info  2-> FFT info
+BADDISK                            Disk # to avoid for scratch
+                                                       files.
+----------------------------------------------------------------
+KRING
+Task:  This task determines phase, rate, and delay corrections
+       to be applied to a uv data set given a model of the source(s).
+       The corrections are written to an SN table attached to the
+       input Multi-Source UV data set.
+   *** The delay/rate searchs are automatically turned off if less than
+       two points are available along the corresponding freq/time axes.
+   *** Plus signs next to the SNR during the FFT stage indicate the
+       level of baseline stacking used to attain the reported SNR.
+       SNRs for baselines with differing amounts of stacking should
+       not be compared!
+   *** The LS and FFT SNRs now agree with each other for unstacked
+       data processed one baseline at a time [ostensibly to < 1%].
+  QUESTIONS, COMMENTS?  [write to daip@nrao.edu]
+	[Last documentation overhaul = 20 Oct 1999
+       [coming one day? - probability of false detection, multiple SN
+        tables, BL tables...]
+Adverbs:
+  INNAME.....Input UV file name (name).    Standard defaults.
+  INCLASS....Input UV file name (class).   Standard defaults.
+  INSEQ......Input UV file name (seq. #).  0 -> highest.
+  INDISK.....Disk drive # of input UV file.  0 -> any.
+  CALSOUR....List of sources for which calibration constants are to be
+             determined, i.e. the calibrator sources  All ' ' = all
+             sources; a "-" before a source name. means all except ANY
+             source named.  Note: solutions for multiple sources can
+             only be made if the sources are point sources at their
+             assumed phase center and with the flux densities given in
+             the source (SU) table.
+  QUAL.......Only sources with a source qualifier number in the SU table
+             matching QUAL will be used if QUAL is not -1.
+  CALCODE....Calibrators may be selected on the basis of the calibrator
+             code:
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+                  anything else = calibrator code to select.
+             NB: The CALCODE test is applied in addition to the other
+             tests, i.e. CALSOUR and QUAL, in the selection of sources
+             for which to determine solutions.
+  SELBAND....Bandwidth of data to be selected. If more than one IF is
+             present SELBAND is the width of the first IF required.
+             Units = kHz, 0=> all
+  SELFREQ....Frequency of data to be selected. If more than one IF is
+             present SELFREQ is the frequency of the first IF required.
+             Units = MHz, 0=> all
+  FREQID.....Frequency identifier to select (you may determine which is
+             applicable from the OPTYPE='SCAN' listing produced by
+             LISTR.  If either SELBAND or SELFREQ are set their values
+             override that of FREQID, however setting SELBAND and
+             SELFREQ may result in an ambiguity, in which case the task
+             will request that you use FREQID.
+  TIMERANG...Time range of the data to be used. In order: Start day,
+             hour, min. sec, end day, hour, min. sec. Days relative to
+             reference date.
+  BCHAN......First channel to use.   0=>first available.
+  ECHAN......Highest channel to use. 0=>highest available.
+  ANTENNAS...A list of the antennas to have solutions determined. If
+             any number is negative then all antennas listed are NOT to
+             be used to determine solutions and all others are. 0 =>
+             0 => use all.
+  DOFIT......A list of the antennas for which solutions should or
+             should not be determined.  If DOFIT = 0, all antennas are
+             solved for.  If any entry <= -1, , then DOFIT is taken as
+             the list of antennas for which no solution is desired; a
+             solution is found for all antennas not in DOFIT.  If any
+             entry of DOFIT is non-zero and all are >= 0, then only
+             those antennas listed in DOFIT will be solved for - all
+             other selected antennas will not be solved for.
+             NOTE: THIS OPTION MUST NOT BE USED UNLESS YOU UNDERSTAND
+             IT FULLY.  Basically, it should be used to solve for the
+             gains of "poor" antennas after the "good" antennas have
+             been fully calibrated.  Antennas included in ANTENNAS but
+             not in DOFIT are assumed to have a complex
+             gain/delay/rate of (1,0,0,0) and the gains/delays
+             produced will be very wrong if this is not the case.
+             See HELP DOFIT.
+  SUBARRAY...Subarray number to use. 0=>all.
+  UVRANGE....The range of uv distance from the origin in kilowavelengths
+             over which the data will have full weight; outside of this
+             annulus in the uv plane the data will be down weighted by a
+             factor of WTUV.
+  WTUV.......The weighting factor for data outside of the uv range
+             defined by UVRANGE.
+  WEIGHTIT...If > 0, change the data weights by a function of the
+             weights just before doing the solution.  Choices are:
+             0 - no change   weighting by 1/sigma**2
+             1 - sqrt (wt)   weighting by 1/sigma may be more stable
+             2 - (wt)**0.25
+             3 - change all weights to 1.0
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....version number of the CL table to apply to the data.
+             0 => highest.
+  DOPOL......If > 0 then correct data for instrumental polarization as
+             represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  BLVER......Version number of the baseline based calibration
+             (BL) table to appply. <0 => apply no BL table,
+             0 => highest.
+  FLAGVER....Specifies the version of the flagging table to be applied.
+             0  => highest numbered table.
+             <0 => no flagging to be applied.
+  DOBAND.....If true (>0) then correct the data for the
+             shape of the antenna bandpasses using the BP table
+             specified by BPVER. The correction has three modes:
+             (a) if DOBAND=1, all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2, the entry nearest in time is used to
+             correct the data.
+             (c) if DOBAND=3, the table entries are interpolated in time
+             and the data are then corrected.
+  BPVER......(multi-source) version of the BP table to be applied.
+             0 => highest; < 0 => no bandpass correction to be applied.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+
+The following specify a CLEAN model to be used if a single source via
+specified in CALSOUR:
+  IN2NAME....Cleaned map name (name).      Standard defaults.
+             Note: a CLEAN image for only a single-source may
+             be given although it may be in a multi-source file.
+             If the source table contains a flux, then that flux will
+             be used to scale the components model to obtain the
+             stated total flux.  This is needed since initial Cleans
+             may not obtain the full flux even though they represent
+             all the essentials of the source structure.
+  IN2CLASS...Cleaned map name (class).     Standard defaults.
+  IN2SEQ.....Cleaned map name (seq. #).    0 -> highest.
+  IN2DISK....Disk drive # of cleaned map.  0 => any.
+  INVERS.....CC file version #.  0=> highest numbered version
+  NCOMP......Number of Clean components to use for the model, one
+             value per field.  If all values are zero, then all
+             components in all fields are used.  If any value is not
+             zero, then abs(NCOMP(i)) (or fewer depending on FLUX and
+             negativity) components are used for field i, even if
+             NCOMP(i) is zero.  If any of the NCOMP is less than 0,
+             then components are only used in each field i up to
+             abs(NCOMP(i)), FLUX, or the first negative whichever
+             comes first.  If abs(NCOMP(i)) is greater than the number
+             of components in field i, the actual number is used.  For
+             example
+                   NCOMP = -1,0
+             says to use one component from field one unless it is
+             negative or < FLUX and no components from any other
+             field.  This would usually not be desirable.
+                   NCOMP = -1000000
+             says to use all components from each field up to the
+             first negative in that field.
+                   NCOMP = -200 100 23 0 300 5
+             says to use no more than 200 components from field 1, 100
+             from field 2, 23 from field 3, 300 from field 5, 5 from
+             field 6 and none from any other field.  Fewer are used if
+             a negative is encountered or the components go below
+             FLUX.
+  FLUX.......Only components > FLUX in absolute value are used in the
+             model.
+  NMAPS......Number of image files to use for model.  For multi-scale
+             models, set NMAPS = NFIELD * NGAUSS to include the Clean
+             components of the extended resolutions.  If more than one
+             file is to be used, the NAME, CLASS, DISK and SEQ of the
+             subsequent image files will be the same as the first file
+             except that the LAST 3 or 4 characters of the CLASS will
+             be an increasing sequence above that in IN2CLASS.  Thus,
+             if INCLASS='ICL005', classes 'ICL005' through 'ICLnnn'
+             or 'ICnnnn', where nnn = 5 + NMAPS - 1 will be used.  Old
+             names (in which the 4'th character is not a number) are
+             also supported: the last two characters are '01' through
+             'E7' for fields 2 through 512.  In old names, the highest
+             field number allowed is 512; in new names it is 4096.
+  CMETHOD....This determines the method used to compute the model
+             visibility values.
+             'DFT' uses the direct Fourier transform, this method is
+                   the most accurate.
+             'GRID' does a gridded-FFT interpolation model computation
+             '    ' allows the program to use the fastest method
+  CMODEL.....This indicates the type of input model; 'COMP' means that
+             the input model consists of Clean components, 'IMAG'
+             indicates that the input model consists of images.
+             'SUBI' means that the model consists of a sub-image of
+             the original IMAGR output.  If CMODEL is '   ' Clean
+             components will be used if present and the image if not.
+             SUBI should work for sub-images made with DO3DIM true and
+             sib-images of the central facet made with DO3DIM false,
+             but probably will not work well for shifted facets with
+             DO3DIM false.  Use BLANK rather than SUBIM in such cases.
+             CALIB will set a scaling factor to correct image units
+             from JY/BEAM to JY/PIXEL for image models.  If the source
+             table contains a flux, then that flux will be used to
+             scale the components model to obtain the stated total
+             flux.  This is needed since initial Cleans may not obtain
+             the full flux even though they represent all the
+             essentials of the source structure.
+  SMODEL.....A single component model to be used instead of a CLEAN
+             components model; if abs (SMODEL) > 0 then use of this
+             model is requested.
+                SMODEL(1) = flux density (Jy)
+                SMODEL(2) = X offset in sky (arcsec)
+                SMODEL(3) = Y offset in sky (arcsec)
+                SMODEL(4) = Model type:
+                  0 => point model
+                  1 => elliptical Gaussian and
+                       SMODEL(5) = major axis size (arcsec)
+                       SMODEL(6) = minor axis size (arcsec)
+                       SMODEL(7) = P. A. of major axis (degrees)
+                  2 => uniform sphere and
+                       SMODEL(5) = radius (arcsec)
+The following control how the solutions are done, if you don't
+understand what a parameter means leave it 0 and you will probably get
+what you want.
+  REFANT.....The desired reference antenna for phases.  Note that
+             the desired refant is not required to be the primary search
+             antenna.  You should choose the REFANT to be an antenna
+             that is present during most of the observation.
+  SEARCH.....List of prioritized reference antennas to be used for
+             fringe searching during the FFT stage.  KRING constructs
+             an internal search list to determine the order in which to
+             perform the FFTs.  This search list is constructed by first
+             copying the elements of SEARCH.  Finally, all remaining
+             antennas antennas are appended to the search list in
+             numerical order.  You can limit the search to only the
+             specified elements of the SEARCH list by setting CPARM(6).
+             Only baselines where at least one antenna appears in the
+             search list will be searched for fringes.
+             You should explicitly order the antennas in terms of decreasing
+             sensitivity if at all possible.
+  SOLINT.....The solution interval.  Note that this is only a
+             recommended solution interval.  The actual solution interval
+             used by KRING will be changed in order to divide each scan
+             evenly into an integral number of data chunks.
+             SOLINT is in minutes; the default value (SOLINT=0) is 10
+             minutes.  SOLINT values larger than 10 are reset to 10 minutes
+             unless CPARM(9)>0.  NB: If SOLINT > 0.75*Scan, SOLINT = Scan.
+  SOLSUB.....The begin time for the next interval in advanced from the
+             current one by SOLINT / SOLSUB where 1 <= SOLSUB <= 10.
+             0 -> 1.  This is to produce solutions at sub-intervals of
+             SOLINT based on SOLINT length of averaging.
+  SOLMIN.....Minimum number of subintervals to be used in a solution.
+             0 -> SOLSUB.
+  SOLTYPE....If 'NOLS', only a FFT delay/rate search is performed.
+             If 'NOFT', only a LS delay/rate search is performed.
+             Otherwise, a FFT search is followed by a Least Squares search.
+  SOLMODE....This four character string controls the types of parameters
+             to be solved for.  In any order, the following may be
+             specified:
+              N -> solve for N sets of quantities [ per IF ]
+                   *** see DOIFS for solutions spanning > 1 IF.***
+              R -> solve for rate [ per IF or
+                                    only one common to all IFs ]
+              D -> solve for delay [ per IF (single band delays) or
+                                     only one (multi-band delay) ]
+              S -> solve for stair-step delay [ only one, usually only
+                                                needed for MkIII data
+                                                where pulse-cals have
+                                                been used ]
+              I -> solve for an ionospheric delay [ only one, approx.
+                                                    proportional to
+                                                    inverse frequency ]
+              T -> solve for an ionospheric delay [ only one, exactly
+                                                    proportional to
+                                                    inverse frequency ]
+              4,2, or 1 -> use a factor of 4,2, or 1 of zero padding in the
+                               FFTs.[use 4,2, or 1 for speed over accuracy]
+             *** If N is specified, I,S,T are ignored.
+                 [T also stores the ionosphere in the mb-delay column
+                    so you can see the solved for values using SNPLT.
+                  The actual phase/delay solutions stored using I or T
+                    are identical.]
+             *** Phases are always solved for***
+             Commonly encountered modes would be:
+             NRD = APARM(5)=0 in FRING
+             RD  = APARM(5)=1 in FRING
+             RDS = APARM(5)=2 in FRING
+             ND, D, DS = same as NRD, RD, and RDS respectively but
+                         do not solve for rates
+             NR, R     = same as NRD and RD, respectively but
+                         do not solve for any type of delays
+             Default is NRD .
+             *** Note Bene,  SOLMOD = 'ND' is different from
+                      SOLMOD = 'NRD', OPCODE='ZRAT' .  The latter
+                      first determines the best fitting rate along
+                      with other solutions and then zeroes the rate
+                      solution in the final SN table - this is usually
+                      what you want.
+  DOIFS......If DOIFS is set to N, then determine N solutions using
+             NIF/N IFs in each one.  Note that NIF must be an integer
+             multiple of N or the task will quit.  The default is 1
+             but will be set to 0 (separate solutions for each IF if
+             SOLMODE contains an 'N').
+  OPCODE.....Solution masking to be performed _after_ fringe-fitting
+             ' '  no masking
+             'ZPHS'  zero phases in output SN table
+             'ZRAT'  zero rates in output SN table
+             'ZDEL'  zero delays in output SN table
+             If CPARM(8)>0, OPCODE is forced = ' '.
+  CPARM(1)...The minimum integration time of the data (sec);
+             0 => 2 'VLBA' seconds
+               It is important to get this number right to within 20 %.
+               E.g., if you've averaged up 1 second data to 10 seconds,
+               setting this to 10 is okay so long as there are only a
+               very few points with shorter than 10 second integration
+               times.  If you set this to 1 second, you will regret it.
+  CPARM(2)...The delay window FW to search (nsec) centered on 0 delay.
+             <= 0 => full Nyquist range.
+             [Use SOLMOD to turn off the delay search.]
+  CPARM(3)...The rate window FW to search (mHz) centered on 0 rate.
+             <= 0 => full Nyquist range.
+             [Use SOLMOD to turn off the rate search.]
+  CPARM(4)...The minimum allowed signal-to-noise ratio.  <0 => 3
+             The SNR calculation is described in AIPS Memo 101.
+             [You might consider setting this to 5.]
+  CPARM(5)...Number of baseline combinations to use in the initial,
+             FFT fringe-search (1-3).  Larger values increase the
+             point source sensitivity but reduce the sensitivity to
+             extended sources when an accurate model is not available.
+             0=>3.
+             [Solutions formed using combinations of baselines are
+              marked with a plus for singly indirect combinations and
+              with two pluses for doubly indirect combinations.]
+  CPARM(6)...If CPARM(6)=1, only baselines to those antennas on the
+             SEARCH list are searched during the FFT stage.  Otherwise,
+             other baselines are eventually searched until either fringes
+             have been found to each antenna, or no baselines remain to
+             be searched.
+  CPARM(7)...If >0, RR and LL data are averaged together and only a
+             single solution is determined for both polarizations.  This
+             is useful when reducing polarization data.
+  CPARM(8)...If <= 0 then the phase, rate and delays will be
+             re-referenced to a common antenna.  CPARM(8)=1 is only
+             desirable for VLBI polarization data. Using this option also
+             forces OPCODE = ' '.
+  CPARM(9)...If SOLINT>10 is desired, you must set CPARM(9)>0 .  This
+             is necessary to prevent accidentally requesting more memory
+             than your computer can deliver and locking up computer.
+  CPARM(10)..Try Hard Option.  If CPARM(10)>=0, When KRING is ready to
+             do the initial FFT-based fringe search, it will first try
+             to initialize residual fringe-fit delay and rate solns for
+             each antenna using an average of all good solutions found
+             in the SN table.  Only those antennas for which acceptable
+             solutions are not found will then be FFTd to find fringes.
+             This does not preclude the final Least Squares refinement.
+             [20 Oct 1999, it has been reported that CPARM(10) is broken -
+              it may trash the solutions - dont try it unless you have
+              the time to re-run KRING if need-be.]
+  SNVER......Desired output SN table.  Solutions will be added to the
+             specified table replacing any previous solutions for the
+             same TIMERANG, CALSOUR etc. 0 means create a new SN table.
+  ANTWT......Antenna weights.  These are additional weights to be
+             applied to the data before doing the solutions, one per
+             antenna.  Use PRTAN to determine which antenna numbers
+             correspond to which antennas.  This really is unnecessary
+             in most cases now.
+  BIF........First IF included when when SOLMODE does not contain an
+             N (all IFs receive the solution found for the appropriate
+             group of IFs, but only BIF-EIF are used to find it).
+  EIF........Last IF included when when SOLMODE does not contain an
+             N (all IFs receive the solution found for the appropriate
+             group of IFs, but only BIF-EIF are used to find it).
+  PRTLEV.....Print flag,
+             0=minimal - (almost nothing).
+             1 = LS solution information + scan information
+             2 = FFT solution information
+             3 = nothing really new.
+             >3, all kinds of debugging info.
+  BADDISK....A list of disk numbers to be avoided when creating scratch
+             files.
+----------------------------------------------------------------
+KRING - who wrote it? ?  who rewrote it? kdesai@nrao.edu
+KRING - documentation? - kdesai@nrao.edu [with input from mrupen@nrao.edu]
+KRING - currently maintained by? - kdesai@nrao.edu
+need help? - daip@nrao.edu
+
+For some basic introduction to fringe-fitting, please see the discussions
+in:
+
+Chapter 9 of Interferometry and Synthesis in Radio Astronomy,
+AR Thompson, JM Moran, & GW Swenson Jr., Krieger Publishing, 1991
+
+Global Fringe Search Techniques for VLBI,
+FR Schwab, WD Cotton, AJ, 88, 5, 1983
+
+The Calculation of SNR in KRING's FFT stage,
+KM Desai, AIPS MEMO 101, 1998
+
+The AIPS cookbook also describes how and when KRING should be used.
+
+Brief description:
+KRING is a rewrite of the AIPS fringe-fitting task FRING.
+BLING/BLAPP is an alternate method of fringe-fitting in AIPS.
+
+These tasks all implement in one way or another the global fringe-
+fitting algorithm described in Schwab and Cotton.
+
+KRING differences from FRING:
+
+MEMORY USAGE:
+-KRING uses up to a third less memory for full Nyquist window
+ searches and can save even more if smaller search windows are
+ specified.
+
+-KRING uses an indexing scheme to track the integration times on
+ different baselines.  This scheme has its weaknesses [it does not
+ gracefully handle the case when the integration times are not all
+ multiples of the shortest integration time] but in most data sets
+ now produced by the VLBA correlator, uses (N-2)*(N-1)* T_int_max /
+ (2 * T_int_min) less memory [N is the number of stations in the
+ data set].
+
+SCRATCH FILE USAGE:
+-FRING creates a scratch file consisting of calibrated _uncompressed_
+ data.  If a complicated source model is used, this scratch file is
+ potentially _SIX_ times bigger than the original [compressed] data
+ set.
+
+ KRING requires an NX table and creates scratch files for one scan at
+ a time.  This results in much smaller scratch file usage at the cost
+ of some overhead to create each scratch files.  This is a noticeable
+ penalty when fringe-fitting phase-referenced observations.
+ Currently, the scratch file grows as longer scans are found
+ but does not shrink when shorter scans are encountered.
+
+SOLUTION INTERVALS:
+ KRING uses a different scan-breaking algorithm to try to make all
+ solutions in a scan the same length - this algorithm may be more
+ robust than FRING when: the user asks for one solution per scan, the
+ TIMERANG is set.
+
+RESTRICTED DELAY/RATE SEARCHES
+ KRING implements delay and rate searching more uniformly so that the
+ options to turn off delay or rate searches now work- previously it was
+ difficult to turn off the rate search.
+
+SOLUTION EXTRAPOLATION and REVERSE TRAVERSE
+ KRING can try to extrapolate solutions from previously found
+ solutions.  Before doing an FFT, KRING will check if the average of
+ all previously found solutions has an SNR larger than the cutoff.
+ If so, the delay and rate are adopted and a new phase solution is
+ computed.  If the average solution's SNR is too low, KRING
+ falls back to doing the FFT.  This can be expensive for data of
+ uniformly poor quality of with uniformly weak fringes and should be
+ turned not be used in such cases.  This option is off by default.
+ [20 Oct 99, it has been reported that CPARM(10) is broken, I don't
+  recommend its use until further notice. Sorry for the
+  inconvenience!]
+
+SNR CALCULATIONS:
+ The SNR calculation in KRING is based upon an analytical expression
+ for the SNR that can be found in AIPS memo 101.  Note that the SNR
+ calculations from the LS and FT stages are only expected to agree
+ when processing one baseline at a time [but, in that case, they are
+ expected to agree to within 1%].
+
+
+
+
+
+

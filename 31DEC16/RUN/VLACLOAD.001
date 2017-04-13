@@ -1,0 +1,677 @@
+$ VLACLOAD.001
+$---------------------------------------------------------------
+$! RUN file to prepare to test AIPS continuum calibration
+$# Run POPS
+$---------------------------------------------------------------
+$;  Copyright (C) 1995-1997, 1999-2000, 2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$---------------------------------------------------------------
+* VLACLOAD.001 by Bill Cotton, NRAO-CV, Sept. 90
+* Modified to allow different TDISK and MDISK in step 32.
+* It compiles the POPS code and leaves it in SAVE/GET files.
+* The file VLACEXEC.001 executes the files.
+* See VLAC.HLP for documentation (HELP VLAC, EXPLAIN VLAC).
+* ==============================================================
+* Remember prior state to permit restoration at end:
+STORE 1
+RESTORE 0
+CORE
+* ==============================================================
+* Declare variables for the procedures:
+PROCEDURE DCLRVR
+   STRING*50 BMBTXT, SPACER
+   STRING*16 DDTFILE
+   STRING*12 PRCSV1, ZAPSV2, NCLSV2, PHDSV1, PHDSV3, CHKSV2
+   STRING*8  TNAME, TNAMF, DDTDISK
+   STRING*6  ZAPSV1, ZAPSV3, ZIGSV1, NCLSV1, NCLSV3, CHKSV1
+   STRING*6  ZIGSV2, ZIGSV3, PHDSV2, PHDSV4, TPLCLS, CRCLAS
+   STRING*5  ZIGTSK, TPLTSK
+   STRING*4  TCODE, SOUCODE
+   STRING*1  TMODE, CMODE
+   SCALAR    TMASK, ERATIO, IGWSV1, IOTAPE, EDGSKP, TERSE
+   SCALAR    UCHSV1, PRCSV2, PHDSV5, PHDSV6, ZAPSV4
+   SCALAR    CHKSV3, TINY99, NCLSV4, DDISK, MDISK, TDISK
+   SCALAR    XTRSV1, XTRSV2, JJCNT, NITSAVE, FLUSAVE, SNVER
+   ARRAY     CHKDIF(5,15), MAXDIF(3)
+   RETURN
+FINISH
+SPACER='##################################################'
+* ==============================================================
+* Procedure to print fatal error message:
+PROCEDURE VLACBOMB(BMBTXT)
+   TYPE 'FATAL ERROR:', BMBTXT
+   I = 1; I = I / 0; RETURN
+FINISH
+* ==============================================================
+* Procedure to list current catalog:
+PROCEDURE PRTCAT
+   PRCSV1 = INNAME; INNAME = '*' !! TNAMF; INCLASS = ' '
+   INSEQ = 0; CATALOG
+   IF INDISK <> OUTDISK THEN PRCSV2 = INDISK; INDISK = OUTDISK
+       INSEQ = 0; CATALOG; INDISK = PRCSV2; END
+   INNAME = PRCSV1; RETURN
+FINISH
+* ==============================================================
+* Procedure to print header of a file:
+*               (inname, inclass)
+PROCEDURE PRTHED (PHDSV1, PHDSV2, PHDSV6); PHDSV3 = INNAME
+   INNAME = PHDSV1; PHDSV4 = INCLASS; INCLASS = PHDSV2
+   PHDSV5 = INDISK; INDISK = PHDSV6; IMHEADER
+   INNAME = PHDSV3; INCLASS = PHDSV4; INDISK = PHDSV5; RETURN
+FINISH
+* ==============================================================
+* Procedure to execute a task:
+PROCEDURE IGW (INCLASS, TASK)
+   IF (TERSE<=0) THEN INPUTS; END
+   IGWSV1 = DOWAIT; DOWAIT = TRUE
+   GO; DOWAIT = IGWSV1; RETURN
+FINISH
+* ==============================================================
+* Procedure to "ZAP" output files of specified class:
+*                (class), assumes OUTNAME
+PROCEDURE OUTZAP (ZAPSV1); ZAPSV2 = INNAME; INNAME = OUTNAME
+   ZAPSV3 = INCLASS; INCLASS = ZAPSV1; ZAPSV4 = INDISK
+   INDISK = 0; ALLDEST; INDISK = ZAPSV4
+   INNAME = ZAPSV2; INCLASS = ZAPSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to "ZAP" output files of specified name and class:
+*                (name, class), assumes INDISK
+PROCEDURE OUXZAP (CHKSV2, ZAPSV1); ZAPSV2 = INNAME
+   INNAME = CHKSV2; ZAPSV3 = INCLASS; INCLASS = ZAPSV1; ALLDEST
+   INNAME = ZAPSV2; INCLASS = ZAPSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to "ZAP" prior output files, then execute:
+*              (inclass, task, outclass)
+PROCEDURE ZIGW (ZIGSV1, ZIGTSK, ZIGSV2)
+   OUTZAP(ZIGSV2); ZIGSV3 = OUTCLASS; OUTCLASS = ZIGSV2
+   IGW(ZIGSV1, ZIGTSK); OUTCLASS = ZIGSV3; RETURN
+FINISH
+* ==============================================================
+* Procedure to list header of tape file and read it:
+PROCEDURE TPLOD(TPLTSK)
+   IF (TERSE <= 0) THEN; TPHEAD; END;
+   DOUVCOMP = 1; DOCONCAT = -1
+   IGW(' ', TPLTSK); RETURN
+FINISH
+* ==============================================================
+* Procedure to rename a file:
+*                  (inclass, outclass), assumes OUTNAME
+PROCEDURE NEWCLASS (NCLSV1, OUTCLASS); NCLSV2 = INNAME
+   INNAME = OUTNAME; NCLSV3 = INCLASS; INCLASS = NCLSV1
+   NCLSV4 = INDISK; INDISK = OUTDISK; RENAME
+   INNAME = NCLSV2; INCLASS = NCLSV3; INDISK = NCLSV4; RETURN
+FINISH
+* ==============================================================
+* procedure to build name
+PROCEDURE FILENAME; I = LENGTH(DDTDISK); DDTFILE=DDTDISK
+   IF (I) THEN; SUBSTR(DDTFILE,I+1,16)= ':' !! TNAME
+   END; RETURN
+FINISH
+* ==============================================================
+* Dummy procedure in case ALLDEST not executed:
+PROCEDURE YES; RETURN
+FINISH
+* ==============================================================
+* Set default variable values:
+TNAME = 'VLAC'; TASK = TNAME; TMASK = 127; TMODE = 'T'
+CMODE='T'; TNAMF = TNAME
+INNAME = TMODE !! TNAMF; INCLASS  = ' '; INSEQ  = 0
+OUTNAME = 'T' !! TNAMF; OUTCLASS = ' '; OUTSEQ = 0;
+CLR2NAME; CLR3NAME; DOTWO=FALSE; FORMAT=3; BLOCKING=10; DOCRT=-1
+PRIORITY=5;
+SAVE VLAC000
+* ==============================================================
+* Procedure to compare test image against master:
+*               (inclass), assumes OUTNAME
+PROCEDURE CHECK (JJCNT, CHKSV1); CHKSV2 = INNAME;
+   IN2DISK = MDISK; APARM = 1,-1; INNAME = OUTNAME;
+   IN2NAME = 'M' !! TNAMF; IN2CLASS = CHKSV1;
+   IF (TERSE <= 3) THEN PRTHED(IN2NAME, IN2CLASS, IN2DISK); END
+   CHKSV3 = INDISK; INDISK = OUTDISK
+   OPCODE = 'SUM'; ZIGW (CHKSV1, 'COMB', 'DIFF')
+   TYPE SPACER
+ TYPE '###########------'!!CHKSV1!!'------#####################'
+   TYPE SPACER; INCLASS='DIFF'; ; BLC=EDGSKP+1,EDGSKP+1,0
+   KEYWORD='NAXIS1'; GETHEAD; TINY99=KEYV(1); KEYWORD='NAXIS2'
+   GETHEAD; TRC = TINY99-EDGSKP,KEYVAL(1)-EDGSKP,0; IMSTAT
+   ERATIO = MAX(ABS(PIXVAL),ABS(PIX2VAL)); INCLASS = IN2CLASS
+   INDISK = IN2DISK; INNAME = IN2NAME
+   KEYWORD = 'DATAMAX'; GETHEAD; ERATIO = ERATIO / KEYVALUE(1)
+   TYPE 'Relative to abs(maximum):', ERATIO
+   TINY99 = 1.5768E-20 * 1E-10
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   CHKDIF(1,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits max:', CHKDIF(1,JJCNT)
+   ERATIO = PIXSTD / KEYVALUE(1);
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   CHKDIF(2,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits rms:', CHKDIF(2,JJCNT)
+   TYPE SPACER, INNAME !! '  IMSTAT'; IMSTAT
+   TYPE SPACER, INNAME !! '  MAXFIT'; MAXFIT
+   MAXDIF = PIXXY(1), PIXXY(2), PIXVAL;
+   INNAME = OUTNAME; INDISK = OUTDISK
+   TYPE SPACER, INNAME !! '  MAXFIT'; MAXFIT; BLC = 0; TRC = 0
+   MAXDIF=MAXDIF(1)-PIXXY(1),MAXDIF(2)-PIXXY(2),MAXDIF(3)-PIXVAL
+   TYPE SPACER, '**** DIFFERENCE IN X, Y, VAL: ****', MAXDIF
+   CHKDIF(3,JJCNT)=MAXDIF(1); CHKDIF(4,JJCNT)=MAXDIF(2);
+   CHKDIF(5,JJCNT)=MAXDIF(3);
+   TYPE SPACER, SPACER; INNAME = CHKSV2; INDISK = CHKSV3; RETURN
+FINISH
+SAVE VLAC00M
+GET VLAC000
+* ==============================================================
+* Procedure(s) to compare Table columns
+PROCEDURE TCKDCL
+   SCALAR TCKSUM, TCKSUM2, TCKCNT, TCKMAX, TCKDMAX, TCKNUM
+   SCALAR TCKCOL1, TCKCOL2, SAVDSK1, SAVDSK2, SAVSEQ1, SAVSEQ2
+   SCALAR SAVVER1, SAVVER2 TCKVALUE, ERATIO
+   STRING*12 TCKLABEL, SAVNAM1, SAVNAM2
+   STRING*7  TCKBL1, TCKBL2
+   STRING*6  SAVCLS1, SAVCLS2
+   RETURN
+FINISH
+* Procedure for TCHECK to fetch table value
+* I=1 or 2 for first or second table, value returned in X
+* TCKBL1 and TCKBL2 are also filled in
+PROCEDURE TCHKGET (I, TCKVALUE)
+   IF I=1 THEN INNAME=SAVNAM1; INCLASS=CHKSV1; INDISK=SAVDSK1
+      INSEQ=SAVSEQ1; INVER=SAVVER1; PIXXY(2)=TCKCOL1;TABGET
+      TCKVALUE=KEYV(1); TCKBL1=KEYS; END
+   IF I=2 THEN INNAME=SAVNAM2; INCLASS=CHKSV1; INDISK=SAVDSK2
+      INSEQ=SAVSEQ2; INVER=SAVVER2; PIXXY(2)=TCKCOL2;TABGET
+      TCKVALUE=KEYV(1); TCKBL2=KEYS; END
+   RETURN
+FINISH
+*   Main Table comparison routine (TCHECK)
+*   JJCNT=Test id number, CHKSV1=Class to check
+*   INEXT=table type, INVER=version (test) of table
+*   IN2VER=master version of table
+*   TCKLABEL=column label; PIXXY(3)=col subscript needed.
+PROCEDURE TCHECK (JJCNT, CHKSV1, INEXT, INVER, IN2VER, TCKLABEL)
+   IN2DISK = MDISK; IN2NAME = 'M' !! TNAMF; IN2CLASS = CHKSV1;
+   SAVNAM1=INNAME; SAVCLS1=INCLASS; SAVDSK1=INDISK
+   SAVSEQ1=INSEQ; SAVNAM2=IN2NAME; SAVCLS2=IN2CLASS
+  SAVDSK2=IN2DISK; SAVSEQ2=IN2SEQ; SAVVER1=INVER; SAVVER2=IN2VER
+   BMBTXT='######----' !! CHKSV1 !!'-'!!INEXT !! ' Table col.='
+   BMBTXT=BMBTXT !! TCKLABEL !! ', XINC =' !! CHAR(XINC)
+   TYPE SPACER; TYPE BMBTXT; BMBTXT='  '; TYPE SPACER
+   INCLASS=CHKSV1; INDISK = OUTDISK; INNAME=SAVNAM1
+   INCLASS=CHKSV1; INDISK=SAVDSK1; INSEQ=SAVSEQ1;
+   INVER=SAVVER1; KEYW='NUM ROW'; GETTHEAD; TCKNUM=KEYV(1)
+   KEYW='FIND COL'; KEYS=TCKLABEL; GETTHEAD; TCKCOL1=KEYV(1)
+   INNAME=SAVNAM2; INCLASS=CHKSV1; INDISK=SAVDSK2
+   INSEQ=SAVSEQ2; INVER=SAVVER2; KEYW='NUM ROW'; GETTHEAD
+   IF KEYV(1)<>TCKNUM THEN VLACBOMB('Tables incompatible');END
+   KEYW='FIND COL'; KEYS=TCKLABEL; GETTHEAD; TCKCOL2=KEYV(1)
+   TCKSUM=0.0; TCKSUM2=0.0; TCKCNT=0.0; TCKMAX=-1000.0;
+    TCKDMAX=TCKMAX
+   FOR J=1 TO TCKNUM BY XINC; PIXXY(1)=J; TCHKGET(1,X)
+      TCHKGET(2,Y)
+      IF ((TCKBL1<>'BLANKED')&(TCKBL2<>'BLANKED')) THEN
+         TCKCNT=TCKCNT+1
+         TCKMAX=MAX(ABS(X),TCKMAX); TCKMAX=MAX(ABS(Y),TCKMAX)
+         X=X-Y; TCKSUM=TCKSUM+X; TCKSUM2=TCKSUM2+X*X;
+         TCKDMAX=MAX(ABS(X),TCKDMAX); END; END
+   ERATIO = TCKDMAX / (TCKMAX+1.0E-20)
+   TINY99 = 1.5768E-20 * 1E-10
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   TYPE 'Relative to abs(maximum):', ERATIO
+   CHKDIF(1,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits max:', CHKDIF(1,JJCNT)
+   TCKCNT=MAX(TCKCNT,1); TCKSUM=TCKSUM/TCKCNT
+   TCKSUM2=TCKSUM2/TCKCNT ; X = ABS(TCKSUM2-TCKSUM*TCKSUM)
+   ERATIO = SQRT (X / MAX(1,TCKCNT-1))/ (TCKMAX+1.0E-20)
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   CHKDIF(2,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits rms:', CHKDIF(2,JJCNT)
+   CHKDIF(3,JJCNT)=0; CHKDIF(4,JJCNT)=0; CHKDIF(5,JJCNT)=0
+   INNAME=SAVNAM1; INCLASS=SAVCLS1; INDISK=SAVDSK1
+   INSEQ=SAVSEQ1; INVER=SAVVER1; TYPE SPACER, SPACER; RETURN
+FINISH
+* ==============================================================
+* Procedure to compare test uv file against master:
+*               (Test id, inclass), assumes OUTNAME
+PROCEDURE UCHECK (JJCNT,CHKSV1); CHKSV2 = INNAME;
+   APARM=0.0005,0.0005,1
+   INNAME = OUTNAME; CHKSV3 = INDISK; INDISK = OUTDISK;
+   IN2NAME = 'M' !! TNAMF; IN2DISK = MDISK; IN2CLASS = CHKSV1;
+   IF (TERSE <= 3) THEN PRTHED(IN2NAME, IN2CLASS, IN2DISK); END
+   UCHSV1 = NITER; NITER = 45; OPCODE = ' '
+   IGW (CHKSV1, 'UVDIF') ;    TYPE SPACER
+ TYPE '###########------'!!CHKSV1!!'------#####################'
+   TYPE SPACER;
+   KEYWORD='RATMAX'; GETH; ERATIO=KEYV(1)
+   TINY99 = 1.5768E-20 * 1E-10
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   TYPE 'Relative to abs(maximum):', ERATIO
+   CHKDIF(1,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits max:', CHKDIF(1,JJCNT)
+   KEYWORD='RATRMS'; GETH; ERATIO=KEYV(1)
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   CHKDIF(2,JJCNT) = -3.3219 * LOG (ERATIO)
+   TYPE 'Number correct bits rms:', CHKDIF(2,JJCNT)
+   CHKDIF(3,JJCNT)=0; CHKDIF(4,JJCNT)=0; CHKDIF(5,JJCNT)=0
+   INNAME = CHKSV2; NITER = UCHSV1; INDISK = CHKSV3
+   TYPE SPACER; RETURN
+FINISH
+* Save current POPS image to allow restore after each step:
+CORE
+SAVE VLAC00U
+* ==============================================================
+* Check variables:
+GET VLAC00M
+PROCEDURE VLACPROC; TASK=TNAME; TGET
+   IF (TCODE='INIT') THEN INNAME='M'!!TNAMF; OUTNAME='M'!!TNAMF
+      INDISK=MDISK; OUTDISK = MDISK; CMODE='M'; TMODE='M';
+   ELSE IF (TCODE = 'TEST') THEN INNAME = 'T'!!TNAMF
+      OUTNAME = 'T' !! TNAMF; OUTDISK = TDISK; INDISK=TDISK
+      CMODE='T'
+   ELSE IF (TCODE='WRIT') THEN INNAME = 'M'!!TNAMF
+      INDISK=MDISK; CMODE='M'; TMODE='M'
+   ELSE IF (TCODE = 'READ') THEN OUTNAME = 'M' !! TNAMF
+      OUTDISK = MDISK; CMODE='M'; TMODE='M'; END END END END
+   I=(TCODE='INIT')!(TCODE='TEST')!(TCODE='WRIT')!(TCODE='READ')
+   IF (I) THEN ;
+      ELSE VLACBOMB('TCODE MUST BE INIT,TEST,WRIT, OR READ!')
+      END
+   IF ((TMASK<1)!(TMASK>127)) THEN
+      VLACBOMB('MUST HAVE 0<TMASK<128 !'); END
+   IF ((TCODE='TEST')!(TCODE='WRIT')) THEN
+      IF ((TMODE='T')!(TMODE='M')) THEN ;
+      ELSE VLACBOMB('TMODE MUST BE T OR M IF TCODE=TEST/WRIT!')
+         END END
+   I = (IOTAPE<1)!(DDISK<1)!(MDISK<1)!(TDISK<1)
+   IF (I) THEN
+      VLACBOMB('NEED IOTAPE, DDISK, MDISK & TDISK >0 !')
+      END
+   UVTAP = 0; INTAPE = IOTAPE; OUTTAPE = IOTAPE; FILENAME
+   IF EDGSKP < 0 THEN EDGSKP=0; END
+* set mapping parameters for problems
+   CELLS 0.05; SHIFT 0.121,-0.163; IMSI 256; CHKDIF=-100
+   TASK = TNAME !! 'SAVE'; INPUTS; TPUT; RETURN
+FINISH
+CORE
+SAVE VLACINIT
+* ==============================================================
+* Read/Write the input visibility dataset:
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET
+   NFILES=0; CRCLAS = 'UVDATA'
+   I = LENGTH (DDTFILE)
+   IF (TCODE = 'WRIT') THEN INDISK=DDISK
+      PRTCAT; INNAME = 'M' !! TNAMF; DONEWTAB = TRUE
+      IF (I) THEN; DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+      ELSE; DATAOUT = ''; REWIND; DOEOT = FALSE; END;
+      IGW(CRCLAS, 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      INCLASS = CRCLAS;  SOURCE = ' '
+      INNAME = 'M' !! TNAMF; INDISK = DDISK; ALLDEST
+      OUTNAME = 'M' !! TNAMF; FREESPAC; OUTDISK = DDISK
+      IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+      ELSE; DATAIN = ''; REWIND; END;
+      TPLOD('FITLD'); PRTCAT
+      END; END
+   RETURN
+FINISH
+CORE
+SAVE VLAC00RW
+* ==============================================================
+* Make copy of master data file
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 1
+   IF ((TCODE='TEST')&(MOD(TMASK,2*J)>=J)) THEN
+      INNAME = 'M'!!TNAMF; INDISK = DDISK
+      IF (TERSE<=3) THEN PRTHED(INNAME, 'UVDATA',INDISK); END
+      OUTNAME='T'!!TNAMF; OUTD=TDISK
+      ZIGW ('UVDATA','UVCOP','UVDATA')
+      IF (TERSE<=3) THEN PRTHED (OUTNAME,'UVDATA',OUTDISK); END
+      IF (TERSE<=2) THEN PRTCAT; END; END
+FINISH
+CORE
+SAVE VLAC001
+* ==============================================================
+* Flag data and init SU table.  Scale flux of 3C286 for UVRANGE.
+GET VLAC00U
+* procedure to scale the I polarization fluxes of a given source
+* INNAME, INCLASS etc. assumed.
+* (source_name(8 char), Scaling_factor)
+PROC FLXSCALE (STRA2, SCALR2)
+   SAVNAM1=OUTNAM; SAVCLS1=OUTCLASS; SAVDSK1=OUTDISK
+   SAVVER1=INVER
+   TASK='TABED'; OPTYPE='MULT'; BCOUNT 1;ECOUNT 0;
+   CLRO; APARM=0; TIMERA=0; INEXT 'SU'; INVER 1
+   KEYW='FIND COL'; KEYS='IFLUX'; GETTHEAD; APARM(1)=KEYV(1)
+   KEYS='SOURCE'; GETTHEAD; APARM(5)=KEYV(1);
+   KEYW=STRA2; KEYV=SCALR2,0; IGW('UVDATA','TABED')
+   OUTNAM=SAVNAM1; OUTCLASS=SAVCLS1; OUTDISK=SAVDSK1
+   INVER=SAVVER1; APARM=0
+   RETURN
+FINISH
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET
+   J = 2
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+     INCLASS='UVDATA'; INEXT='FG';INVER=1; INPU EXTD; EXTD
+     BCHAN=1; ECHAN=0;REASON 'BAD DATA'; FLAGVER=1
+     ANTE=3,0;BASEL=0;STOKES='LL';BIF=1;EIF=1;SOURC ''
+        TIMERA 0; IGW ('UVDATA', 'UVFLG')
+     ANTE=2,8;BASEL=8,15;STOKES=' ';BIF=1;EIF=0;
+        SOURC '1418+546',''; TIMERA 1 17 39 0 1 17 42 0
+        IGW ('UVDATA', 'UVFLG')
+     ANTE=0;BASEL=0;STOKES=' ';BIF=1;EIF=0;SOURC '3C295',''
+        TIMERA 1 15 1 0 1 15 11 0; IGW ('UVDATA', 'UVFLG')
+     ANTE=11,0;BASEL=1,10,12;STOKES=' ';BIF=1;EIF=0
+        SOURC '3C286',''; TIMERA 1 18 13 0 1 18 18 0
+        IGW ('UVDATA', 'UVFLG')
+     SOURCE ''; OPTYPE='REJY'; IGW ('UVDATA','SETJY')
+     SOURCE='3C286','';QUAL=-1;BIF=1;EIF=0;ZEROSP 0;
+     OPTYPE='CALC'; APARM 0; IGW('UVDATA','SETJY')
+     FLXSCALE ('3C286',0.99)
+     END
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC002
+* ==============================================================
+* RUN CALIB on 3C286 and phase calibrator
+* Test 1=Real part of IF=1; RCP SN table
+* Test 2=Imag part of IF=2; LCP SN Table
+* TASAV is used to keep a version of the CALIB output SN table
+* so that GETJY will not cause problems.
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 4
+   I = LENGTH (DDTFILE); CRCLAS = 'TASAV'
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      INCLASS='UVDATA'; INEXT='SN'; INVER=-1; INPU EXTD; EXTDEST
+      DOCAL=-1; FLAGVER=1; CLR2N; REFANT=9; CPARM=0; SNVER=1
+      MINPHS=0; MINAMP=0
+      IF (TERSE<=3) THEN; CPARM=0,0,3,3; MINAMP=10; MINPHS=10;
+         IF (TERSE<=0) THEN; APARM(6)=2; ELSE; APARM(6)=1;
+         END; END
+         CALSOUR='3C286','';SNVER=1;ANTEN=3,13,5,9,21,4,23,20,24
+         UVRANGE=50,300; DOFIT=0; IGW('UVDATA','CALIB')
+      CALSOUR='1418+546','';SNVER=1;ANTEN=0
+         UVRANGE=0; DOFIT=0; IGW('UVDATA','CALIB')
+      INNAME=CMODE!!TNAMF;KEYW='FIND COL';
+         INEXT='SN'; INVER=1; OUTVER=1;CPARM=1,1,0,0,0,1
+         KEYW='FIND COL'; KEYS='ANTENNA'; GETTHEAD
+         CPARM(5)=KEYV(1); IGW ('UVDATA', 'TASRT')
+      ZIGW('UVDATA',CRCLAS,CRCLAS)
+      IF (TCODE = 'TEST') THEN XINC=1
+         PIXXY(3)=1; TCHECK(1,CRCLAS,'SN',1,1,'REAL1')
+         PIXXY(3)=2; TCHECK(2,CRCLAS,'SN',1,1,'IMAG2'); END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M'!!TNAMF; INDISK = MDISK; ALLDEST
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=1; AVFIL; NFILE=0; END; END
+      END; END; END
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC004
+* ==============================================================
+* Bootstrap fluxes and apply SN table to CL table
+* Test 3 = Iflux of IF=2
+* Test 4=Real part of IF=1; RCP CL table; XINC=25
+* Test 5=Imag part of IF=2; LCP CL Table; XINC=25
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 8
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+      SOURC='1418+546',''; CALSOUR='3C286',''; ANTE=0
+      IGW('UVDATA','GETJY'); PIXXY(3)=2; XINC=1
+      IF (TCODE='TEST') THEN
+         TCHECK(4,'UVDATA','SU',1,1,'IFLUX'); END
+      OPCODE='CALI'; INTERPOL='MWF';INTPARM=1.1,0,0;
+      SMOTYP='AMPL'; INCLASS='UVDATA'; INEXT='CL'; INVER=2;
+      INPU EXTD; EXTDEST;
+      GAINVER=1; GAINUSE=2; SNVER=1; SOURC='3C286',''
+      CALSOUR='3C286',''; CUTOFF=0; IGW('UVDATA','CLCAL')
+      SOURC='1418+546','3C295'; CALSOUR='1418+546',''
+      IGW('UVDATA','CLCAL')
+      IF TCODE='TEST' THEN XINC=1
+         PIXXY(3)=2; TCHECK(3,'UVDATA','SU',1,1,'IFLUX'); END
+      END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC008A
+*  POPS too feeble to run this in one go; split up
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 8
+   IF(((TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN XINC=25
+      PIXXY(3)=1; TCHECK(4,'UVDATA','CL',2,2,'REAL1')
+      PIXXY(3)=2; TCHECK(5,'UVDATA','CL',2,2,'IMAG2')
+      END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC008B
+* ==============================================================
+* Polarization calibration
+GET VLAC00U
+* Test 6=3rd poln parameter for LCP
+* Test 7=Upol, IF 2
+* Test 8=Real part of IF=1; RCP CL table; XINC=25
+* Test 9=Imag part of IF=2; LCP CL Table; XINC=25
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 16
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      CALS='1418+546',''; DOCAL=1; GAINUSE=2; FLAGVER=1
+         PRTLEV=1; IF TERSE>2 THEN PRTLEV=0; END; REFANT 9
+         IGW('UVDATA','PCAL')
+      INCLASS='UVDATA'; INEXT='CL'; INVER=3; INPU EXTD; EXTDEST
+      SAVNAM1=OUTNAM; SAVCLS1=OUTCLASS; SAVDSK1=OUTDISK
+         OUTNAME=INNAME; OUTCLASS=INCLASS;  OUTD=IND
+         INVER=2; OUTVER=3; KEYW=' '; NCOUNT=0;
+         IGW('UVDATA','TACOP')
+         OUTNAM=SAVNAM1; OUTCLASS=SAVCLS1; OUTDISK=SAVDSK1
+      STOKES='L'; SOURCE ''; OPCODE 'POLR'; CLCORPRM=-167.3,21.6
+      GAINVER=3; IGW('UVDATA','CLCOR')
+      END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC016A
+*  POPS too feeble to run this in one go; split up
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 16
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IF (TCODE = 'TEST') THEN  XINC=1
+         PIXXY(3)=3; TCHECK(6,'UVDATA','AN',1,1,'POLCALB')
+         PIXXY(3)=2; TCHECK(7,'UVDATA','SU',1,1,'UFLUX');
+         END
+      IF TERSE<=2 THEN; STOKES='POLC'; OPTY 'MATX';
+         DOCAL 1; GAINUSE=3; DOPOL=1; BIF=2; SOURC='3C286',''
+         ANTEN=3,13,5,9,21,4,23,20,24; UVRANGE=50,300;
+         DPARM=1,0; IGW('UVDATA','LISTR'); END
+      END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC016B
+*  POPS too feeble to run this in one go; split up
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 16
+   IF(((TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN XINC=25
+       PIXXY(3)=1; TCHECK(8,'UVDATA','CL',3,3,'REAL1')
+       PIXXY(3)=2; TCHECK(9,'UVDATA','CL',3,3,'IMAG2'); END
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC016C
+* ==============================================================
+* Write calibrated single source file for source
+* Test 10 = SPLIT uv data.
+GET VLAC00U
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 32
+   I = LENGTH (DDTFILE); CRCLAS = 'SINGLE'
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+      INNAME = TMODE!!TNAMF
+      SOURCE='3C295',''; STOKES ''; OUTDIS=TDISK
+      DOCAL=1; GAINUSE 0; DOPOL=1; FLAGVER 1; TIMERA 0
+      INDISK=0; OUXZAP(SUBSTR(SOURCE(1), 1,12), CRCLAS)
+      INDISK=TDISK; IF TMODE='M' THEN INDISK=MDISK; END
+      ZIGW('UVDATA','SPLIT',CRCLAS)
+      SAVNAM1=INNAM; SAVCLS1=INCLASS; SAVDSK1=INDISK
+      INNAME=SOURCE(1); INCLASS=CRCLAS
+      OUTCLAS=INCLAS; INDISK=OUTDIS; RENAME
+      INNAM=SAVNAM1; INCLASS=SAVCLS1
+      IF (TERSE<=3) THEN PRTHED(OUTNAME, CRCLAS, INDISK); END
+      IF (TCODE='TEST') THEN UCHECK(10,CRCLAS); END;
+      IF (TERSE <= 2) THEN PRTCAT; END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         DATAOUT = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW(CRCLAS, 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN INCLAS=CRCLAS
+         INNAME = 'M' !! TNAMF; INDISK = MDISK; ALLDEST
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=1; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+OUTSEQ=1
+CORE
+SAVE VLAC032
+* ==============================================================
+* Make images using IMAGR
+* Test 11=Compare IMAGR IClean
+* Test 12=Compare IMAGR IBeam
+* Test 13=Compare IMAGR QClean
+GET VLAC00M
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET; J = 64
+   I = LENGTH (DDTFILE)
+   IF (((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J)) THEN
+      INNAME = TMODE!!TNAMF; INDISK=0; OUXZAP(INNAME, 'IMAGR')
+      INDISK=TDISK; IF TMODE='M' THEN INDISK=MDISK; END
+      OUTZAP('?CL001'); OUTZAP('?BM001');
+      OUTZAP ('IMA?BM'); OUTZAP('IMA?CL'); CLR2N
+      SOURCE=''; OPTY 'SUM'; DOCAL=-1; DOTV=-1; ROBUST=-0.2
+      NITER=1000; NBOXES=1; CLBOX = 65,65,192,192
+      RASHIFT=SHIFT(1),0; DECSHIFT=SHIFT(2),0
+      STOKES 'I'; IGW('SINGLE', 'IMAGR')
+         NEWCLASS('ICL001','IMAICL')
+         IF (TERSE<=3) THEN PRTHED(OUTNAME,OUTCLASS,OUTDISK);END
+         NEWCLASS('IBM001','IMAIBM')
+         IF (TERSE<=3) THEN PRTHED(OUTNAME,OUTCLASS,OUTDISK);END
+         IF (TCODE = 'TEST') THEN
+            CHECK(11,'IMAICL');  CHECK(12,'IMAIBM'); END
+      STOKES 'Q'; CLR2NAME; IGW('SINGLE', 'IMAGR')
+         NEWCLASS('QCL001','IMAQCL')
+         IF (TERSE<=3) THEN PRTHED(OUTNAME,OUTCLASS,OUTDISK);END
+         NEWCLASS('QBM001','IMAQBM')
+         IF (TERSE<=3) THEN PRTHED(OUTNAME,OUTCLASS,OUTDISK);END
+         IF (TCODE = 'TEST') THEN CHECK(13,'IMAQCL'); END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (I) THEN; IF (MOD(TMASK,2*J)>=J) THEN
+         CRCLAS='IMAICL'; DATAOUT=SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP')
+         CRCLAS='IMAIBM'; DATAOUT=SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP')
+         CRCLAS='IMAQCL'; DATAOUT=SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         IGW(CRCLAS, 'FITTP'); END
+      ELSE; DATAOUT = ''; IGW('IMAICL', 'FITTP')
+         IGW('IMAIBM', 'FITTP'); IGW('IMAQCL', 'FITTP'); END
+   ELSE IF (TCODE = 'READ') THEN
+      IF (MOD(TMASK,2*J)>=J) THEN ;
+         CRCLAS = 'IMAICL'; INCLAS=CRCLAS; INNAME = 'M'!!TNAMF
+         INDISK = MDISK; ALLDEST
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD')
+         CRCLAS = 'IMAIBM'; INCLAS=CRCLAS; INNAME = 'M'!!TNAMF
+         INDISK = MDISK; ALLDEST
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD')
+         CRCLAS = 'IMAQCL'; INCLAS=CRCLAS; INNAME = 'M'!!TNAMF
+         INDISK = MDISK; ALLDEST
+         IF (I) THEN; DATAIN = SUBSTR(DDTFILE,1,I) !! CRCLAS;
+         ELSE; DATAIN = ''; END;  TPLOD('FITLD'); PRTCAT
+      ELSE IF (^I) THEN; NFILE=3; AVFIL; NFILE=0; END; END
+      END END END;
+   TASK = TNAME !! 'SAVE'; TPUT; RETURN
+FINISH
+CORE
+SAVE VLAC064
+* ==============================================================
+* Thats all, folks!
+GET VLAC000
+PROCEDURE VLACPROC; TASK = TNAME !! 'SAVE'; TGET
+STRING*12 DIFNAM(15)
+   DIFNAM = 'CALIB SN 1','CALIB SN 2','GETJY','CLCAL CL 1'
+   DIFNAM(5) = 'CLCAL CL 2'; DIFNAM(6) = 'PCAL AN'
+   DIFNAM(7) = 'PCAL SU'; DIFNAM(8) = 'CLCOR CL 1'
+   DIFNAM(9) = 'CLCOR CL 2'; DIFNAM(10) = 'SPLIT'
+   DIFNAM(11) = 'IMAGR ICLEAN'; DIFNAM(12) = 'IMAGR IBEAM';
+   DIFNAM(13) = 'IMAGR QCLEAN';
+   I = LENGTH (DDTFILE)
+   IF (TCODE = 'TEST') THEN PRTCAT;
+      PRINT '  TEST','BITS MAX','BITS RMS'
+      FOR I = 1:13; ERATIO = CHKDIF(1,I); JJCNT=CHKDIF(2,I);
+         IF (ERATIO > -90) THEN
+            PRINT DIFNAM(I), ERATIO, JJCNT;
+         END; END
+      PRINT '  TEST','X DIFF','Y DIFF','FLUX DIFF'
+      FOR I = 11:13; ERATIO = CHKDIF(1,I)
+         IF (ERATIO > -90) THEN
+            PRINT DIFNAM(I), CHKDIF(3,I),CHKDIF(4,I),CHKDIF(5,I)
+         END; END
+      IF (DOCRT <= 0) THEN
+         PRINT SPACER
+         PRINT 'PRINTING MESSAGES SUGGESTIVE OF ERROR: PRIO > 5'
+         PRIORITY=6; PRNUM=0; PRTASK=''; PRTMSG
+         PRINT SPACER
+         PRINT 'PRINTING ANSWERS, ERRORS, IMPORTANT MESSAGES'
+         PRIORITY=5; PRNUM=0; PRTASK=''; PRTMSG; END
+   ELSE IF (TCODE = 'WRIT') THEN
+      IF (^I) THEN; NFILES = 0; IGW(' ', 'PRTTP'); REWIND ;END
+   ELSE IF (TCODE = 'READ') THEN
+      PRTCAT; IF (^I) THEN; REWIND; END
+   END END END;
+      IF TERSE <= 3 THEN PRTIME=2; IGW(' ','PRTAC'); END
+   TYPE 'That"s all, Folks!'
+   RETURN
+FINISH
+CORE
+SAVE VLAC9999
+* ==============================================================
+* Restore to prior status:
+RESTORE 1
+CORE
+SGDESTR VLAC000
+SGDESTR VLAC00U
+SGDESTR VLAC00M

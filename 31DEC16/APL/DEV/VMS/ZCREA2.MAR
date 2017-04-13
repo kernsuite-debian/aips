@@ -1,0 +1,168 @@
+      .TITLE ZCREA2 (PNAME, ABLCKS, ASIZE, SYSERR, IERR)
+;-----------------------------------------------------------------------
+;! create the specified disk file
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1997
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;   Create a disk file of the specified name and size with read/write
+;   permission.
+;   Inputs:
+;      PNAME    H*48   Physical file name (H for Macro, C, ...)
+;      ABLCKS   I      Requested size of file in AIPS-blocks
+;                        (256 local integers)
+;   Output:
+;      ASIZE    I      Actual size of file created in AIPS-blocks
+;      SYSERR   I      System error code
+;      IERR     I      Error return code: 0 => no error
+;                         1 => file already exists
+;                         2 => volume not found
+;                         3 => insufficient space
+;                         4 => other
+;   VMS version.
+;   Creates a disk file for reading/writing with QIO. The attributes are
+;   fixed records, sequential organization, with maximum record size of
+;   512 bytes.  QIO, of course, can read/write any number of 512 byte
+;   blocks per i/o request. RMS is used to write the last block in the
+;   file in order to cause the space used to equal the space allocated
+;   in the file header. As a result, these files can be copied with the
+;   DCL copy command.
+;-----------------------------------------------------------------------
+        $IODEF
+;                                       Parameter list offsets
+PNAME=4
+ABLCKS=8
+ASIZE=12
+SYSERR=16
+IERR=20
+;
+FNALEN=48               ; Max physical file name length.
+;-----------------------------------------------------------------------
+        .PSECT DATA,LONG
+FABX:   $FAB                    ; Allocate file access block.
+RABX:   $RAB                    ; Allocate record access block.(RMS)
+BUFF:   .BLKB   512                     ;Buffer for writing last block.
+FNAM:   .BLKB   FNALEN          ; Storage for physical file name
+;-----------------------------------------------------------------------
+        .PSECT CODE,NOWRT
+        .ENTRY ZCREA2,^M<R2,R3,R4,R5,R7,R8,R9,R10,R11>
+;                               Calculate the length of PNAME.
+        MOVL PNAME(AP),R1              ;R1 -> PNAME
+        LOCC    #^A/ /,#FNALEN,(R1)     ;Locate a blank
+        BEQL    NOBLNK                  ;Branch if no blank.
+        SUBL3   R0,#FNALEN,R8           ;R8 = length of PNAME.
+        BRW     SET
+NOBLNK: MOVL    PNAME(AP),R1           ;R1 -> PNAME
+        LOCC    #^X00,#FNALEN,(R1)      ;Locate the null.
+        BEQL    10$                     ;Branch if error.
+        SUBL3   R0,#FNALEN,R8           ;R8 = length of PNAME.
+        BRW     SET
+10$:    MOVL    #FNALEN,R8
+;
+SET:
+        MOVC3   #FNALEN,@PNAME(AP),FNAM        ;Copy file name.
+;
+;   Set up registers for the FAB_STORE macro.
+;    R8=length of PNAME, R9=ALQ (blocks).
+;
+        MOVL    @ABLCKS(AP),R9                   ;R9 = number of blocks.
+;       ASHL    #-8,R9,R9
+;                                       Create the file
+        $FAB_STORE      FAB=FABX,-
+                        ALQ=R9,-
+                        FNA=FNAM,-
+                        FNS=R8,-
+                        FAC=<BIO,GET,PUT>,-
+                        MRS=#512,-
+                        RFM=FIX
+        $CREATE FAB=FABX
+;
+;   Test the completion and take appropriate action.
+;
+        BLBC    R0,T1           ;Branch if error.
+        CLRL    @IERR(AP)       ;Return IERR=0.
+        CLRL    @SYSERR(AP)     ;Return SYSERR=0.
+        MOVL    FABX+FAB$L_ALQ, R9 ; Get number of blocks actually alloc.
+        MOVL    R9,@ASIZE(AP)
+;        ASHL    #8,@ASIZE(AP),@ASIZE(AP)  ; to AIPS bytes
+        BRW     WRITE
+T1:     MOVL    R0,@SYSERR(AP)
+        CMPL    R0,#RMS$_ACT    ;Test for file activity
+                                ; precluding operation.
+        BNEQ    T2
+        MOVL    #1,@IERR(AP)    ;IERR=1
+        BRW     EXIT
+T2:     CMPL    R0,#RMS$_FEX    ;Does the file already exist?
+        BNEQ    T3
+        MOVL    #1,@IERR(AP)    ;IERR=1
+        BRW     EXIT
+T3:     CMPL    R0,#RMS$_DNR    ;Device not ready?
+        BNEQ    T4
+        MOVL    #2,@IERR(AP)    ;IERR=2
+        BRW     EXIT
+T4:     CMPL    R0,#RMS$_FLK    ;Is the file locked?
+        BNEQ    T5
+        MOVL    #1,@IERR(AP)    ;IERR=1
+        BRW     EXIT
+T5:     CMPL    R0,#RMS$_WLK    ;Is the disk write locked?
+        BNEQ    T6
+        MOVL    #1,@IERR(AP)    ;IERR=2
+        BRW     EXIT
+T6:     CMPL    R0,#RMS$_FUL    ;Is there enough space available?
+        BNEQ    T7
+        MOVL    #3,@IERR(AP)    ;IERR=3
+        BRW     EXIT
+T7:     CMPL    R0,#^X1C00A     ;Have we used up our quota.
+        BNEQ    T9
+        MOVL    #3,@IERR(AP)    ;IERR=3
+        BRW     EXIT
+T9:     MOVL    #4,@IERR(AP)    ;Unknown error.
+        MOVL    R0,@SYSERR(AP)  ;Save error
+        BRW     EXIT
+;
+;   Write the last block to show non-zero used space.
+;
+WRITE:
+        $RAB_STORE      RAB=RABX,-
+                FAB=FABX,-
+                BKT=R9,-
+                RBF=BUFF,-
+                RSZ=#512
+        $CONNECT        RAB=RABX        ;Connect the RAB to FAB.
+        BLBS    R0,10$
+        MOVL    #4,@IERR(AP)            ;IERR=4, CONNECT ERROR.
+        MOVL    R0,@SYSERR(AP)
+        BRW     EXIT
+10$:    $WRITE  RAB=RABX                ;Write last block allocated.
+        BLBS    R0,EXIT                 ;Branch if o.k.
+        MOVL    #4,@IERR(AP)            ;IERR=4, WRITE ERROR.
+        MOVL    R0,@SYSERR(AP)
+        BRW     EXIT
+;                                       Close the file and exit.
+EXIT:
+        $CLOSE  FAB=FABX
+        RET
+        .END

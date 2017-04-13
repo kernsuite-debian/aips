@@ -1,0 +1,152 @@
+      DEFINE SPHDIV (MOD,U,VS,INCVS,INCF,INCS,NCOMP,NVIS,NF,NS)
+"-----------------------------------------------------------------------
+"! FPS VFC routine: Divide spherical model visibility into uv data.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+      LOCAL PHASE,REAL,IMAG,X,Y,Z,V,W,JVS,MF,F,AMP,R,MIN,ARG
+"  VERSION FOR FPS5000 (RECT FLAKY)
+"
+"     SPHDIV divides the model visibility derived from spherical
+"     components into visibility records.  Arbitrary numbers
+"     of frequencies and polarizations can be processed.
+"     The weights of the visibilities are multiplied times
+"     the square of the amplitude of the model visibility.
+"
+"     SPHDIV uses AP locations 0 and 1 and expects an array
+"     beginning in location 2 composed of:
+"              Freq(0) / Freq(ref) - 1.0
+"              Freq(1) / Freq(0)   - 1.0
+"                      .
+"                      .
+"                      .
+"              Freq(NF-1) / Freq(NF-2) - 1.0
+"
+"     Inputs:
+"     MOD     Base address of spherical components, increment=11
+"                  0 = used (model amp)
+"                  1 = used (PHASE)
+"                  2 = used (REAL)
+"                  3 = used (IMAG)
+"                  4 = -2 * PI * X (radians)
+"                  5 = -2 * PI * Y
+"                  6 = -2 * PI * Z
+"                  7 = R = radius * 3.0462740E-5
+"                  8 = 3 * Amplitude
+"                  9 = MIN = min arg (0.1 good)
+"                 10 = used (ARG)
+"     U       Base address of U's, assumed followed by V, W
+"     VS      Base address of vis rec. (real, imag, wt)
+"     INCVS   Increment of VS for next visibility
+"     INCF    Increment of VS for next frequency
+"     INCS    Increment of VS for next Stokes (RR or LL)
+"     NCOMP   Number of spherical components.
+"     NVIS    Number of visibilities.
+"     NF      Number of frequencies.
+"     NS      Number of Stokes (usually 1 or 2)
+"
+"
+"                                       MAKE SURE THERE IS DATA
+"
+      IF NCOMP <= 0 GOTO S999
+      IF NVIS <= 0 GOTO S999
+      IF NF <= 0 GOTO S999
+      IF NS <= 0 GOTO S999
+"
+"     SETUP
+"
+      SP09 = MOD
+      PHASE = SP09 + 1
+      REAL = SP09 + 2
+      IMAG = SP09 + 3
+      X = SP09 + 4
+      Y = SP09 + 5
+      Z = SP09 + 6
+      R = SP09 + 7
+      AMP = SP09 + 8
+      MIN = SP09 + 9
+      ARG = SP09 + 10
+      V = U + 1
+      W = V + 1
+"
+"      BEGIN VIS LOOP
+"
+"      INITIAL PHASE
+LOOPV: CALL VSMUL(X,11,U,PHASE,11,NCOMP)           "U*X
+       CALL VSMA(Y,11,V,PHASE,11,PHASE,11,NCOMP)   "ADD V*Y
+       CALL VSMA(Z,11,W,PHASE,11,PHASE,11,NCOMP)   "ADD W*Z
+"      INITIAL AMPLITUDE FACTOR
+       CALL VSQ(U,11,0,1,1)                       " U**2
+       CALL VSQ(V,11,1,1,1)                       " U**2
+       CALL VADD(0,1,1,1,0,1,1)                   " U**2 + V**2
+       CALL VSQRT(0,1,0,1,1)                      " SQRT(U*U+V*V)=TT
+       CALL VSMUL(R,11,0,ARG,11,NCOMP)            " R*TT=ARG
+       CALL VMAX(ARG,11,MIN,11,ARG,11,NCOMP)      " CLIP ARG
+"
+       JVS = VS                                 "SET VIS POINTER.
+       MF = NF                                  "SET FREQ. COUNTER.
+       F = 2                                    "SET FREQ. TAB. POINTER
+"
+"      BEGIN FREQUENCY LOOP
+"
+LOOPF: CALL VSMA(PHASE,11,F,PHASE,11,PHASE,11,NCOMP)"CORR. PHASE FOR FREQ.
+"      MODEL AMPLITUDE - CORRECT FOR FREQUENCY
+       CALL VSMA(ARG,11,F,ARG,11,ARG,11,NCOMP)   "SCALE TO FREQ.
+       CALL VCOS(ARG,11,REAL,11,NCOMP)
+       CALL VSQ(ARG,11,IMAG,11,NCOMP)            "ARG**2
+       CALL VDIV(IMAG,11,REAL,11,MOD,11,NCOMP)   "COS(ARG)/ARG**3
+       CALL VSIN(ARG,11,REAL,11,NCOMP)
+       CALL VMUL(ARG,11,IMAG,11,IMAG,11,NCOMP)   "ARG**3
+       CALL VDIV(IMAG,11,REAL,11,IMAG,11,NCOMP)  "SIN(ARG)/ARG**3
+       CALL VSUB(MOD,11,IMAG,11,MOD,11,NCOMP)
+       CALL VMUL(MOD,11,AMP,11,MOD,11,NCOMP)     "MODEL AMPLITUDE
+       F = F + 1
+"      PHASE
+"       CALL RECT(MOD,11,REAL,11,NCOMP)              "POLAR => RECT.
+"    RECT HAS PROBLEMS ON FPS 5000
+       CALL VCOS (PHASE,11,REAL,11,NCOMP)
+       CALL VSIN (PHASE,11,IMAG,11,NCOMP)
+       CALL VMUL (REAL,11,MOD,11,REAL,11,NCOMP)
+       CALL VMUL (IMAG,11,MOD,11,IMAG,11,NCOMP)
+       CALL SVE(REAL,11,0,NCOMP)                 "SUM REAL TO LOC 0.
+       CALL SVE(IMAG,11,1,NCOMP)                 "SUM IMAG TO LOC 1.
+       CALL CVSDIV(JVS,INCS,0,JVS,INCS,NS)      "DIVIDE VIS BY MODEL.
+       JVS = JVS + INCF                         "UPDATE VIS. POINTER
+       MF = MF - 1                              "DEC. FREQ. LOOP COUNT.
+       IF MF > 0 GOTO LOOPF                     "END FREQ. LOOP
+"
+       SP09 = INCVS
+       VS = VS + SP09
+       U = U + SP09
+       V = V + SP09
+       W = W + SP09                             "UPDATE POINTERS
+"
+       NVIS = NVIS - 1                          "DEC VIS. LOOP COUNTER.
+       IF NVIS > 0 GOTO LOOPV                   "END VIS. LOOP.
+"
+S999:  END

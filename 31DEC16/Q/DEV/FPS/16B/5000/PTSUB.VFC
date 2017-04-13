@@ -1,0 +1,107 @@
+      DEFINE PTSUB(UV,VIS,IAPCC,LREC,LENBU,MCOMP,NVIS)
+"-----------------------------------------------------------------------
+"! FPS VFC routine:Subtract point  model visibility from uv data.
+"# AP-appl UV
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"-----------------------------------------------------------------------
+      LOCAL REAL,IMAG,X,Y,Z,V,W,VIS2
+"
+"     PTSUB subtracts CLEAN components from visibility data
+"     Currently does only U,V, and W terms.
+"
+"     INPUTS:
+"     UV   = Start address of UV vector
+"     VIS  = Start address of visibility vector
+"     IAPCC= Start address of CLEAN component vector
+"     LREC = Increment of UV and VIS
+"     LENBU= Number of visibilities
+"     MCOMP= Number of CLEAN components
+"     NVIS = Number of vis to correct (1 or 2)
+"            assumed to be separated by three words
+"
+"     AP Locations 0 and 1 are used.
+"
+"     CLEAN component data are arrainged 6 words to the component:
+"           1 = Flux density
+"           2 = used.
+"           3 = used.
+"           4 = X
+"           5 = Y
+"           6 = Z
+"
+"
+"     Programmer = W. D. Cotton, Nov. 1980.
+"
+      IF MCOMP <= 0 GOTO S999           "MAKE SURE THERE IS DATA
+      IF LENBU <= 0 GOTO S999
+"
+"
+"         SUBTRACT CLEAN COMPONENTS.
+"
+      SP09 = IAPCC
+      REAL = SP09+1
+      IMAG = SP09+2
+      X    = SP09+3
+      Y    = SP09+4
+      Z    = SP09+5
+      V    = UV+1
+      W    = UV+2
+      VIS2 = VIS+3
+LOOP: CALL VSMUL(X,6,UV,REAL,6,MCOMP)          "U*X
+      CALL VSMA(Y,6,V,REAL,6,REAL,6,MCOMP)     "ADD V*Y
+      CALL VSMA(Z,6,W,REAL,6,REAL,6,MCOMP)     "ADD W*Z
+"
+"     PHASES COMPLETE - CONVERT TO RECTANGULAR COORDINATES
+"
+      CALL RECT(IAPCC,6,REAL,6,MCOMP)
+"
+"     SUM REAL AND IMAGINARY PARTS
+"
+      CALL SVE(REAL,6,0,MCOMP)                "SUM REAL TO LOC 0
+      CALL SVE(IMAG,6,1,MCOMP)                "SUM IMAG TO LOC 1
+"
+"     SUBTRACT FROM VISIBILITIES
+"
+      CALL CVSUB(VIS,2,0,2,VIS,2,1)           "FIRST VIS.
+      IF NVIS=1 GOTO SKIP                     "SEE IF SECOND VIS WANTED
+      CALL CVSUB(VIS2,2,0,2,VIS2,2,1)         "SECOND VIS.
+"
+"     UPDATE POINTERS
+"
+SKIP: SP09 = LREC
+      VIS = VIS+SP09
+      VIS2 = VIS2+SP09
+      UV = UV+SP09
+      V = V+SP09
+      W = W+SP09
+"
+"     CHECK IF FINISHED
+"
+      LENBU = LENBU-1
+      IF LENBU > 0 GOTO LOOP
+S999: END

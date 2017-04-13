@@ -1,0 +1,546 @@
+@@
+Chapter III. The AIPS I/O System
+
+
+     Because i/o will often consume more time than any other part
+of VLA reduction, we have tried to make the i/o as efficient as
+possible.  Unfortunately this goal, plus that of providing
+flexibility in allocating buffer space, makes the i/o system fairly
+complex and difficult to approach. We hope that this will improve with
+time as "upper level" programms are written that do much of the
+bookkeeping for the basic programs.  A preliminary group of such
+routines is described later in this chapter.
+
+     The system provides two basic i/o methods, different compromises
+on the simplicy/efficiency axis.  One is high speed, double-buffered,
+large record i/o, which we generally call "map" i/o.  The other, called
+"non-map" or "file" i/o is more appropriate for small transfers and
+is always done in wait mode as explained below.
+
+     The "map" files are specially structured to aid high-speed transfer
+For details of the structure, look at the section on 'MA' files in
+Chapter 6.  This is necessary if you wish to create or access these
+files outside of the standard programs MCREAT, MINIT and MDISK described
+below.
+
+
+
+   Concurrent or "Asynchronous" I/O
+
+
+   To save time, large I/O transfers are usually done concurrently with
+other i/o operations or cpu computations.  The transfers themselves
+occur in a direct-memory-access or "DMA" mode where data moves from or
+to a peripheral device directly to or from memory with little or no cpu
+intervention after initiation of transfer.  This type of i/o is usually
+"double buffered";  e.g. on input data is read into one core area, or
+buffer, while calculations on the previous input record are done in
+another buffer. When both operations are done we switch: we start
+calculating on the first buffer and inputting new data to the second.
+This process is fast but requires more care than sequential single
+buffering where data is read in until a buffer is full and then
+calculations are done.  Specifically, we have to establish synchroniza-
+tion between the various I/O operations and CPU computations.  Often
+we wish to choose between single and double buffering depending on
+whether core space or time is more precious.  The routines below
+allow this choice either directly by programmer choice of subroutines
+or automatically in the MINIT and MDISK subroutines where the programmer
+specifies the maximum buffer size available and the program decides
+which buffering technique to use.
+
+
+
+     Basic I/O Operations
+
+
+   The basic AIPS steps for transfering data to or from a peripheral
+or file and core are these:
+
+1)   Generate the Physical File name by which the computer operating
+     system will recognize the data file.  This is done by the
+     subroutine ZPHFIL
+
+2)   "Open" the file.  This involves setting up certain internal tables
+     and connecting an internally recognized Logical Unit Number (LUN)
+     with the file.  This is done by ZOPEN.
+
+3)   Initiate transfer of a data record.  This is done by ZMIO for
+     map files and ZFIO for non-map files.
+
+4)   Wait for completion of transfer.  Done by ZWAIT for map i/o and
+     automatically by ZFIO for non-map i/o.
+
+5)   Repeat 3) and 4) until all records are transferred.
+
+6)   "Close" the file, releasing the LUN and the internal table space;
+     done by ZCLOSE
+
+     In addition we must be able to create new files (ZCREAT), destroy
+existing files (ZDESTR), expand existing files to provide room for
+new data (ZEXPND) and compress files to release unused space (ZCOMPR).
+The last two capabilites are particularly necessary for sequential files
+like PLOT and HISTORY files where the total length of the file cannot
+be accurately predicted at creation time.
+
+
+
+   Cataloging:
+
+
+   More permanent user files are cataloged in the map catalogs so that
+the AIPS system has on hand the information to interpret the file
+contents.  The catalogs themselves have directories so that the most
+essential information can be found without searching the whole
+catalog.  The catalogs and their directories are accessed with the
+subroutines CATIO and CATDIR, respectively.
+
+
+
+   Naming Conventions:
+
+
+   A given group of data, or file, may be known to different parts of
+the system by different names.  While this generates confusion it is
+necessary for transportability and flexibility.
+
+
+
+Physical File Names:
+
+
+   At the bottom a file is recognized by the local computer operating
+system by a Physical File Name, which is extremely system dependent.
+The subroutine ZPHFIL establishes a correspondence between these and
+AIPS general file names.  These are always of the form:
+
+     TYvsssnn
+
+   TY is a file type, specified as a two character string.
+    v is a volume number, specified as a one-digit number
+      ( 0 <= v <= 9)
+  sss is a three-digit sequence number  000 <= sss <= 999.  In many
+      cases the sequence number is identical to the catalog slot number
+      of the file concerned or of another base file to which this file
+      is referred.
+  nn  is a version number, 00 <= nn <= 99.  This two-digit number
+      is generally used to distinguish between various files of the
+      same type associated with the same catalogued base file.
+
+   ZPHFIL must be capable of generating a unique, acceptable,
+Physical File Name of less than 24 characters, given the AIPS file
+name.
+
+   Usually the file TYpe refers to various types of disk files.  In a
+few cases, special file TYpe designations are reserved for non-disk
+devices.  Particularly, TYpe = 'MT' implies a Magnetic Tape unit,
+and TY = 'TV' refers to a television device like the IIS.
+
+
+
+Catalog Names:
+
+
+   Map files that are catalogued can be referenced by the entries
+stored in the map catalog directory.  This is in fact how most users
+talk to files.  A number of subroutines for handling catalogued files
+also require identification by Catalog name.  The directory entries
+for referencing a map are:
+   NAME       R*4(3)     a 12-character (packed), arbitrary name, often
+                         name
+   CLASS      R*4(2)     a 6-character (packed) class, such as 'IMAP  ',
+                          - second arbitrary user-chosen string
+   SEQ #      I*2        an arbitrary sequence number 1-9999
+   USID       I*2        User identification # of map owner
+   TYPE       I*2        a 2 character file type:
+                            'MA' => map and 'UV' => vis. data
+
+
+
+Logical Unit Numbers:
+
+
+   Once a file is "open", it is generally referenced by the logical
+unit number (LUN) which is supplied by the user when calling ZOPEN.  In
+addition, most subroutines also require a table pointer argument (FIND)
+which is returned by  ZOPEN.
+
+   LUN's must lie in the range 1-50, and many have preassigned meanings
+which should be followed, since the system makes certain assumptions
+about the file type and structure based on these assignments.
+
+   The preassigned uses of the LUN's are:
+
+
+
+LUN   USE
+  1   Line printer output
+  2   Plotter output
+  3   Reserved
+  4   Input to Batch processors
+  5   Input CRT
+  6   Output CRT
+  7   Graphics CRT
+  8   Array processor
+  9   TV device
+ 10   POPS "RUN" files
+ 11   POPS "HELPS" and "INPUTS" files
+ 12   LOG/ERROR files
+ 13   Task communication files
+ 14   POPS "MEMORY" files
+ 15   Map Catalog files
+ 16-
+-25   Any disk "map" files
+
+ 26   Graphics files
+
+ 27-
+-30   General non-map disk files
+
+ 31-
+-32   Mag Tape devices
+@@
+   Basic I/O Subroutines:
+
+
+   The following list gives a one sentence description of subroutine
+function; a more detailed description follows.
+
+Elementary Functions:
+
+ 1.  ZPHFIL     Generate Physical File Name
+ 2.  ZOPEN      Open a file
+ 3.  ZCLOSE     Close a file
+ 4.  ZMIO       Initiate transfer to a "map" file
+ 5.  ZFIO       Initiate transfer to a non-map file and wait for
+                completion
+ 6.  ZWAIT      Wait for completion of map i/o
+ 7.  ZCREAT     Create a new file
+ 8.  ZDESTR     Destroy a file
+ 9.  ZEXPND     Expand a non-map disk file
+10.  ZCOMPR     Contract a non-map file
+
+Catalog Functions:
+
+11.  CATDIR     Access Map Catalog Directory
+12.  CATIO      Access Map Catalog
+
+Combinations of Elementary & Catalog Functions:
+
+13.  MCREAT     Create and Catalog a new file
+14.  MDESTR     Destroy and Uncatalog a file
+15.  MAPOPN     Open a catalogued file, retrieve Catalog Block, adjust
+                STATUS
+16.  MAPCLS     Close catalogued file, alter Catalog if necessary,
+                adjust STATUS
+
+Line by Line Access of a Rectangular Map Array
+
+17.  MINIT      Initialize Access
+18.  MDISK      Transfer of a single line of array
+
+Text File Operations
+
+19.  ZTOPEN     Opens a text file at the specified member name
+20.  ZTREAD     Reads one line from a text file
+21.  ZTCLOS     Closes a text file
+@@
+Individual Program Usage:
+
+
+   For the fine details on call sequencies and error conditions
+please refer to the headers of the program code.  Most of the
+programs in fact return an error code; these will not be discussed
+here.  Some programs require a working buffer of 512 bytes as
+an input arguement.  These likewise will not be discussed.
+
+ 1.  ZPHFIL
+     This subroutine generates a 24 character Physical File Name
+     given a AIPS standard file name.
+     INPUTS:  The AIPS standard name TY v sss nn (see above)
+     OUTPUTS: The Physical File Name: 24 packed characters
+
+2.   ZOPEN
+     Open a physical file, create system tables, and associate
+     a LUN and a pointer to the FTAB system table with the file.
+     INPUTS:
+        LUN(I*2)     Logical unit number
+        IVOL(I*2)    Volume or Unit on which file resides
+        PNAME(R*4)   Physical File Name of file (24 chars)
+        MAP(L*2)     Is this a map or non-map file?
+        EXCL(L*2)    Do we want exclusive use of the file?
+        WAIT(L*2)    If so will we wait until we get it?
+     OUTPUTS:
+        FIND(I*2)    Pointer to FTAB
+
+3.   ZCLOSE
+     Close a physical file, free table space and LUN
+     INPUTS:
+        LUN          Logical Unit Number
+        FIND         FTAB pointer
+
+ 4.  ZMIO
+     Initiate quick-return data transfer.  Note that the i/o operation
+        is not necessarily complete at return to calling point.
+        For transfer to a device that requires a header data before
+        transfer (c.f. section on Television devices), ZMIO assumes
+        the header is written at the beginning of the data.  It transfer
+        the header, waits for acknowledgment, then initiates data transf
+     INPUTS:
+        OPCODE(R*4)  Operation Code ('READ' or 'WRIT')
+        LUN          Logical Unit Number of file
+        FIND         FTAB pointer
+        NBYTE(I*2)   number of bytes to transfer
+        BUFF         Core area where transfer should start
+        BLKNO(I*2(2)) For random access (disk) files this is the
+                      block or sector address on disk where transfer
+                      starts (1-relative).  This a "pseudo I*4" number
+                      i.e. a 4 byte integer stored in 2 2-byte integers
+                      with the least significant bytes in the 1st word.
+        BUFNO(I*2)   Values of 1 or 2 acceptable.  Whether 1st or 2nd
+                       table area in FTAB should be used to communicate
+                       with operating system.
+
+
+ 5.  ZFIO
+     Non-map transfers.  For random access (Disk) files this causes a
+        single, selected 256-word block to be transfered in wait
+        mode.  The operation will be complete when control is returned
+        to caller.
+     For sequential devices, e.g. tape drive, a single record with a
+        user specified maximum # of bytes is transfered in wait mode.
+     INPUTS:
+        OPCODE(R*4)   Operation code ('READ' or 'WRIT')
+        LUN           Logical unit no.
+        FIND          FTAB pointer
+        BUFF          Area in core to send or receive data
+        NREC(I*2)     For disks: 1-relative block #
+                      For non-disks:  Byte count
+
+
+ 6.  ZWAIT
+     Wait for completion of i/o initiated by ZMIO
+     Note:  most i/o error conditions are in fact detected
+        by ZWAIT (when i/o is supposedly complete) rather than
+        by ZMIO, when i/o is queued.
+     INPUTS:
+        LUN      Logical Unit No.
+        FIND     FTAB pointer
+        BUFNO    Waiting for 1st or 2nd buffer (c.f. ZMIO)
+
+
+ 7.  ZCREAT
+     Create a new disk file
+     INPUTS:
+        IVOL(I*2)    Volume on which file should reside
+        PNAME(R*4(6))  Physical name of file (24 packed chars)
+        MAP(L*2)     Is this a map or non-map file?
+        SIZE I*2(2)  Minimum file size in bytes ("pseudo I*4")
+
+
+ 8.  ZDESTR
+     Destroy an existing file
+        INPUTS:
+          IVOL     Volume holding file
+          PNAME    Physical File Name (24 packed chars)
+
+
+ 9.  ZEXPND
+     Allocate more disk space to an existing non-map file.
+     INPUTS:
+        LUN       Logical Unit Number (the file is assumed open)
+        IVOL      Disk Volume holding file
+        PNAME     File physical name (24 packed chars)
+      INPUT/OUTPUT
+        NREC(I*2) On input: number of additional 256-word records
+                  requested.  On output: number of records actually
+                  allocated.
+
+
+10.  ZCMPRS
+     Release unused disk space from a non-map file.
+     INPUTS:
+        IVOL      Disk Volume number
+        PNAME     Physical File Name
+        ISIZE     Original file size in bytes, as
+          I*2(2)     a "pseudo-I*4" number
+        LSIZE     Desired final file size in bytes,
+          I*2(2)     as a pseudo I*4 number
+        LUN       File Logical Unit No. (File assumed open)
+
+
+
+11.  CATDIR
+     Access Map Catalog directory. See also description under
+        the "Map Catalog File" entry in Chapter 6 of this manual,
+        especially the description of the STATUS word.
+     INPUTS:
+        IVOL         Volume on which catalog resides
+        OPCODE(R*4)  Opcode:
+                     'SRCH': find catalog slot # of file with
+                        given or default directory entries (NAME,TYPE..
+                     'INFO': return directory entries for given slot #
+                     'LIST': list all or part of catalog directory
+                     'OPEN': place a new entry in the directory
+                     'CLOS': scratch an old directory entry
+                     'CSTA': change read/write/rest status of a file
+     INPUTS/OUTPUTS (depending on opcode)
+        NAME(R*4(3))   Map catalog name (12 packed chars)
+        CLASS(R*4(2))   Map catalog type (6 packed chars)
+        SEQ(I*2)     Map sequence no.
+        TY(I*2)      Map type (2 chars)
+        USID(I*2)    User identification no.
+        CNO(I*2)     Catalog slot number
+        STATUS(R*4)  Desired or returned status: (4 chars)
+                        'READ','WRIT','CLRD' => clear read status,
+                                      'CLWR' => clear write status
+
+
+
+12.  CATIO
+     Read or write a map catalog block and optionally alter the
+        directory status word.
+     INPUTS:
+        OPCODE     'READ', 'WRIT' or 'UPDT'
+        IVOL       Disk unit containing catalog
+        CNO        Catalog slot number of interest
+        CATBLK     on 'WRIT' or 'UPDT' new catalog block to
+          I*2(256)   enter into catalog
+        STAT(R*4)  Status to set after i/o operation (4 chars)
+     OUTPUTS:
+        CATBLK     on 'READ' returned catalog block
+
+
+
+
+13.  MCREAT
+     Create and catalog a map file, given an essentially complete
+        catalog block.  Leaves STATUS='WRIT'.  To open the file
+        you must use ZOPEN or MAPOPN with OPCODE = 'INIT'
+     INPUTS:
+        IVOL    Disk volume to hold file
+        CATBLK  Catalog block
+     OUTPUTS:
+        CNO     Catalog slot #
+
+
+
+
+14.  MDESTR
+     Destroy and uncatalog a map file
+     INPUTS:
+        IVOL      Disk volume on which map file resides
+        CNO       Catalogue slot number
+        CATBLK    Catalogue block (header)
+     OUTPUTS:
+        INDEST    Number of extension files destroyed
+
+
+
+
+15.  MAPOPN
+     Open a catalogued file, alter the status to show what you're
+        doing, retrieve catalog block
+     INPUTS:
+        OPCODE(R*4)  Intended use of file 'READ','WRIT','INIT'
+        IVOL         Disk volume
+        NAME,CLASS...  Usual catalog identification sequence
+        LUN          Logical User No. to assign to file
+     OUTPUTS:
+        FIND         FTAB pointer
+        CNO          Catalog slot # of file
+        CATBLK       Map catalog block
+
+
+
+
+16.  MAPCLS
+     Close a catalogued file, clear status, optionally update
+        catalog block
+     INPUTS:
+        OPCODE       Same OPCODE you used when OPENing the file
+        IVOL         Disk volume
+        CNO          Catalog slot # for file
+        LUN          Logical Unit # for file
+        FIND         FTAB pointer
+        CATBLK       New version of catalog block than can be
+                       put into catalog if OPCODE='WRIT' or 'INIT'
+        CATUP(L*2)   If .TRUE. write CATBLK into catalog; ignored
+                       if OPCODE = 'READ'
+
+
+17.  MINIT
+     Set up bookkeeping tables in FTAB for single/double buffer i/o
+        on a line by line basis for a rectangular map array.
+     INPUTS:
+        OPCODE(R*4)    'READ' or 'WRIT'
+        LUN            File LUN
+        FIND           FTAB pointer
+        LX(I*2)        Number of pixels per map line
+        LY(I*2)        Number of lines in map
+        WIN I*2(4)     Optionally: corners of a sub-rectangle if
+                          we don't want whole map.  If WIN(1)=0, use
+                          whole map.  If WIN(4)<WIN(3) read
+                          map backwards.
+        BUFF           Buffer (core area) to which transfer takes place
+        BFSIZE         Total size of buffer (include both buffers for
+                          double buffering) in bytes.
+        BYTPIX(I*2)    Number of data bytes per map pixel
+        BLOCK I*2(2)   Position of first block or sector of map in
+                          the file.  This allows one to store more
+                          than one map in a file.  This is a pseudo-I*4
+                          number, 1-relative.  For the first map in a
+                          file, thus, BLOCK = (1,0)
+
+
+18.  MDISK
+     Execute line by line i/o from/to map file. See notes below.
+     INPUTS:
+        OPCODE         Should be same as in MINIT call, except after
+                         last line in a file has been WRITten, then an
+                         extra call with OPCODE = 'FINI' is necessary
+        LUN            Which LUN
+        FIND           FTAB pointer
+        BUFF           Data buffer
+     OUTPUTS:
+        BIND           Buffer pointer
+
+     On OPCODE = 'READ', BIND points to the position in BUFF where
+the data for the beginning of the portion of the next line, as
+specified by WIN in MINIT, is ready for use.  Note that BIND is an
+index for BUFF in the units specified by BYTPIX in MINIT.  E.g. if
+BYTPIX = 2, BIND is an appropriate subscript for an I*2 array, whereas
+if BYTPIX = 4, BIND should only be used as a subscript for an R*4 array.
+
+IMPORTANT!
+   On 'WRIT':  Write operations proceed differently in the low-level
+i/o system described here than on a big system like an IBM/360 (where
+the workings are hidden from the user).  This can be confusing at
+first.  MDISK with OPCODE = 'WRIT' must be called before(!) the user
+is ready to put his data in the output buffer.  The pointer BIND then
+indicates the position in the buffer where he should start entering his
+data.  This actual transfer of data to the output file only occurs
+later at an appropriate moment chosen by MDISK.
+
+   On 'FINI':  After the last call to MDISK with 'WRIT' it is necessary
+to force transfer of the last records to the disk.  A call to MDISK
+with OPCODE = 'FINI' after the last call with 'WRIT' accomplishes this.
+
+
+19-21.  Text files
+
+     Text files are disk files containing textual information in the
+form of 80 (or 72) characters per line which are prepared by the local
+text editor.  They may be separate physical files within various logon
+areas (e.g. the VAX) or they may be members of a directoried physical
+file (e.g. the MODCOMP).
+
+     ZTOPEN
+       is similar to ZOPEN with the additional input argument MNAME
+       which gives the logical name of the text file
+
+     ZTREAD
+       reads the text file as a sequential file and returns one 80-
+       character line of text
+
+     ZTCLOS
+       closes the text file

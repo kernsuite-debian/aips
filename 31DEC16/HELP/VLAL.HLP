@@ -1,0 +1,362 @@
+; VLAL
+;---------------------------------------------------------------
+;! verifies correctness of spectral line calibration software
+;# RUN General
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1996
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+VLAL      LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VLAL :  Calibration verification/timing test for spectral line
+TCODE                              INIT,TEST,READ, or WRIT
+TMODE                              'T' or 'M' inputs
+TMASK           1.0       255.0    test selection bit mask
+DDISK           1.0        35.0    Disk drive #: master UVDATA
+MDISK           1.0        35.0    Disk drive #: other masters
+TDISK           1.0        35.0    Disk drive #: test images
+IOTAPE          0.0        35.0    Input/Output tape drive #.
+DDTDISK                            Disk area for READ and WRIT
+EDGSKP          0.0        64.0    Pixels to skip at edges
+TERSE          -1.0        10.0    > 0 => reduced output
+DOCRT          -1.0       132.0    > 0 => output on terminal
+                                   > 72 => width of terminal
+OUTPRINT
+                                   Printer disk file to save
+BADDISK         0.0        35.0    Disks to avoid
+VERSION
+----------------------------------------------------------------
+VLAL
+Type: RUN file
+Use:  VLAL performs the AIPS verification test for spectral line
+      calibration and imaging software.
+      See RUN files VLALLOAD.001 and VLALEXEC.001.  The purpose
+      of the inputs file is to perform bounds checks on the
+      parameters and to enable the use of TPUT and TGET.
+Adverbs:
+ TCODE    String*4      'INIT', 'TEST', 'READ', or 'WRIT'
+ TMODE    String*1      'T' or 'M' inputs for SPLIT, VLAL
+ TMASK    Scalar        test selection bit mask (1-127)
+ DDISK    Scalar        Disk drive # (1-9) master UVDATA
+ MDISK    Scalar        Disk drive # (1-9) other master files
+ TDISK    Scalar        Disk drive # (1-9) test files
+ IOTAPE   Scalar        Input AND output tape drive #. (1-9)
+ DDTDISK  String*8      Logical name of disk area to be used for
+                        FITS-disk files in READ or WRIT instead
+                        of actual magnetic tape.
+                        ' ' => use magnetic tape.
+ EDGSKP   Scalar        Number of pixels to skip at edges in
+                        comparing test and master images
+ TERSE    Scalar        > 0 => reduced output:
+                          > 0 = drops INPUTS for all tasks and
+                                TPHEAD when reading tape
+                          > 2 = also drops CATALOG listings
+                          > 3 = also drops IMHEADER listings
+                        Use 0 on all new or uncertain systems.
+ DOCRT    Scalar        <= 0 -> print the messages and output
+                           from tasks on the line printer.
+                        > 0 -> show the messages and output from
+                           tasks in slightly abbreviated form on
+                           the terminal.  If you have a wide
+                           terminal, set DOCRT to its width in
+                           characters for a more complete
+                           display.
+ OUTPRINT String*48     Disk file name in which to save the line
+                        printer output.   ' ' => use scratch and
+                        print immediately for interactive jobs -
+                        batch jobs use OUTPRINT =
+                        'PRTFIL:BATCHjjj.nnn' (jjj = job #, nnn
+                        = user #).  When OUTPRINT is not blank,
+                        multiple outputs are concatenated and
+                        the file is not actually printed.
+ BADDISK  Array         Disks to avoid for scratch files.
+ VERSION  String*48     OLD,NEW,OLDPSAP,NEWPSAP,LOCAL
+                        (also private dirs; use | to separate)
+
+VLAL runs in four different modes: (TCODE)
+   INIT = starts from the original master UV dataset, and
+           (re)computes master files (does ALLDEST).
+           The "mask" TMASK controls which steps execute.
+   TEST = re-does the INIT computation but stores the new
+           files under different names and compares against
+           masters. The "mask" TMASK controls which steps
+           execute.  For the early, table manipulation steps,
+           the TEST mode can only operate on the output of the
+           previous step and step 1 must be run first.  For the
+           SPLIT and VLAL tests either the TEST run
+           output of the previous step (TMODE=T) or the INIT run
+           output (TMODE=M) can be used as input.
+   WRIT = write out all master files to   tape.
+   READ = read  in  all master files from tape.
+
+A binary mask controls which steps of the test execute:
+   TMASK +1=>UVCOP, +2=> AVSPEC, +4=>UVFLG,SETJY, +8=>CALIB,
+         +16=>GETJY,CLCAL, +32=>BPASS, +64=>SPLIT, +128 =>VLAL
+   For example, TMASK=54 would execute AVSPEC, UVFLG,SETJY, GETJY,
+                 CLCAL, and BPASS.
+Note: the UVCOP step is required once create the input file for
+the following steps for TCODE='TEST'.
+----------------------------------------------------------------
+Explanation of VLAL:               (DOSW Jan91)
+
+VLAL is designed to verify the correct functioning of the
+spectral line calibration using a test set of VLA observations.  All
+of the typical steps in editing and calibrating a set of
+line (non-VLBI) are exercized except for interactive
+editing. Since most of these operations modify only tables, a
+comparison of selected portions of various of the calibration
+tables is made. After the calibration tasks are completed, the
+data are calibrated using SPLIT and the uv data are compared with
+the master version.  The final test is a comparison of VLAL images
+made from the calibrated data.
+================================================================
+Steps to execute the VLAL Test on a new computer:
+
+1. Log in to AIPS under the user number which will own the data
+   files and the SAVE/GET files associated with the test.  It is
+   probably convenient to clear your AIPS message file before
+   proceeding: PRNUM=-1; (PRTMSG possibly) ; CLRMSG
+
+2. Now do the POPS command "RUN VLALLOAD". This initiates the
+   compilation process, which can take as long as 15 minutes on
+   a heavily loaded VAX-11/780. You may want to execute the POPS
+   command "PRTMSG" afterwards to document the compilation of
+   the test procedures.
+
+3. The next step is to read the data files from the tape.  There
+   are 6 files for this test.  The read process consists of the
+   following steps:
+      CLRMSG                       (prepare for tape read steps)
+      GET VLALINIT
+      Specify DDISK, MDISK, TDISK, and IOTAPE
+      Also specify BADDISK as needed
+      DDTDISK = ' '  for real tapes
+      TCODE='READ'; TPUT VLAL         (TPUT saves adverb values)
+      MOUNT the tape
+      RUN VLALEXEC
+      DISMOUNT the tape
+   The READ mode of VLAL will execute UVLOD and IMLOD in the
+   appropriate pattern to read the UV and map files to disk.  At
+   the end of the process, it rewinds the tape and prints a
+   directory of the disk files.
+
+   Alternately, if you have the files on disk, merely set the DDTDISK
+   adverb to point at where the files reside (you need to define or use
+   a "logical" or environment variable with an uppercase name before
+   starting AIPS to use this feature; e.g. FITS).
+
+   NOTE: VLALEXEC will insist on having non-default values for
+   IOTAPE, DDISK, MDISK, and TDISK.
+
+4. Now it is time to actually perform the test.  The 'TEST' mode
+   recomputes the various files.  All map, uv data and selected
+   calibration table results are compared to the master versions
+   which were read from tape in the previous step. The steps
+   are:
+      CLRMSG                       (prepare for test results)
+      GET VLALINIT
+      TGET VLAL
+      TCODE='TEST'; TMASK=255
+      TPUT VLAL                     (saves the adverb values)
+      RUN VLALEXEC
+   The message file from VLALEXEC will be more than 2000 lines
+   long.  It is intended to be the major item documenting the
+   test procedures and results.  Several tasks will print
+   results rather than put them in the message file.
+   Especially, the LISTR output should be checked.
+
+5. The 'WRIT' mode tests task FITTP, while 'READ' tests FITLD.  The
+   basic idea is to produce a tape, and then to read that tape on an
+   AIPS system to verify that it yields correct results.  It follows
+   that generating a new tape with the 'WRIT' mode and then executing
+   'READ' and 'TEST' on it will also effectively test the tape tasks.
+   Better yet, take the tape to another AIPS and run VLAL on it!  This
+   verifies the intercommunication of the systems.  The steps are:
+      CLRMSG
+      GET VLALINIT
+      TGET VLAL
+      TCODE='WRIT'; TMASK=255
+      TPUT VLAL
+      RUN VLALEXEC
+
+   Note that when we say "tape", we mean either magnetic tape in the
+   usual sense, or pseudo-tape disk files.  The latter are selected by
+   setting DDTDISK to a non-blank value which is the logical name
+   (environmental variable) for the disk area to be used.  The disk
+   files are given a fixed and obvious pattern of names (VLALnnnnnn,
+   where nnnnnn is the image name related to the task name).
+
+6. Finally, one wants to know the accounting statistics from the
+   test runs.  The accounting listing can be correlated with the
+   message file listings in order to analyze the performance of
+   the tested system.  VLAL now runs task PRTAC to produce the
+   desired information.  Note that PRTAC has exclusive access to
+   the accounting file until it finishes, and so various tasks
+   may complain while they are waiting to get access to the
+   file.
+
+   The listing produced by PRTAC will have one line for each
+   execution of any task or program AIPS.  The columns of the
+   listing give the taskname, POPS#, user#, start-time, real-
+   time, CPU-time, and "IOCNT".  Asterisks mark any run that
+   aborted.  After this basic sequential listing comes a listing
+   by task name giving the totals accumulated by each task.  The
+   listing is given in two sort orders.
+
+   The tasks tested in some modes are:
+   FITLDD, FITTP,
+   UVCOP, TABED, UVFLG, SETJY, CALIB, TASRT, TASAV, GETJY,
+   CLCAL, PCAL, TACOP, CLCOR, LISTR, SPLIT, UVDIF, IMAGR,
+   and COMB
+
+================================================================
+               Description of Data Calibration Test
+
+   The test data set consists of observations of a the OH maser
+source W3(OH), 3c286 (for flux and bandpass calibration) and
+phase calibrator.  The observation lasts 1 hour, using the 2AC mode
+with two diferent frequencies: 1665 and 1667 MHz.  These appear as
+FREQID 1 and FREQID 2 in the uvdata files.
+
+The data were obtained with the VLA in "C" configuration at 18 cm
+wavelength, 32 channels of 6.104kHz each (On-line hanning smoothing).
+
+The master copies of the files were computed on a prerelease version
+of 15JAN91 AIPS running on a SUN SPARCstation 1 (SPECTRA).
+
+   The following sections describe in some detail the tasks run
+in each of the test steps.  Only the test mode is described;
+READ, WRIT and INIT modes are fairly obvious given the TEST mode
+operation.
+
+Step 1.  The master uv data file is copied to a test version
+using UVCOP.
+
+Setp 2.  AVSPC is used to create a channel 0 image from the AIPS
+uvdata files to see if they agree with the channel 0 file created
+by the on-line system.
+
+Step 4.  Bad data is flagged with several runs of UVFLG.  The
+fluxes in the SU table are reset and the flux of 3C286 set using
+SETJY.
+
+Step 8.  CALIB is run on 3C286 and the phase calibrator.  The SN
+table is sorted using TASRT and the tables are copied using
+TASAV.  The comparison of the SN tables is done using the TASAV
+version.
+
+Step 16.  GETJY is used to estimate the flux density of the phase
+calibrator and corrects the SN table.  CLCAL then filters the SN
+table with a 1.1 hour median window filter on the amplitudes and
+writes CL table 2.  Comparisons are made of the SU and CL #2
+tables.
+
+Step 32.  BPASS is run to determine the bandpass response.
+
+Step 64.  SPLIT is used to apply the calibration and editing
+tables to the source data and write a single source output file.
+This file is compared with the master.
+
+Step 128.  VLAL  is run on the output of SPLIT to make I and Q
+images.  Comparisons are made of the I image, I beam and the Q
+image.
+
+
+================================================================
+                Interpretation of Test Results
+
+The results of the mapping and table tests are recorded as the
+number of BITS of accuracy.  The BITS of accuracy are defined in
+two ways, by the MAX difference in the Master image and the Test
+image and by the RMS differences in the images.  The BITS
+measured by the the base 2 logarithm of the ratio of PEAK and
+DIFFERENCE of the images.
+
+The BITS are calculated as -3.3219 * LOG(DIFF/PEAK).
+(LOG is the Base 10 Logarithm; 1/LOG(2) = 3.3219)
+
+The expected BITS of accuracy for the tasks are in the
+range of 10 to 20 BITS.  The RMS BITS of accuracy is
+always greater than the PEAK BITS of accuracy.  Perfect
+agreement will be reported as 99 bits agreement.
+
+Note that some of the operations in this test modify the input
+file(s).  This especially true for the table operations and in
+particular GETJY may recursively modify the SU and SN tables.
+This may cause roundoff errors to accumulate.  For the most
+accurate test, all of the steps must be run in order exactly
+once each (i.e. use TMASK=127).
+
+Note also that the uv data is stored in compressed form meaning
+that it has at most 15 bits of precision rather than the 24-25
+(usually) for floating point.
+
+There are three kinds of test made of agreement with the master
+data:
+1) UV data sets are compared using UVDIF which reports on
+individual visibility records with differences larger than the
+threshold.  The statistics of the data being checked are also
+reported.
+2) Images are differenced and the statistics of the difference
+image is reported both as the test is done and in the summary at
+the end.
+3) Selected portions of calibration tables will be compared with
+the master version and differences are reported in a manner
+similar to that for images.
+
+   The following describes the comparison tests between tables,
+uv data and images.  The column labeled "Test" gives the label
+used in the summary given at the end of the execution of
+VLALEXEC.
+
+Test        Type                 Comments
+__________  ____ ______________________________________________
+AVSPEC      uv   The on-line vs. AVSPC CH0 uvdata are compared.
+
+CALIB SN 1  tab  The solution for FREQID 1 is compared.
+
+CALIB SN 2  tab  The solution for FREQID 2 is compared.
+
+GETJY       tab  I flux from SU table determined by GETJY.
+		 FREQID 1 and 2 must be handled separately
+                 because the SU table does not have separate
+                 entries for FREQID 1 and 2.
+
+CLCAL CL 1  tab  Results for FREQID 1.  Every 25th
+                 element of the table is compared.
+
+CLCAL CL 2  tab  Results for FREQID 2.  Every 25th
+                 element of the table is compared.
+
+BPASS BP 1  tab  Results for FREQID 1.  Every 25th
+                 element of the table is compared.
+
+BPASS BP 2  tab  Results for FREQID 2.  Every 25th
+                 element of the table is compared.
+
+SPLIT       uv   The output of SPLIT is compared.
+
+VLAL IMAP  map  The I images from VLAL are compared.
+
+VLAL IBEM  map  The I beams from VLAL are compared.

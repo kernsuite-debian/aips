@@ -1,0 +1,486 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! perform the compilation of all subroutines for the AIPS libraries
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1997, 2002, 2005, 2009
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: INSTEP2
+#
+#  As AIPS evolved in a more OS-heterogeneous world than we have now, it
+#  never made use of the "make" system (there was none undr VMS).  So a
+#  very complicated set of shell scripts arose to deal with the problem.
+#  This script goes through a set of 12 or so directories, and builds
+#  the relevant associated subroutine libraries.  It uses the COMRPL
+#  script extensively.
+#-----------------------------------------------------------------------
+LOGFILE=INSTEP2.LOG
+export LOGFILE
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f $PREP/INSTEP2.${HOST}.$$; echo "INSTEP2   : Abort!" | \
+   tee -a $LOGFILE; exit 1' 1 2 3 15
+echo "INSTEP2   : Begins     `date`" | tee -a $LOGFILE
+#                                       Sanity checks.  Make sure
+#                                       programming logicals are
+#                                       defined and that directories
+#                                       for binary files exist.
+if [ "$LIBR" = "" ] ; then
+#                                       Programming logicals probably
+#                                       not defined.
+   echo "INSTEP2   : Programming environment variables don't"   \
+    "appear to be defined."                                   | \
+    tee -a $LOGFILE
+   echo "INSTEP2   : Type \$CDNEW or \$CDTST (whichever is"     \
+      "appropriate)"                                          | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : and execute INSTEP2 again."              | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : Aborts!    `date`"                       | \
+      tee -a $LOGFILE
+   exit 1
+fi
+#                                       Does $SYSLOCAL/LIBR.DAT exist?
+if test ! -f $SYSLOCAL/LIBR.DAT
+then
+   echo "INSTEP2   : File       $SYSLOCAL/LIBR.DAT" | tee -a $LOGFILE
+   echo "INSTEP2   : not found."                    | tee -a $LOGFILE
+   echo "INSTEP2   : Aborts!    `date`"             | tee -a $LOGFILE
+   exit 1
+fi
+#                                       Does $SYSLOCAL/LIBR.DAT differ
+#                                       from $SYSUNIX/LIBR.DAT?  It
+#                                       should be or something is very
+#                                       wrong.
+if diff $SYSLOCAL/LIBR.DAT $SYSUNIX/LIBR.DAT > /dev/null
+then
+   echo "INSTEP2   : File       $SYSLOCAL/LIBR.DAT" | tee -a $LOGFILE
+   echo "INSTEP2   : same as    $SYSUNIX/LIBR.DAT"  | tee -a $LOGFILE
+   echo "INSTEP2   : This can't be right."          | tee -a $LOGFILE
+   echo "INSTEP2   : Aborts!    `date`"             | tee -a $LOGFILE
+   exit 1
+fi
+#                                       Create any necessary binary
+#                                       file directories.
+echo ""                                                        | \
+   tee -a $LOGFILE
+echo "INSTEP2   : Create any missing binary file directories." | \
+   tee -a $LOGFILE
+echo ""                                                        | \
+   tee -a $LOGFILE
+#                                       Create directory $LIBR,
+#                                       if necessary.
+if [ ! -d $LIBR ] ; then
+   if mkdir $LIBR 2> $PREP/INSTEP2.${HOST}.$$
+   then
+      echo "INSTEP2   : Directory  $LIBR"  | tee -a $LOGFILE
+      echo "INSTEP2   : created."          | tee -a $LOGFILE
+   else
+      cat $PREP/INSTEP2.${HOST}.$$         | tee -a $LOGFILE
+      echo "INSTEP2   : Directory  $LIBR"  | tee -a $LOGFILE
+      echo "creation failed."              | tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+      rm -f $PREP/INSTEP2.${HOST}.$$
+      exit 1
+   fi
+else
+   echo "INSTEP2   : Directory $LIBR"                     | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : already exists (no need to create)." | \
+      tee -a $LOGFILE
+fi
+if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+   if [ ! -d $LIBRDBG ] ; then
+      if mkdir $LIBRDBG 2>$PREP/INSTEP2.${HOST}.$$
+      then
+         echo "INSTEP2   : Directory  $LIBRDBG" | tee -a $LOGFILE
+         echo "INSTEP2   : created."            | tee -a $LOGFILE
+      else
+         cat $PREP/INSTEP2.${HOST}.$$           | tee -a $LOGFILE
+         echo "INSTEP2   : Directory  $LIBRDBG" | tee -a $LOGFILE
+         echo "creation failed."                | tee -a $LOGFILE
+         echo "INSTEP2   : Aborts!    `date`"   | tee -a $LOGFILE
+         rm -f $PREP/INSTEP2.${HOST}.$$
+         exit 1
+      fi
+   fi
+fi
+#                                       Create all object library
+#                                       subdirectories of $LIBR as
+#                                       defined in $SYSLOCAL/LIBR.DAT.
+grep '\/SUBLIB:' $SYSLOCAL/LIBR.DAT | sed -e 's/\/SUBLIB:.*//' | \
+   sort -u | \
+{
+   while read DIR
+   do
+      DIR=`eval echo $DIR`
+      if [ ! -d $DIR ] ; then
+         if mkdir $DIR 2> $PREP/INSTEP2.${HOST}.$$
+         then
+            echo "INSTEP2   : Directory  $DIR"   | tee -a $LOGFILE
+            echo "INSTEP2   : created."          | tee -a $LOGFILE
+            chmod 777 $DIR
+            chmod g+s $DIR
+            rm -f $PREP/INSTEP2.${HOST}.$$
+         else
+            cat $PREP/INSTEP2.${HOST}.$$         | tee -a $LOGFILE
+            echo "INSTEP2   : Directory  $DIR"   | tee -a $LOGFILE
+            echo "creation failed."              | tee -a $LOGFILE
+            echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+            rm -f $PREP/INSTEP2.${HOST}.$$
+            exit 1
+         fi
+      else
+         echo "INSTEP2   : Directory  $DIR"                     | \
+            tee -a $LOGFILE
+         echo "INSTEP2   : already exists (no need to create)." | \
+            tee -a $LOGFILE
+         chmod 777 $DIR
+         chmod g+s $DIR
+      fi
+      if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+         DBGDIR=`echo $DIR | sed -e 's,/LIBR/,/LIBRDBG/,'`
+         if [ ! -d $DBGDIR ] ; then
+            if mkdir $DBGDIR 2> $PREP/INSTEP2.${HOST}.$$
+       then
+          echo "INSTEP2   : Directory  $DBGDIR" | tee -a $LOGFILE
+          echo "INSTEP2   : created."           | tee -a $LOGFILE
+          chmod 777 $DBGDIR
+          chmod g+s $DBGDIR
+          rm -f $PREP/INSTEP2.${HOST}.$$
+            else
+               cat $PREP/INSTEP2.${HOST}.$$          | tee -a $LOGFILE
+               echo "INSTEP2   : Directory  $DBGDIR" | tee -a $LOGFILE
+               echo "creation failed."               | tee -a $LOGFILE
+               echo "INSTEP2   : Aborts!    `date`"  | tee -a $LOGFILE
+               rm -f $PREP/INSTEP2.${HOST}.$$
+               exit 1
+            fi
+         else
+            echo "INSTEP2   : Directory  $DBGDIR"                  | \
+             tee -a $LOGFILE
+            echo "INSTEP2   : already exists (no need to create)." | \
+             tee -a $LOGFILE
+            chmod 777 $DBGDIR
+            chmod g+s $DBGDIR
+         fi
+      fi
+   done
+}
+#                                       Create $LOAD directory, if
+#                                       necessary.
+if [ ! -d $LOAD ] ; then
+   if mkdir $LOAD 2> $PREP/INSTEP2.${HOST}.$$
+   then
+      echo "INSTEP2   : Directory  $LOAD"  | tee -a $LOGFILE
+      echo "INSTEP2   : created."          | tee -a $LOGFILE
+      chmod 777 $LOAD
+      chmod g+s $LOAD
+      rm -f $PREP/INSTEP2.${HOST}.$$
+    else
+      cat $PREP/INSTEP2.${HOST}.$$         | tee -a $LOGFILE
+      echo "INSTEP2   : Directory  $LOAD"  | tee -a $LOGFILE
+      echo "creation failed."              | tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+      rm -f $PREP/INSTEP2.${HOST}.$$
+      exit 1
+   fi
+else
+   echo "INSTEP2   : Directory  $LOAD"                    | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : already exists (no need to create)." | \
+      tee -a $LOGFILE
+   chmod 777 $LOAD
+   chmod g+s $LOAD
+fi
+#                                       Create $LOADn directories,
+#                                       if necessary.
+ALT=1
+while expr $ALT \< 16 > /dev/null
+do
+   if grep -s ":$ALT:" $SYSLOCAL/LIBR.DAT ; then
+      DIR2='$LOAD'$ALT
+      DIR=`eval echo $DIR2`
+      if test "$DIR" = "" ; then
+	 echo "INSTEP2   : LOAD$ALT not defined!  Defining it as" | \
+	    tee -a $LOGFILE
+         echo "INSTEP2   : \$LOAD/ALT$ALT here." | \
+	    tee -a $LOGFILE
+	 echo "INSTEP2   : *** AREAS.CSH/SH need modified to define it" | \
+	    tee -a $LOGFILE
+	 echo "INSTEP2   :     permanently (or AIPSASSN.CSH/SH)." | \
+	    tee -a $LOGFILE
+	 eval "LOAD$ALT=$LOAD/ALT$ALT"
+	 eval "export $DIR2"
+      fi
+      if test ! -d $DIR ; then
+         if mkdir $DIR 2> $PREP/INSTEP2.${HOST}.$$
+         then
+            echo "INSTEP2   : Directory  $DIR"   | tee -a $LOGFILE
+            echo "INSTEP2   : created."          | tee -a $LOGFILE
+            chmod 777 $DIR
+            rm -f $PREP/INSTEP2.${HOST}.$$
+         else
+            cat $PREP/INSTEP2.${HOST}.$$         | tee -a $LOGFILE
+            echo "INSTEP2   : Directory  $DIR"   | tee -a $LOGFILE
+            echo "creation failed."              | tee -a $LOGFILE
+            echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+            rm -f $PREP/INSTEP2.${HOST}.$$
+            exit 1
+         fi
+      else
+         echo "INSTEP2   : Directory  $DIR"                     | \
+            tee -a $LOGFILE
+         echo "INSTEP2   : already exists (no need to create)." | \
+            tee -a $LOGFILE
+      fi
+#
+   fi
+   ALT=`expr $ALT + 1`
+done
+#                                       Create $AIPS_VERSION/$ARCH/MEMORY
+#                                       directory, if necssary.
+if test ! -d $AIPS_VERSION/$ARCH/MEMORY
+then
+   if mkdir $AIPS_VERSION/$ARCH/MEMORY 2> $PREP/INSTEP2.${HOST}.$$
+   then
+      echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/MEMORY" | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : created."                        | \
+         tee -a $LOGFILE
+      chmod 777 $AIPS_VERSION/$ARCH/MEMORY
+      rm -f $PREP/INSTEP2.${HOST}.$$
+   else
+      cat $PREP/INSTEP2.${HOST}.$$                       | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/MEMORY" | \
+         tee -a $LOGFILE
+      echo "creation failed."                            | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`"               | \
+         tee -a $LOGFILE
+      rm -f $PREP/INSTEP2.${HOST}.$$
+      exit 1
+   fi
+else
+   echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/MEMORY"     | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : already exists (no need to create)." | \
+      tee -a $LOGFILE
+fi
+#                                       Create $ERRORS directory, if
+#                                       necssary.
+if test ! -d $AIPS_VERSION/$ARCH/ERRORS
+then
+   if mkdir $AIPS_VERSION/$ARCH/ERRORS 2> $PREP/INSTEP2.${HOST}.$$
+   then
+      echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/ERRORS" | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : created."                        | \
+         tee -a $LOGFILE
+      chmod 777 $AIPS_VERSION/$ARCH/ERRORS
+      rm -f $PREP/INSTEP2.${HOST}.$$
+   else
+      cat $PREP/INSTEP2.${HOST}.$$                       | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/ERRORS" | \
+         tee -a $LOGFILE
+      echo "creation failed."                            | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`"               | \
+         tee -a $LOGFILE
+      rm -f $PREP/INSTEP2.${HOST}.$$
+      exit 1
+   fi
+else
+   echo "INSTEP2   : Directory  $AIPS_VERSION/$ARCH/ERRORS"     | \
+      tee -a $LOGFILE
+   echo "INSTEP2   : already exists (no need to create)." | \
+      tee -a $LOGFILE
+fi
+#                                       With that out of the way, it's
+#                                       time to get down to the
+#                                       business of generating object
+#                                       libraries.  Generate lists
+#                                       of subroutine source code
+#                                       pathnames (when necessary),
+#                                       compile them all, then build
+#                                       an object library from the
+#                                       resulting object modules.
+echo ""                                                           | \
+   tee -a $LOGFILE
+echo "INSTEP2   : Grind away on mass compilation of subroutines." | \
+   tee -a $LOGFILE
+echo "INSTEP2   : This part can take a very long time."           | \
+   tee -a $LOGFILE
+echo ""                                                           | \
+   tee -a $LOGFILE
+#                                       Set argument list to major
+#                                       source code areas.
+set - \
+  AIPSUB APLSUB APLOOP APLGEN YGEN YSUB YNOT APLNOT QDEV QSUB QNOT QOOP
+#                                       Loop through the major source
+#                                       code areas.
+for AREA
+do
+   echo "INSTEP2   : Process    \$$AREA/..." | tee -a $LOGFILE
+   echo "INSTEP2   : subroutines."           | tee -a $LOGFILE
+#                                       If the object library for
+#                                       $AREA modules exists, skip.
+   SUBLIBS=`grep :.$AREA$ $SYSLOCAL/LIBR.DAT | sed -e 's/:.*//'`
+   SUBLIBS=`eval echo $SUBLIBS`
+   for SUBLIB in $SUBLIBS
+   do
+      if test -f $SUBLIB
+      then
+#        echo "INSTEP2   : Library    $SUBLIB"     | tee -a $LOGFILE
+#        echo "INSTEP2   : already exists."        | tee -a $LOGFILE
+#        echo "INSTEP2   : Skip       \$$AREA/..." | tee -a $LOGFILE
+#        echo "INSTEP2   : compilations."          | tee -a $LOGFILE
+         continue
+      else
+         break
+      fi
+   done
+#                                       leave if SUBLIB exists
+#                                       don't do this anymore
+#  if test -f $SUBLIB
+#  then
+#     continue
+#  fi
+#                                       Get definition of $AREA in
+#                                       envirnoment.
+   AIPSEV=\$$AREA
+   AIPSEV=`eval echo $AIPSEV`
+   if test "$AIPSEV" = ""
+   then
+      echo "INSTEP2   : Area      $AREA"                 | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : not defined in the environment." | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`"               | \
+         tee -a $LOGFILE
+      exit 1
+   fi
+#                                       Otherwise, compile all
+#                                       subroutines in directory
+#                                       $AREA and below as defined
+#                                       in $SYSLOCAL/LIBR.DAT.
+   if [ ! -f $AREA.LIS ] ; then
+#                                       Need to generate list file.
+#                                       Can't tee as we lose status.
+      MAKEAT $AIPSEV >$PREP/MAKELOG.${HOST}.$$
+      mstatus=$?
+      cat $PREP/MAKELOG.${HOST}.$$ | tee -a $LOGFILE
+      rm -f $PREP/MAKELOG.${HOST}.$$
+      if [ \( "$mstatus" = "0" \) -a \( -s $AREA.LIS \) ] ; then
+         echo "INSTEP2   : Begin      \$$AREA/..." | tee -a $LOGFILE
+         echo "INSTEP2   : compilations of"        | tee -a $LOGFILE
+      else
+         echo "INSTEP2   : Failure in $AREA.LIS"   | tee -a $LOGFILE
+         echo "INSTEP2   : creation."              | tee -a $LOGFILE
+         echo "INSTEP2   : Aborts!    `date`"      | tee -a $LOGFILE
+         [ -s $AREA.LIS ] || rm -f $AREA.LIS
+         exit 1
+      fi
+   else
+#                                       Source code pathname list
+#                                       already exists.  Use it.
+      echo "INSTEP2   : File       `pwd`/$AREA.LIS"           | \
+         tee -a $LOGFILE
+      echo "INSTEP2   : already exists (no need to create)."  | \
+         tee -a $LOGFILE
+      if grep '^[^-]' $AREA.LIS > /dev/null
+      then
+         echo "INSTEP2   : Resume     \$$AREA/..." | \
+            tee -a $LOGFILE
+         echo "INSTEP2   : compilations at"        | \
+            tee -a $LOGFILE
+      else
+         echo "INSTEP2   : All         \$$AREA/..."      | \
+          tee -a $LOGFILE
+         echo "INSTEP2   : compilations marked as done." | \
+          tee -a $LOGFILE
+#                                       Chop off the SUBLIB part, as
+#                                       LIBR expects a directory.
+         USUB=`echo $SUBLIB | sed -e 's,/[^/]*$,,'`
+         if LIBR $USUB $LOGFILE ; then
+            continue
+         else
+            echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+            exit 1
+         fi
+         if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+            DSUB=`echo $USUB | sed -e 's,/LIBR/,/LIBRDBG/,'`
+            if LIBR $DSUB $LOGFILE ; then
+               continue
+            else
+               echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+               exit 1
+            fi
+         fi
+      fi
+   fi
+#                                       Use $AREA.LIS to drive COMRPL.
+#                                       '-' in first column means
+#                                       that the module is already
+#                                       done.
+   sed -n -e 's/^[^-].*/INSTEP2   : &/p' $AREA.LIS | tee -a $LOGFILE
+#                                       Mass compilation via COMRPL.
+   if COMRPL @$AREA.LIS $LOGFILE
+   then
+      echo "INSTEP2   : End of     \$$AREA/..." | tee -a $LOGFILE
+      echo "INSTEP2   : compilations."          | tee -a $LOGFILE
+      echo "INSTEP2   : Begin      $SUBLIB"     | tee -a $LOGFILE
+      echo "INSTEP2   : library creation."      | tee -a $LOGFILE
+      if LIBR $AIPSEV $LOGFILE
+      then
+         echo "INSTEP2   : End of     $SUBLIB"  | tee -a $LOGFILE
+         echo "INSTEP2   : library creation."   | tee -a $LOGFILE
+      else
+         echo "INSTEP2   : Failure in $SUBLIB"  | tee -a $LOGFILE
+         echo "INSTEP2   : library creation."   | tee -a $LOGFILE
+         echo "INSTEP2   : Aborts!    `date`"   | tee -a $LOGFILE
+         exit 1
+      fi
+      if [ -f $SYSLOCAL/DOTWOLIB ] ; then
+         DSUB=`echo $AIPSEV | sed -e 's,/LIBR/,/LIBRDBG/,'`
+         if LIBR $DSUB $LOGFILE ; then
+            continue
+         else
+            echo "INSTEP2   : Aborts!    `date`" | tee -a $LOGFILE
+            exit 1
+         fi
+      fi
+   else
+      echo "INSTEP2   : Failure in \$$AREA/..." | tee -a $LOGFILE
+      echo "INSTEP2   : compilations."          | tee -a $LOGFILE
+      echo "INSTEP2   : Aborts!    `date`"      | tee -a $LOGFILE
+      exit 1
+   fi
+#                                       Next major source code area.
+done
+echo "INSTEP2   : Ends       `date`" | tee -a $LOGFILE
+exit 0

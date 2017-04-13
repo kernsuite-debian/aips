@@ -1,0 +1,103 @@
+#!/bin/sh
+# UPDCOPY
+#-----------------------------------------------------------------------
+#! Copy changed AIPS files
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2000, 2002
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#   Copy files listed in PUTBCK.UNQ from the UPDATE server.  Redone so
+#   we can check individual status return from each UPDCOPYSUB directly.
+#
+#   Inputs:
+#      LogFile         Update log file name
+#      RunTime         Current date
+#      ServerRoot      AIPS root directory on server
+#-----------------------------------------------------------------
+echo ""                     >> $LogFile
+echo "UPDCOPY   : PUTBCK's" >> $LogFile
+echo ""                     >> $LogFile
+cat PUTBCK.UNQ              >> $LogFile
+echo ""                     >> $LogFile
+#                                       Go through list, copy each file
+#                                       individually, check status.
+failures=""
+Status="OK"
+if [ \( -s PUTBCK.UNQ \) -a \( -r PUTBCK.UNQ \) ] ; then
+   for i in \
+    `awk '{print "$" $5 "/" $6 ":$" $5 "/" $6}' \
+     PUTBCK.UNQ | sed -e 's/\. / /' | sed -e 's/\.$//'` ; do
+#                                       This loop assumes all of the
+#                                       lines in PUTBCK.UNQ have the
+#                                       correct format.  This might not
+#                                       be true if the file got only
+#                                       partially copied.
+      j=`echo $i | sed -e 's/:/ /'`
+      j=`eval echo $j`
+      j=`echo $j | sed -e "s:$AIPS_ROOT:$ServerRoot:"`
+      src=`echo $j | awk '{print $1}'`
+      dst=`echo $j | awk '{print $2}'`
+      if [ "$src" = "" -o "$dst" = "" ] ; then
+         echo "UPDCOPY   : Garbled line in PUTBCK.UNQ?" >>$LogFile
+         echo "UPDCOPY   : Found: $i" >>$LogFile
+         echo "UPDCOPY   : Parsed: $src $dst" >>$LogFile
+         Status=FAILED
+         failures="$failures bad_line_in_PUTBCK.UNQ"
+      else
+         UPDCOPYSUB $j
+         if [ $? -ne 0 ] ; then
+            echo "UPDCOPY   : Failed to copy $src to $dst" >> $LogFile
+            Status=FAILED
+            failures="$failures $src"
+         else
+            NEWER=`NEWEST $dst PUTBCK.UNQ`
+            if [ "$NEWER" != "$dst" ] ; then
+               echo "UPDCOPY   : Failed to copy $TMP" >> $LogFile
+               Status=FAILED
+               failures="$failures $src"
+            fi
+         fi
+      fi
+   done
+elif [ ! -r PUTBCK.UNQ ] ; then
+   echo "UPDCOPY   : PUTBCK.UNQ is not readable???" >> $LogFile
+   Status=FAILED
+   failures="PUTBCK.UNQ-was-not-readable"
+else
+#                                       Nothing to put back
+   echo "UPDCOPY   : Nothing to put back." >> $LogFile
+   Status=OK
+fi
+#                                       Error return.
+if [ "$Status" != "OK" ] ; then
+   echo "UPDCOPY   : one or more files were NOT COPIED:" >> $LogFile
+   for i in $failures ; do
+      echo "UPDCOPY   : $i" >>$LogFile
+   done
+   exit 1
+else
+   exit 0
+fi

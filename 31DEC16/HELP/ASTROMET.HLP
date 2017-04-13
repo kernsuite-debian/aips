@@ -1,0 +1,1011 @@
+; ASTROMET
+;---------------------------------------------------------------
+;! Describes the process of astrometric/geodetic reduction in AIPS
+;# INFORMATION ASTROMETRY VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1997, 1999, 2004, 2008
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+ASTROMET  LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+----------------------------------------------------------------
+
+      GUIDE FOR AIPS REDUCTION OF ASTROMETRIC/GEODETIC VLBI DATA
+
+          by David Gordon (dgg@leo.gsfc.nasa.gov, 301-614-6107)
+          and Ed Fomalont (efomalon@nrao.edu)
+          Updated by  Amy Mioduszewski (amiodusz@nrao.edu) on
+              March 9, 2004
+
+
+The following guide gives a brief cookbook recipe for processing VLBA
+correlated geodetic and/or astrometric VLBI data into Haystack-like
+fringe files that can be made into Mark III databases. This guide is
+suitable for users with only minimal experience with AIPS. Complete
+AIPS beginners should at least read parts of the NRAO AIPS Cookbook.
+The introductory chapters and Appendix C (Step-by-step Recipe for
+VLBA Data Calibration in AIPS) and possibly the chapter 9 (Calibration
+and Reducing VLBI Data).
+
+Discussions of task and verb usages given here are not meant to be
+complete. We suggest that users first study the explain files (EXPLAIN
+FITLD, etc) for any tasks/verbs they are not familiar with. Also, this
+guide assumes you are working with X/S multifrequency data, with
+4 IF's in each band. For single frequency data, adjust IF numbers and
+other instructions as needed. Table version numbers given are intended
+only as a guide. You may need to adjust the SN, CL, and other table
+input/output version numbers, as necessary, for steps you might skip,
+or other calibrations you may add.
+
+
+About Astrometry (tasks and verbs in AIPS associated with
+         astrometry/geodesy)
+
+FITLD    Task to load data from VLBA correlator into AIPS.
+USUBA    Task to assign subarray numbers.
+INDXR    Task to create NX and CL tables after USUBA.
+LISTR    Task to print contents of datasets and tables.
+PRTAN    Task to print contents of the ANtenna table.
+PRTAB    Task to list contents of the extension tables.
+AVSPC    Task to average UV data in the frequency domain.
+ANTAB    Read amplitude information in AIPS GC, TY tables.
+ANCAL    Determine SN table from GC and TY tables.
+PCLOD    Read phase tone information into AIPS PC table.
+PCCOR    Determine SN table from PC table.
+CLCAL    Interpolating SN table into revised CL table.
+POSSM    Task to plot total and cross-power spectra.
+BPASS    Task to create a BP (bandpass) table containing the bandpass
+         response functions of the antennas.
+GETHEAD  Verb to read image header values.
+PUTHEAD  Verb to modify image header values.
+GETTHEAD Verb to read table header values.
+PUTTHEAD Verb to modify table header values.
+REFREQ   Run file to move reference pixels to other parts of the IF bands
+         and to modify frequency offsets correctly.
+SNCOR    Task to zero out phase rates (or other quantities) in an SN table.
+UVCOP    Copies all/subsets of AIPS UV data files .
+TBOUT    Task to write an AIPS table into an external text file.
+TBIN     Task to create an AIPS table from an external text file.
+UVFLG    Flagging bad data from correlator or afterwards.
+VLOG     Formats VLBA Flagging, Pulse Cal, Tsys, and weather information.
+mk4flags (Non-AIPS, available from GSFC) Fortran program to create a
+         flagging file for Mark III/IV antennas.
+FRING    Method for determining phase, delay rate and delay residuals.
+KRING    Method for determining phase, delay rate and delay residuals.
+MBDLY    Method for determining multi-band delay from FRING results.
+CL2HF    Converts AIPS (Earth-centered) astrometric qualities
+         into Haystack Format (HF table) telescope-reference
+         quantities. Results are put in AIPS HF table.
+HF2SV    Coverts data in HF table to a UNIX file which can be
+         exported into Calc/Solve.
+HFPRT    Prints out selected quantities in HF table.
+Calc/SOLVE (Non-AIPS) Software supported by GSFC and USNO for analyzing
+         astrometric/geodetic data. It is supported on HP
+         workstations at GSFC, USNO, NRAO/Socorro, and elsewhere.
+
+Procedures that might be useful (from the VLBAUTIL set of procedures).
+VLBALOAD Loads, and merges the TY, GC and PC tables.
+VLBAMCAL Merges the TY GC and PC tables, only needed if VLBALOAD was
+         not used.
+VLBAFIX  Splits data into different frequency files, sorts and indexes
+         the data and deals with subarrays.
+VLBASUMM Gives a summary of the dataset.
+
+      for more info on these scripts see HELP VLBAUTIL
+
+1. Reading in the VLBA Export Tape
+
+The VLBA tape is read into AIPS with task 'FITLD', or possibly VLBALOAD,
+which runs FITLD with simpler inputs and also merges the TY, GC and PC
+tables for VLBA data that includes calibration transfer. It will typically
+contain from a few hundred Mbytes to one or more Gbytes of data, so you
+may need a lot of empty disk space. Typical data sets will contain 8 IF's
+(each corresponding to a BBC), with IF's 1 to 4 at S-band and IF's 5 to 8
+at X-band. Usually each IF will contain 16 spectral channels (pixels),
+averaged down from 256 at the correlator. The integration time is usually
+2 or 4 seconds. We have found 4 seconds to be adequate and results in half
+as much data. [If you want to change the integration time, you need to
+contact the VLBA before your data is correlated.]
+
+The  tape is mounted with the 'MOUNT' verb, and dismounted with the
+'DISMOUNT' verb. Now load the data using VLBALOAD or FITLD.  Most
+adverb default values are okay.  For VLBA LOAD you also need to
+specify OUTNAME, OUTDISK, NFILES, NCOUNT, DOUVCOMP, and CLINT. Set
+CLINT (CL table interval) to a value which is about 25% of the typical
+scan length, or no longer than about 0.5 minute.  If you are running
+FITLD you should additionally set DOCONCAT and DIGICOR to 1.  The
+VLBA recommends flagging (not using) data with weights below ~70-75%,
+so set WTTHRESH = .75 or so.
+
+  *** VLBALOAD Example ***
+MOUNT
+TASK 'VLBALOAD'
+OUTNAME 'RDV11'; OUTDISK 2; INTAPE 1; CLINT 0.5
+NCOUNT 12 (# of files on the tape - should be on a
+             listing sent with the tape.
+INP
+VLBALOAD (to run)
+DISMOUNT (when finished)
+
+  *** FITLD Example ****
+MOUNT
+TASK 'FITLD'
+INPUT  (to review the inputs)
+OUTNAME 'RDV11'; OUTCLASS 'FITLD'; OUTDISK 2
+NCOUNT 12   (# of files on the tape - should be on a
+             listing sent with the tape.)
+DOCONCAT 1; NFILES 0; DIGICOR 1; DATAIN ' '; OPTYPE ' '; CLINT 0.5
+INTAPE 1; WTTHRESH .75; DELCORR 1
+BCHAN 0; ECHAN 0; BIF 0; EIF 0
+INP (to check inputs, make corrections)
+GO
+DISMOUNT (when finished)
+
+As FITLD runs, you may see messages that a subarray condition was
+encountered. If so, the CL and NX tables will be deleted and you will
+later have to run tasks USUBA and INDXR. More on that later.
+
+If there is a second tape, just change NCOUNT and repeat. The data should
+all go into the same AIPS file.
+
+**MERGING TY, GC and PC TABLES** If your data was correlated after 1 April
+1999, then it contains calibration tables from the VLBA antennas.  If you
+loaded more than one file then the TY, GC and PC tables will have to be
+merged.  If you used VLBALOAD this has already been done, if not then
+you have to run VLBAMCAL.  See HELP VLBAMCAL.
+
+After running FITLD or VLBALOAD, type 'IMHEAD' to see the header values in
+the data base. It should contain several hundred thousand or more
+visibilities, with 8 IF's and 16 frequencies. Sort order should be 'TB'
+(time/baseline). If not, you will need to run task MSORT or UVSRT,
+setting SORT 'TB'.  If you run VLBAFIX (step 3.5) sorting will be done
+automatically, if it is needed.
+
+2. Incorrect AN/AT Table Frequencies
+
+The AIPS files contain reference frequencies in the UV header and in the
+AN and AT tables. For S/X data these frequencies may not agree due to the
+reassignment of IF numbers in FITLD. The UV header frequency is
+usually correctly set to the lowest S-band frequency. But the AN and AT
+table frequencies will usually be set to the lowest X-band frequency.
+The AN table frequency is used in some of the programs here so it will
+need to be corrected. Although the AT table frequency does not get used
+in the geodesy processing, it is probably a good idea to correct it also.
+Do the following:
+
+a) Get the AN table frequency:
+        INEXT 'AN'; INVERS 1; KEYWORD 'FREQ'; GETTHEAD
+        TYPE KEYVALUE          ----> may give something like
+                                     8105990144  -144
+                                     (The two parts get added together.)
+
+b) Get the UV header frequency:
+        KEYWORD 'CRVAL3'; GETHEAD
+        TYPE KEYVALUE          ----> may give something like
+                                     2220989952    48
+
+If the two agree, then you can skip to the next section. But if they
+don't agree, then leave KEYVALUE unchanged from step b), and
+
+c) Insert keyvalue from UV header into AN table:
+        INEXT 'AN'; INVERS 1; KEYWORD 'FREQ'; PUTTHEAD
+
+Repeat step a) to verify. This could all be done later, but there may be
+more than one AN table at that time. If so, then use the INVERS adverb to
+correct all AN table versions.
+
+For the AT table, repeat the above using INEXT 'AT' and KEYWORD 'REF_FREQ'.
+
+Tables can also be checked using task 'PRTAB'.
+
+
+3. Controlling the Effective Fringing Frequency
+
+Before you begin fringing your data, you need to decide where in
+the bandpass to do the fringing. The frequency within each IF where
+the fringing is done (in task FRING) is controlled by the value of
+a reference pixel number in the image header. (This controls the true
+reference frequency of the residual phases, and has some effect on
+delays and rates.) For recently correlated data, the reference pixel
+number will initially be set at 0.53125, which is the lower frequency
+edge of each IF. It is okay to leave this as is. However, many geodesy
+and astrometry users prefer to fringe at the center of each IF and put
+the reference frequency at the center of the first IF. You should no
+longer try to reset pixel numbers or dataset frequencies manually
+(except in the case of incorrect AN table frequencies mentioned
+earlier). Instead, use the runfile 'REFREQ'. This will prevent
+problems latter on if you didn't make all the necessary changes. To
+move to the middle of the IF, with 16 channel data, use: INVER 1;
+SUBARRAY 0; PIXVAL 8.0; RUN REFREQ.
+
+REFREQ still does not change the AT table. For completeness you may want
+to fix it up, although I don't think it gets used anywhere here. Do the
+the procedure before running it.
+following:
+
+    KEYW 'CRPIX3'; GETHEAD; TYPE KEYV  (will say 8.5313  0)
+
+    INEXT 'AT'; KEYW 'REF_PIXL'; PUTTHEAD
+
+
+3.5 VLBAFIX
+
+VLBAFIX is designed to take a VLBI dataset and "fix" it.  If necessary
+it sorts, fixes the subarrays, splits into different frequency files
+and indexes the data.  So if you run VLBAFIX you can skip sections 4
+and 9.  All you have to do is set CLINT and SUBARRAY.  For this case
+you probably want to set SUBARRAY 2.  DO NOT USE VLBAFIX EARLIER THAN
+28 FEBRUARY 2004 UNLESS YOU HAVE NO SUBARRAYS.
+
+
+4. Subarray Condition, USUBA and INDXR
+
+Very likely FITLD will encounter a 'subarray condition', and will be
+unable to create the NX and CL tables. It will tell you to run tasks
+USUBA and INDXR. If not, you can skip to the next section. Run USUBA
+with OPCODE 'AUTO'; SUBARRAY 0; INFILE ' '. There should then be
+several AN tables, equal to the number of subarrays created.
+
+Then run task INDXR with CPARM(3) = .5 or 1. (CL table interval, minutes),
+CPARM(4) = 1 (calculate CL table geometric delay coefficients), and
+CPARM(5) = 1 (calculate CL table clock and atmosphere delays and rates).
+Also set CPARM(1) (maximum data gap) if you make repeat observations of
+the same source less than 10 minutes apart; otherwise you may join two
+or more scans that should remain separate. You might also need to set
+CPARM(2). INDXR will create a CL and an NX table. [Many of the following
+tasks cannot be run until you have an NX table. Some of them will
+delete the NX table though, requiring you to run INDXR again.]
+
+I've had minor problems with both of these tasks. USUBA occasionally
+splits data for a single scan into two different subarrays. And INDXR
+also occasionally splits a single scan into two parts. I've heard you can
+hand-edit the NX table, but it looks pretty messy.
+
+There have been minor problems in the past with missing geometric delay
+coefficients in the CL table. You would probably have to look though
+many rows of the CL table with task PRTAB to see if this is a problem
+though. Also, until recently (~May/June 1999) the coefficients were
+slightly wrong (amounting to a few tenths of a picosecond in delay at
+most) due to a roundoff error in the IM table times. I have a somewhat
+primitive task called 'CLFIX' which can repair these problems, and the
+latest version should be in the 15OCT99 AIPS. You will probably not need
+it, but for any problems with it contact me (DG).
+
+
+5. Creating the Flagging Table
+
+Flagging tables are now being written at the correlator for VLBA
+stations and a few others. If you use only these stations you can
+skip to the next section.
+
+Flagging files for the VLBA before 1 April 1999:  There should be
+flagging information available that will tell some of the AIPS programs
+when to ignore data (antennas slewing, etc.).  For the VLBA antennas,
+the flagging times are written into the VLBA log file for your experiment.
+These can be obtained from the aspen workstation at the AOC. (Contact
+the AOC for the account and password.) It will have a name like
+xxxxxcal.vlba, where xxxxx is the experiment designation. It will also
+contain weather information, cable cal measurements, and pulse (phase)
+cal measurements.  Use the task 'VLOG', this will split all the
+calibration files out in the correct format to be loaded by AIPS tasks.
+
+Flagging files for Mark III/IV/V stations: If you have Mark III/IV/V
+stations in your experiment, you should create flagging files for them
+also. These can be constructed using the 'onsource/TRACKING' and
+'data stop' lines in the Mark III/IV/V log files. You are welcome to use
+the Fortran program 'mk4flags' (not part of AIPS), available via
+anonymous FTP from gemini.gsfc.nasa.gov, directory
+/pub/misc/dgg/AIPS/mk4flags. Make sure the two-letter codes match those
+in your AIPS dataset. NRAO also has a script to do this, I think. Make
+sure the lines end in a slash (/) if you use it. The VLBA flagging
+files and Mark III/IV/V flagging files can be combined into a single
+file, or you can run UVFLG twice.
+
+To put this flagging information into the AIPS data base, run task
+'UVFLG' and specify the INTEXT 'FITS:FFF', where FFF is the file name
+of the flagging information in the $FITS directory. Set OPCODE 'FLAG';
+FLAGVER 1; SUBARRAY 0. UVFLG will create an 'FG' table version 1.
+
+UVFLG can also be used to flag individual IF's, if there is a bad one at
+a particular antenna. This has to be done separately from the above step,
+using INTEXT = ' ', and setting the ANTENNAS, BIF, and EIF adverbs. The
+same FG version number can be used, i.e. FLAGVER 1. [If you flag an IF,
+be aware that you will probably need to set APARM(4) = 3 (min. no. IFs)
+when you run MBDLY.] You can also flag individual channels in an IF, if
+necessary.
+
+
+6. Scan and Antenna Summaries
+
+You can run the task LISTR to get a time listing of the scans. Set
+OPTYPE 'SCAN'. With DOCRT 132 you will get the information on the screen.
+With DOCRT -1 and OUTPRINT ' ', it will come out on the printer, with
+maybe a lot of paper wasted. With DOCRT -1 and OUTPRINT = 'FITS:NAME',
+the output will be put in the $FITS area in the file NAME. If you send
+it to a file, you can edit it before printing and maybe save a few
+trees, as it seems to contain a lot of unneeded lines.
+
+Task PRTAN (INVERS 1 and NCOUNT 0) will print out the antenna locations
+and numbers, either to the screen, the printer, or to a file, using
+DOCRT and OUTPRINT as above.
+
+Or run VLBASUMM which runs LISTR and PRTAN as above with the minimum
+of fuss.
+
+
+7. CQ Table Fixup
+
+Your dataset should have a CQ (correlator parameter frequency table)
+which is used later in processing to correct for delay decorrelation
+losses in the VLBA Correlator. After running USUBA and INDXR, it will
+probably have only a single row for one of the subarrays in your data.
+This used to cause errors later on, but I've been told it shouldn't any
+longer. The following fix is left in, just in case it's needed. You
+need a row for EACH subarray. One way is to fix it manually, easy but
+tedious. First, run task 'TBOUT' with inext 'CQ'; INVER 1; OUTFILE
+'FITS:CQ' (for example); DOCRT 132. Then edit the ASCII file, adding
+records for each subarray, and modifying the 'Number of entries in
+table'. This is fairly easy to figure out. Then delete CQ version 1
+(inext 'CQ'; INVER 1; EXTDEST). Then run task 'TBIN' setting infile
+'FITS:CQ' or whatever file name; also carefully set Outname, Outclass,
+and OUTDISK.
+
+
+8. Data Averaging - No Longer Recommended
+
+You may want to average your data to reduce the data volume and
+reduce the processing time.  However, this is no longer recommended.
+If you desperately need to do this use AVSPC to average spectral
+channels and/or UVAVG to average in time.  See the help files for
+more details.
+
+
+9. Splitting X and S Bands
+
+If you ran VLBAFIX this has already been done.
+
+Now you should split your dataset into separate S and X band datasets.
+You will not be able to use measured phase cals otherwise. Run task
+'UVCOP' twice, setting OUTNAME and OUTCLASS for each output file. For
+the S-band, use BIF 1; EIF 4. For X-band, use BIF 5; EIF 8. For both,
+use Flagver 1; UVCOPPRM 0. This will remove flagged data and the FG
+table will disappear. The NX table will probably disappear also, so you
+will need to rerun INDXR on both output files. Set CPARM(1) and CPARM(2)
+as before. CPARM(3), CPARM(4), and CPARM(5) should be zero, since you
+will still have CL tables.
+
+      AT THIS POINT ONWARD, ALL STEPS WILL HAVE TO BE RUN TWICE,
+      ONCE FOR X-BAND AND ONCE FOR S-BAND!!!
+
+If you have only single channel data, skip or modify this step. You might
+still want to copy all IF's to another dataset if there is a lot of
+flagged data to be removed. The resulting smaller dataset may be easier
+to work with. If not, some of the following tasks will require specifying
+the flagging table version number, FLAGVER.
+
+
+10. Phase Calibration
+
+The VLBA correlator does not extract phase calibration phases, as does
+the Haystack and other Mark III/IIIA correlators. Some type of phase
+calibration must be done, in order to flatten out the bandpasses.
+
+VLBA stations routinely extract phase cal phases in real time and
+record them in the monitor data.  For data after 1 April 1999 the pulse
+cals for the VLBA are already attached to the data.  For data before
+this, you probably used VLOG to extract the flagging info (step 5) from
+the calibration file.  VLOG will have also extracted the pulse cal file
+with the extension PCAL ready for loading with PCLOD.
+
+It is recommended that pulse cals be used if they are available, as
+opposed to using manual phase cals.  [It looks like manual phase cals
+add about 5-10 psec of noise, in an RSS manner.]
+
+None of the non-VLBA stations extract phase cals yet, but this is
+supposed to be implemented in a few years. (Some new hardware will be
+required.) Until then, you can only use manual phase cals at these
+stations. In the following discussion, we will assume that a mixture of
+measured and manual phase cals is being used.
+
+
+10a. Phase Calibration Using Measured Phase Cals
+
+The data MUST be split into separate X-band and S-band datasets. In addition
+to phase cal phases, phase cal single band delays and a phase cal group
+(multi-band) delay will also be computed and applied in fringing, and the
+CL tables have room for only one MBD value.
+
+If your data is from after 1 April 1999, then the pulse cals are already
+in the PC table and you can skip PCLOD and you can skip directly to PCCOR,
+PROVIDING YOU HAVE RUN VLBAMCAL (see step 1).  If you have data from before
+this and have run VLOG then you should have a file with the extension .PCAL
+that can be loaded with PCLOD.  Use this file for the CALIN adverb of task
+PCLOD. Run task PCLOD with OUTVER 1. You will have to run it once for each
+subarray in your dataset, setting SUBARRAY each time, but keeping OUTVER 1.
+This will create PC table #1, with all subarrays.
+
+Next you want to use task PCCOR to create an SN table containing IF
+phase offsets, IF single band delays (SBD's) and a multiband delay (MBD)
+for each observation for each antenna. But there's a lot of preliminary
+work before you can do this. First you need to select a calibrator to
+resolve the MBD ambiguities, preferably a reasonably strong, unresolved
+source. It also must be a scan in which all antennas participated (or at
+least all VLBA antennas). [You should read ahead the section on running
+FRING to select a calibrator for manual phase calibration. The same source
+could be used for manual phase calibration of the non-VLBA antennas
+later.] Once you have the calibrator, and a time range for its use
+(~1 minute is good), then set up PCCOR. Set CALSOUR and TIMERANG for the
+calibrator. Set REFANT to a VLBA antenna to use as a reference. (It must
+be used later as the reference antenna for the manual phase cal step.)
+Set SUBARRAY 0 to do all subarrays at one time. I'm not sure what the
+CUTOFF adverb really does, but I have used CUTOFF 1 (turns off cable cal).
+Now run PCCOR. It will create an SN table, usually version 1, with only
+the VLBA antennas present.
+
+Next you want to merge this SN table into the CL table, using task CLCAL.
+This CL table must have all antennas present, not just the VLBA antennas.
+Use OPCODE 'CALP' to do this. (If you have only VLBA antennas, use OPCODE
+'CALI'.) Also INTERP '2PT'; ANTENN 0; TIMERANG 0. Also set REFANT, GAINVER,
+GAINUSE, and SNVER to appropriate values. Run CLCAL once for each
+subarray, resetting SUBARRAY each time. Then check the output CL table to
+see that it has all antennas, and real phase cal values for the VLBA
+antennas. You can use task 'PRTAB' with Inext 'CL'. Setting BOX to the
+relevant columns will print a full row at a time (BOX 1 3 4 5 12 17 18
+19 20, for example). MBDELAY1, REAL1, IMAG1, RATE1, and DELAY1 (columns
+12, 17, 18, 19, and 20) should have real, non-zero values for the VLBA
+antennas. You should not see 'INDE' anywhere!
+
+If you have only VLBA antennas in your experiment, then you are finished
+with phase calibration and you can skip the rest of this section. If not,
+then read on.
+
+10b. Manual Phase Calibration
+
+With manual phase calibration, you run FRING on a short segment of good
+data (a scan of a minute or so with all antennas and all IF's present)
+to get phase offsets for each IF of each antenna, relative to a
+reference antenna. This will define the multiband delay residual for
+this particular observation to be zero. These phase offsets are then
+applied to (subtracted from) all observations throughout the experiment.
+First, set up the task 'FRING'. Set the TIMERANG appropriate for the
+one scan selected, or even just one minute of that scan. Some adverb
+values of consideration are: REFANT N where N is a good antenna near the
+array center; DPARM 0 0 0 4 0 (4 seconds integration time); SNVER 0
+(output SN table, probably #2 here); APARM 0; GAINUSE 0; SUBARRAY I
+(where I is the appropriate subarray number). If you are going to
+combine manual phase cals with measured phase cals from the previous
+step, then REFANT should be the same VLBA antenna as was used in PCCOR.
+ANTENN should be a list of the non-VLBA antennas plus the REFANT
+antenna. Run FRING. It will create the next SN table. There should be
+(#ant) x (#IF) good solutions. [The TIMERANG adverb may be confusing at
+first. The days part is usually 0 or 1. To fringe from 21:16:10 to
+21:18:00 on the first day of the experiment, you would use TIMER
+0 21 16 10   0 21 18 0.]
+
+You can examine these phases using TASK 'LISTR' with OPTYPE 'GAIN';
+INEXT 'SN'; INVER 2; DPARM(1) 1; DPARM(8) 1; and specifying SUBARRAY.
+You can only list one subarray at a time. Usually screen output is all
+you will need (DOCRT 132, etc.). To see the SNR's, set DPARM 8 0. Make
+sure you have a scan in which all antennas participated, and which gives
+phases and SNR's for each IF. If not, delete that SN table (inext
+'SN'; INVER 2; EXTDEST) and try another scan until you get a good one.
+[If you have no scan in which all antennas participated, you will
+have to 'manufacture' one by combining two or more scans, using
+'TBOUT' and 'TBIN' and some hand editing, as in section 7.]
+
+The results of this fringe fit (phase, delay, single-band delays,
+and phases for each IF are stored in the SN table.  We recommend that
+you do NOT zero out the single band delays. These represent real
+instrumental effects that should be calibrated. Next you will run
+CLCAL to insert the manual phase cals into a CL table, but there's a
+hitch here because CLCAL will not work across subarray boundaries. If
+your dataset has subarrays, the same manual phase cals MUST be applied
+to all subarrays, so you must duplicate your phase cal scan for all
+subarrays. This can be done using TBOUT, hand editing, and TBIN. You can
+either produce multiple SN tables, each for a different subarray; or one
+larger SN table, with rows for all subarrays. (Running FRING multiple
+times will work, then you edit out the minus signs in the row numbers
+and edit the subarray columns.) There are also some copying and editing
+tasks, but I'm not familiar with them. Either way is tedious but not
+difficult.  Contact me (DG) if you need some advice. [An alternative is
+to set SUBARRAY -32000 and run CLCAL only once. I have had problems later
+on in the processing with this option though, so I don't recommend it.]
+
+When ready, run CLCAL once for each subarray. Assuming you want to
+merge the manual phase cals in with the measured phase cals from the
+previous step, you set OPCODE 'CALP'. If not, Opcode 'CALI' will work.
+Also set ANTENN 0; INTERP 'BOX'; TIMER 0; SNVER N; GAINVER 2; GAINUSE 3;
+where N is the input SN table version(s). Run CLCAL for each subarray,
+changing SUBARRAY, and SNVER if necessary, each time.
+
+You can do a quick check of the phases in the CL table using task 'LISTR'
+with OPTYPE 'GAIN'; INEXT 'CL'; INVER 3; TIMER 0; DPARM 1 0; SUBARRAY 1
+(or whatever is correct); GO. For the manual phase cal antennas, the
+phases should be constant with time for each IF. For the measured phase
+cal antennas, the phases should vary slowly with time. For a more
+detailed look, use task 'PRTAB' with Inext 'CL'; BOX 1 3 4 5 12 17 18
+19 20; etc. MBDELAY1 should be zero for manual phase cal antennas,
+non-zero for measured. REAL1 and IMAG1 should have real numbers, RATE1
+should be zeros for manual phase cals, non-zero constants for measured.
+DELAY1 should have real values also. You should not see 'INDE' anywhere
+(unless an IF is flagged as bad)!
+
+
+11. Bandpass Calibration
+
+Bandpass calibration may improve the quality of the FRING fits. To
+examine the IF bandpasses, use task 'POSSM'. Set TIMERANG for a single
+scan, it can be the same scan that was used for measured and/or
+manual phase calibration; and set the appropriate SUBARRAY #. Also set
+CALCODE ' '; DOCALIB 2; GAINUSE 3; DOBAND -1; NCOUNT 4; DOTV 1;
+LTYPE 3; BCHAN 0; ECHAN 0; BIF 0; EIF 0; APARM 0; OUTTEXT ' '. You
+will get 4 plots at a time. Amplitudes will probably drop off
+dramatically at the edge channels, but that's usually normal. Phases
+will typically show about 10-20 degrees of scatter. If the bandpass
+phases are all linear, you do not need a bandpass calibration, but
+this is unlikely. See 'EXPLAIN POSSM' for more details.
+
+You create a bandpass (BP) calibration table with task 'BPASS'. Set
+adverbs for the chosen calibrator, time range, subarray, and a
+reference antenna. For example: CALSOUR '0552+398'  ' '; SUBARRAY 1;
+TIMERANG 1 12 57 10  1 12 58 20; DOCALIB 2; GAINUSE 3; REFANT 7;
+BPVER 1; CHANSEL 1 16; ANTENN 0; BPASSPRM 0 0 1 0 1 0 0 1 0 1 1.
+See 'EXPLAIN BPASS' for more details. BPASS will create BP table #1,
+with rows for each antenna for one subarray only. Unfortunately you
+will need a table with rows for all subarrays. You can run BPASS N
+times, for N subarrays, and it will write identical blocks N times.
+Then use TBOUT to write to an ASCII file. Edit it and change the subarray
+column for the second, third, etc, sets of rows. Then delete the BP
+table, and run TBIN to replace it with the edited rows. There might be
+better ways of doing this using the table editing functions.
+
+Some of the columns in the bandpass table (such as channel frequency
+offsets) for the last station may look wrong, but they are really
+okay. They are not calculated and not used for the 'remote' station,
+and the last station is always the remote (as opposed to the reference)
+station on all baselines.
+
+Because of the frequency shifting when a bandpass calibration is used,
+it is necessary to drop the first and last spectral channels (pixels)
+when fringing. This is one reason we no longer recommend spectral
+averaging of pixels.
+
+
+12. Amplitude Calibrations
+
+Amplitude calibration is usually not necessary for geodesy work. Some
+astrometric users need to or prefer to calibrate amplitudes though. The
+current version of CL2HF will not compute SNR's correctly in this case.
+
+
+13. Polarizations
+
+The S/X geodesy and astrometry runs will normally contain only one
+polarization (RCP usually). CL2HF is currently unable to handle two
+polarizations.
+
+
+14. Further Processing
+
+At this point you are ready to process the full data set using one of
+several possible schemes, only two of which are described here. The
+first uses 'Global', or 'Station' fringing. The second uses single
+baseline fringing. Both fringe with task 'FRING'. [Supposedly task
+'KRING' can now be used in place of 'FRING'. I have not had time yet
+to check this out, but plan to soon.] In global fringing, all baselines
+are fringed together, and phase closure is enforced, even if there is
+source structure. This is somewhat unappealing for geodetic analysis.
+The single baseline mode is closest to what the geodesy community has
+gotten from the Mark III/IIIA correlators for many years, and what we
+are most comfortable with. Therefore, this is what we are currently
+using at GSFC. We also find that the data yield (number of good
+observations) is greater with single baseline processing. The drawback
+is that it takes MUCH longer and is more tedious. It is necessary to
+run FRING once for each baseline (153 times for an 18 station exp),
+and then again for the other frequency band. For Global fringing, do
+steps 15 - 19. For single baseline fringing, study these steps, then
+follow the directions in step 20. From here on, the processing can be
+very time consuming, so regardless of how you process your data, you
+should learn how to set up run files, procedure files, and batch jobs
+so that you can process your data overnight, or over the weekend.
+
+
+15. Global Fringing
+
+Set up FRING for the whole data set. Suggested parameters are:
+TIMERANG 0; DOCALIB 1; GAINUSE 3 (final phase cal table);
+FLAGVER -1 (if no FG table); REFANT N (your pick); SUBARRAY 0;
+APARM 0 0 0 0 0 0 3 0; DPARM 0;  SNVER 3; ANTENNAS 0. If you are
+doing bandpass calibration, set DOBAND 1; BPVER 1; BCHAN 2;
+ECHAN 15. You may want to set some of the APARM or DPARM options
+differently. Study the 'Explain FRING' file. SUBARRAY 0 will go
+through all subarrays. Set the BADDISK array if you have disks with
+little space or that are on other machines, otherwise it may take
+forever. FRING may run for several hours for a 24-hour experiment.
+It will do a "global" fringe fit in this example. FRING will determine
+the phase rate, single-band delay, and phase offset at a central time
+for each scan, for each IF, and for each antenna.
+
+The output SN table will contain the solution values. These can be
+looked at to see if there are lots of bad data. This is done by
+running LISTR with OPTYPE 'GAIN'; INEXT 'SN'; INVER 2; TIMERANG 0;
+DOCRT 132. Set DPARM N 0 to determine what kind of information to
+display. [N=1 (phase), 6 (SBD), 7(phase rate), 8(SNR), 11(elevation).]
+The SNR for the reference antenna is not meaningful; it is equal to
+the specified minimum SNR + 1 for some unknown reason.
+
+You might want to do some further editing using UVFLG. For example, if
+a long stretch of data associated with an antenna is obviously bad, you
+might as well delete it. Some of the tasks yet to be run look for
+consistency amongst the IF solutions and will do some reasonable self
+editing.
+
+
+16. Multi-Band Delays
+
+The multi-band delays (MBD's or group delays) are normally computed
+using task MBDLY. MBDLY fits a linear phase versus frequency to the
+IF phases for each antenna in the SN table output by FRINGE. The
+output of MBDLY is placed in the next SN table and it will be nearly
+identical to the previous SN table but with the multi-band delays
+inserted. Set BIF 0; EIF 0; INVERS 3; OUTVERS 4 (adjust as appropriate.
+APARM = 0 is reasonable. Some non-default values may be preferred
+though. APARM(6) = 0 leaves phases in the calibrated UV data while
+APARM(6) = 1 puts them in the SN table. CL2HF supports either mode,
+but the APARM(6) = 1 mode has not been thoroughly checked out.
+
+MBDLY runs fast, a few minutes or less even for large data sets. The
+solutions will fly by too quick to read. They can be looked at later
+using the verb PRTMSG with PRTASK 'MBDLY'. Each line corresponds to an
+antenna solution with average rate and SBD over the IF's. The RMS phase
+should not be more than a few degrees. The range is the MBD ambiguity.
+The Res: line shows the departure of each IF from the linear fit.
+
+
+17. Applying FRING Fits To the CL Table
+
+The results of the FRING and MBDLY fits must be applied to the CL table
+in order to calibrate the data. This is done using task CLCAL. INTERPOL
+'SELF' must be used. This means that a solution for any scan in the SN
+table found by FRING/MBDLY will only be used to correct that one scan,
+i.e., there will be no interpolation between scans. Also use OPCODE ' ';
+SNVER 4; GAINVER 3; GAINUSE 4. You must run CLCAL once for each subarray,
+resetting the SUBARRAY adverb each time. The program runs fairly fast
+though, taking only a few minutes or so even on huge databases.
+
+
+18. Obtaining Haystack Reference Frame Results
+
+Task CL2HF converts the Earth-centered rates, delays and phases to
+the Haystack reference antenna system. The output is placed in an
+AIPS extension 'HF' table. CL2HF has been modified extensively
+at the Goddard Space Flight Center. [An alternate version, SN2HF, has
+been developed at the Center For Astrophysics by Dan Lebach. The steps
+for using SN2HF are somewhat different than those outlined here. Plans
+are to consolidate these two version eventually.]
+
+For CL2HF, APARM(1) controls how the UTC reference time tags will be
+determined. To use the CL table times (rounded to the nearest integer
+second) set APARM(1) = 0. APARM(1) = 1 will use the SN table time.
+APARM(1) = 2 will use an input file of time tags, which must be
+specified using the INFILE adverb. (This file should contain one line
+for each scan, with the year (last 2 digits), month, day, hour, minute,
+second, and source name of the desired time tags using a (6(I2,1X),A8)
+format. The source name is optional.) APARM(1) = 3 will use the Mark
+III schedule file, which must be specified using the INFILE adverb.
+(The midpoint of the shortest scheduled duration will be used, almost
+identical to the Haystack convention.) APARM(1) = 4 will use the file
+output by LISTR from step #6 earlier - but it must be edited first.
+Remove ALL lines which do not have a time range in them, but do not
+edit the remaining lines. The program will take the midpoint of this
+time range as the UTC reference time tag. Beware though with this
+option, sometimes these time-ranges include dead-time when data is not
+really being taken. If you want an option to read some other type of
+file contact me (DG) and I'll add it as time permits.
+
+APARM(2) sets a minimum elevation cutoff, in degrees. This was put
+in because of problems with very low elevation observations, that we
+didn't expect would be processed. Permitted values of APARM(2) are
+between 0.0 and 10.0 (degrees). We recommend setting APARM(2) to 3.0
+or 4.0 degrees. A value of 0.0 means no cutoff (negative elevations
+allowed), as requested by some VSOP users.)
+
+APARM(5) tells CL2HF where to get phases. If APARM(5) = 0, phases will
+be from the calibrated UV data. If APARM(5) = 1, phases will be from
+the SN table. This option must be coordinated with APARM(6) in MBDLY.
+Zero is recommended for both at this time.
+
+DPARM(1) and DPARM(2) is currently used when bandpass calibration was
+applied in fringing, in order to calculate SNR's correctly. Set
+DPARM(1) = 14 and DPARM(2) = 16 if the end channels (out of 16 channels)
+were dropped. Set them to zero if bandpass calibration was not used and
+no channels were dropped.
+
+Currently the output reference frequency will be the frequency in
+the first IF corresponding to the reference pixel number, initially
+set by FITLD, and perhaps modified by RUN REFREQ. An option will be
+added to move this around, say to other IF's.
+
+CL2HF has been restructured in how it matches SN and CL records, and
+consequently runs about 2 to 3 times faster than the previous version.
+It should take about 1/3 as long to run as FRING. More recent mods
+have been made for subarrays and to handle different CL table times
+for the various stations. Previously all stations had the same CL
+table times.
+
+For CL2HF use: INVER 4 (input CL table from CLCAL); IN2VER 3 (phase cal
+table); SNVER 4 (output by MBDLY); SUBARRAY N; OUTVERS N, where
+N is the subarray number. You must now specify the subarray number and
+run it once for each subarray. You should also specify APARM, DPARM and
+INFILE. To compute reference time tags using a Mark III schedule and a
+3 degree elevation cutoff, set APARM 3 3 0; INFILE 'FITS:X.SKD', where
+X.SKD is the schedule file name. To use the CL table times, set APARM
+0 3 0; INFILE ' '.
+
+
+     ----------------------------------------------------------------
+Ignore the following for now:
+ Options that will be available when CL2HF/SN2HF are consolidated:
+     APARM(3) - Determines whether residuals should be taken from
+                the SN table (version # specified by SNVER)
+                or from the CL table (version # specified by
+                INVERS).  If residuals are taken from the CL
+                table, then residual MBDs and phases are
+                extrapolated to the SN table time (which is what
+                task CLCAL does).
+                <= 0 Get residuals from SN table.
+                >  0 Get residuals from CL table.  This mode is
+                intended for use when the CL table used as input
+                when the SN table is created is something other
+                than the phase cal. CL table, e.g., when the SN
+                table is created with CALIB when using an input
+                CL table that is based on residuals from a
+                reference source.
+     APARM(5) - The value of APARM(5) (<= 0 or > 0) used in the
+                FRING solution.
+                This parameter identifies which mode of FRING was
+                used to create the SN table that is used as input
+                here or that was used by MBDLY to create the SN
+                table used here.  It is needed so that IFs with
+                no or unused data are identified, and rate
+                estimates corrected, when FRING was run in a
+                mode to combine IFs (i.e., with APARM(5) > 0).
+                <= 0 FRING was run to make separate solutions
+                     for each IF (and MBDLY probably then run
+                     prior to input here).
+                >  0 FRING was run to combine IFs in solution.
+     DPARM(2) - The delay window parameter used in FRING.
+     DPARM(3) - The rate window parameter used in FRING.
+     DPARM(4) - The integration time (accumulation period, in
+                Haystack terminology) of the correlated data, in
+                seconds.  Same as DPARM(4) in FRING.
+                <= 0 implies 1.0 seconds.
+                The correct value should be supplied.
+     DPARM(5) - The frequency adjustment, in MHz, to be added to
+                to the AN table frequency to obtain the HF table
+                reference frequency.
+     DPARM(7) - Determines whether to write results to separate
+                HF tables for each polarization.
+                <= 0 Write all results to a single table.
+                >  0 Write L polarization results to a separate
+                     HF table (OUTVERS+1).
+     DPARM(8) - The SNR threshold below which a quality factor
+                code of "0" is assigned.
+     ----------------------------------------------------------------
+
+
+19. Putting HF Data Into Mark III Fringe Files For Dbedit
+
+The HF files can be converted into the proper tree file structure
+system that Dbedit (part of the GSFC/USNO Calc/Solve system) reads
+using the AIPS task HF2SV. First, get into the $FITS (/data28/AIPS/FITS)
+area (or any directory that has been defined by an environment variable)
+and make two directories - SRESULTS and XRESULTS, for example, for the
+S-band and X-band outputs. [It is okay to use the same directory for
+both S and X files, but probably better if you keep them separate.]
+Then, back in AIPS run HF2SV with INEXT 'HF'; INVER N; OUTFILE
+'FITS:SRESULTS' or OUTFILE 'FITS:XRESULTS', GO. Run once for each HF
+version number. This step should only take a few minutes of real time.
+
+HF2SV may (if doing single baseline fringing) give you many error
+messages like:
+      mkdir: cannot create /data28/RDV971.X/031-185835: File exists
+These aren't really errors and you can just ignore them. HF2SV will
+happily continue.
+
+You are now ready for Dbedit/Calc/Dbcal/Solve.
+
+
+20. Single Baseline Fringe Fitting
+
+To do single baseline processing, you simply run through steps 15 - 19
+separately for each baseline, using the ANTENNAS adverb in FRING to
+select a single baseline each time. It will take much longer to
+process an experiment, but the result will be a database in which all
+the baselines are independent, and can be analyzed correctly using the
+current Mark III software package (Calc/SOLVE, etc.).
+
+There are so many steps repeated over and over that you simply have no
+choice but to create a RUN file and submit it as a batch job. Below is
+an example run file. It will process the 1-2 baseline, then 1-3, 1-4,
+etc, through 18-19. You will have to tailor it somewhat for each
+experiment and for your own needs. In this example, the SN, CL, and HF
+files are deleted away each time to save space. Other ways are possible
+though. Study the sections on RUN files, procedure files, and Batch
+jobs in the AIPS Cookbook before calling Ed Fomalont or Craig Walker
+at home for help. With typical astrometry/geodesy experiments, it takes
+~20-30 minutes per baseline per frequency band on an HP780 (AIPS mark ~7).
+
+
+************************** Example Runfile ******************************
+*
+* Run file for RDV16 X-band Baseline-by-baseline fringing, 19 stations.
+*   Measured/manual P-cals and Bandpass calibrations.
+*
+STORE 1
+RESTORE 0
+VERSION ' '
+*
+INDISK 5; OUTDISK 5; INSEQ 1; TIMERANG 0; INCLASS 'CH16'; OUTCLASS 'CH16'
+USERID 5; BADDISK 1 2 3 4; FREQID 1
+*
+*---------------------------------------------------------------------------
+PROC BB(I,J)
+*
+INNAME 'RDV16X'; OUTNAME 'RDV16X'
+*
+ VERSION 'TST'; TASK 'FRING'; SUBARRAY 0; DOBAND 1; BPVER 2; BCHAN 2; ECHAN 15
+  DOCALIB 1; GAINUSE 4; FLAGVER -1; APARM 2 0 0 0 0 0 3 0
+  DPARM 1 0 0 0 0; ANTENNAS I J; REFANT I; SNVER 3; GO; WAIT
+*
+ VERSION 'TST'; TASK 'MBDLY'; APARM 0 0 0 0 0 0; SUBARRAY 0
+  INVERS 3; OUTVERS 4; BIF 0; EIF 0; GO; WAIT
+*
+ VERSION 'TST'; TASK 'CLCAL'; INTERPOL 'SELF'; OPCODE 'CALI'; GAINVER 4;
+  ANTENN 0; SNVER 4; GAINUSE 5; REFANT 0
+   SUBARRAY 1; GO; WAIT
+   SUBARRAY 2; GO; WAIT
+   SUBARRAY 3; GO; WAIT
+   SUBARRAY 4; GO; WAIT
+   SUBARRAY 5; GO; WAIT
+   SUBARRAY 6; GO; WAIT
+   SUBARRAY 7; GO; WAIT
+*
+ VERSION 'TST'; TASK 'CL2HF'; IN2VER 4; APARM 3 3 0; FLAGVER 0
+  INFILE 'FITS:RDV16.SKD'; INVERS 5; SNVER 4; DPARM 14 16 0
+    SUBARR 1; OUTVERS 1; GO; WAIT
+    SUBARR 2; OUTVERS 2; GO; WAIT
+    SUBARR 3; OUTVERS 3; GO; WAIT
+    SUBARR 4; OUTVERS 4; GO; WAIT
+    SUBARR 5; OUTVERS 5; GO; WAIT
+    SUBARR 6; OUTVERS 6; GO; WAIT
+    SUBARR 7; OUTVERS 7; GO; WAIT
+*
+ VERSION 'TST'; TASK 'HF2SV'; INEXT 'HF'; BCOUNT 0; ECOUNT 0
+  OUTFILE 'BOX2TMP:RDV16X'
+  INVERS 1; GO; WAIT
+  INVERS 2; GO; WAIT
+  INVERS 3; GO; WAIT
+  INVERS 4; GO; WAIT
+  INVERS 5; GO; WAIT
+  INVERS 6; GO; WAIT
+  INVERS 7; GO; WAIT
+*
+  INEXT 'SN'; INVERS 4; EXTDEST; INVERS 3; EXTDEST
+  INEXT 'CL'; INVERS 5; EXTDEST
+  INEXT 'HF'; INVERS 1; EXTDEST; INVERS 2; EXTDEST; INVERS 3; EXTDEST
+              INVERS 4; EXTDEST; INVERS 5; EXTDEST; INVERS 6; EXTDEST
+              INVERS 7; EXTDEST
+*
+FINISH
+*---------------------------------------------------------------------------
+*
+*---------------------------------------------------------------------------
+PROC CC(I,J)
+*
+INNAME 'RDV16S'; OUTNAME 'RDV16S'
+*
+ VERSION 'TST'; TASK 'FRING'; SUBARRAY 0; DOBAND 1; BPVER 2; BCHAN 2; ECHAN 15
+  DOCALIB 1; GAINUSE 4; FLAGVER -1; APARM 2 0 0 0 0 0 3 0
+  DPARM 1 0 0 0 0; ANTENNAS I J; REFANT I; SNVER 3; GO; WAIT
+*
+ VERSION 'TST'; TASK 'MBDLY'; APARM 0 0 0 0 0 0; SUBARRAY 0
+  INVERS 3; OUTVERS 4; BIF 0; EIF 0; GO; WAIT
+*
+ VERSION 'TST'; TASK 'CLCAL'; INTERPOL 'SELF'; OPCODE 'CALI'; GAINVER 4;
+  ANTENN 0; SNVER 4; GAINUSE 5; REFANT 0
+   SUBARRAY 1; GO; WAIT
+   SUBARRAY 2; GO; WAIT
+   SUBARRAY 3; GO; WAIT
+   SUBARRAY 4; GO; WAIT
+   SUBARRAY 5; GO; WAIT
+   SUBARRAY 6; GO; WAIT
+   SUBARRAY 7; GO; WAIT
+*
+ VERSION 'TST'; TASK 'CL2HF'; IN2VER 4; FLAGVER 0; APARM 3 3 0
+  INFILE 'FITS:RDV16.SKD'; INVERS 5; SNVER 4; DPARM 14 16 0
+    SUBARR 1; OUTVERS 1; GO; WAIT
+    SUBARR 2; OUTVERS 2; GO; WAIT
+    SUBARR 3; OUTVERS 3; GO; WAIT
+    SUBARR 4; OUTVERS 4; GO; WAIT
+    SUBARR 5; OUTVERS 5; GO; WAIT
+    SUBARR 6; OUTVERS 6; GO; WAIT
+    SUBARR 7; OUTVERS 7; GO; WAIT
+*
+ VERSION 'TST'; TASK 'HF2SV'; INEXT 'HF'; BCOUNT 0; ECOUNT 0
+  OUTFILE 'BOX2TMP:RDV16S'
+  INVERS 1; GO; WAIT
+  INVERS 2; GO; WAIT
+  INVERS 3; GO; WAIT
+  INVERS 4; GO; WAIT
+  INVERS 5; GO; WAIT
+  INVERS 6; GO; WAIT
+  INVERS 7; GO; WAIT
+*
+  INEXT 'SN'; INVERS 4; EXTDEST; INVERS 3; EXTDEST
+  INEXT 'CL'; INVERS 5; EXTDEST
+  INEXT 'HF'; INVERS 1; EXTDEST; INVERS 2; EXTDEST; INVERS 3; EXTDEST
+              INVERS 4; EXTDEST; INVERS 5; EXTDEST; INVERS 6; EXTDEST
+              INVERS 7; EXTDEST
+*
+FINISH
+*---------------------------------------------------------------------------
+*
+* Skip baselines 4-6 and 4-10 (no data)
+*
+ FOR I =  1 TO  3;  FOR J = I+1 TO 19; BB(I,J); CC(I,J); END; END
+ FOR I =  4 TO  4;  FOR J =   5 TO  5; BB(I,J); CC(I,J); END; END
+ FOR I =  4 TO  4;  FOR J =   7 TO  9; BB(I,J); CC(I,J); END; END
+ FOR I =  4 TO  4;  FOR J =  11 TO 19; BB(I,J); CC(I,J); END; END
+ FOR I =  5 TO 18;  FOR J = I+1 TO 19; BB(I,J); CC(I,J); END; END
+*
+*
+RESTORE 1
+
+****************************************************************************
+
+
+Appendix A: Submitting a Batch Job
+
+1) Put your RUN file in the $FITS directory with a name like
+   'BJOB.nnn', where nnn is your AIPS user number.
+   (BJOB.007 for user #7, etc.)
+
+2) Edit the Batch queue: (AIPS Cookbook section 12.10)
+    Batque = 2; batclear; batch
+    VERSION = 'FITS'
+    RUN BJOB
+    endbatch
+    batlist (to list batch queue)
+
+3) In interactive AIPS, type
+    SUBMIT
+
+If there are no errors in your RUN file, the job will begin running in
+the background. You can check its progress by periodically examining
+the message file, using PRTMSG. After the batch job starts, you can
+terminate your AIPS session or leave it running. You should not leave
+AIPS suspended though (control Z) as this may also suspend the
+background job at some installations.

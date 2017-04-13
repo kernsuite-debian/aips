@@ -1,0 +1,159 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1996, 1998, 2000-2001, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: RUN program [ da=host[,host,...] | all ] [DEBUG] [LOCAL] [NORL]
+#-----------------------------------------------------------------------
+# A script to facilitate the execution of AIPS stand alone programs
+# (e.g., FILAI*, SETPAR, POPSGN, SETPAR, SETTVP, etc.).  AIPS and
+# BATER sessions should be initiated via the procedures AIPS and BATER.
+# The version of the program started is determined by $AIPS_VERSION as
+# set upon login or by the execution of $CDOLD, $CDNEW or $CDTST.
+#
+# The DA= option is identical to that in the START_AIPS shell script, as
+# are the DEBUG and LOCAL and NORL options.
+#
+# Generic UNIX version.  Assumes shell functions can be used.
+#-----------------------------------------------------------------------
+#                                       prompt w/o new line.
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "$1"
+  else
+    echo "$1\c"
+  fi
+}
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Any arguments?
+if [ "x$*" = "x" ] ; then
+   echo "Usage: RUN program [ da=host[,host,...] | all ] [DEBUG | -d]"
+   exit 1
+else
+   DEBUG=FALSE; export DEBUG
+   DAOPT=""; export DAOPT
+   APROG=""; export APROG
+   PDIR=$LOAD
+   for i
+      do
+      j=`echo $i | tr '[a-z]' '[A-Z]'`
+      case $j in
+#                                       Not this way for AIPS or BATER.
+         AIPS | BATER)
+            echo "To start up $j, type $j OLD, $j NEW or $j TST."
+            [ $j = AIPS ] && \
+            echo Refer to the AIPS man page or help file for more info.
+            exit 1
+         ;;
+#                                       Catch DEBUG flag
+         -D | DE | DEB | DEBU | DEBUG)
+            DEBUG=TRUE; PDIR=`$LPWD`
+            echo "Debug will assume LOCAL."
+            if [ "x$DBUGR" = "x" ] ; then
+               ni1 "Enter name of debugger (e.g. dbx): "
+               read DBUGR; export DBUGR
+            fi
+         ;;
+#                                       Local
+         L | LO | LOC | LOCA | LOCAL)
+            PDIR=`$LPWD`
+         ;;
+#                                       Catch any disk assignments
+         DA=*)
+            DAOPT=`echo $j | sed -e 's/^...//'`
+         ;;
+#                                       Suppress readline
+         N | NO | NOR | NORL)
+	    READLINE=NO; export READLINE
+	 ;;
+#                                       Anything else must be a file
+         *)
+            if [ "x$APROG" = "x" ] ; then
+               APROG=$j
+            else
+               echo "Sorry, I can only run one program at a time."
+               echo "You already asked me to run $APROG.  Now you've"
+               echo "REALLY confused me with $j!  I'm copping out."
+               exit 1
+            fi
+         ;;
+      esac
+   done
+   if [ "x$APROG" = "x" ] ; then
+      echo "No program specified!"
+      echo "Usage: RUN program [da=host[,host,...] | all] [DEBUG | -d]"
+      exit 1
+   elif [ ! -s $PDIR/${APROG}.EXE ] ; then
+      echo "Cannot find $PDIR/${APROG}.EXE"
+      exit 1
+   fi
+#                                       Define disks:
+   echo "Data disk assignments:"
+#                                       but make sure things are defined
+   . $AIPS_ROOT/HOSTS.SH
+   . $AIPS_ROOT/AIPSPATH.SH
+   . $AIPS_ROOT/AIPSASSN.SH
+#                                       If have perl, do it the fast way
+   pid=$$
+   if [ "$AIPSTMP" = "" ] ; then
+      tmpfil=/tmp/DADEVS.$pid
+   else
+      tmpfil=$AIPSTMP/DADEVS.$pid
+   fi
+   [ "$HAVE_PERL" != "" ] && $SYSUNIX/DADEVS.PL $$
+   if [ -f $tmpfil ] ; then
+      . $tmpfil
+      rm -f $tmpfil
+   else
+#                                       If not or if it broke, fall back
+      . $SYSUNIX/DADEVS.SH
+   fi
+#                                       Announce what's about to happen.
+   if [ "$NVOL" = "0" -o "$DA01" = "" ] ; then
+      echo '*********************************************************'
+      echo 'HELP!  No Defined data areas!  You can proceed now to run'
+      echo "program $APROG, but you may see LOTS of complaints about"
+      echo "not being able to access the message file.  If you think"
+      echo "there should have been some data areas defined, please"
+      echo "check DADEVS.LIST or .dadevs files, or AIPSASSN.\*"
+      echo '*********************************************************'
+      echo "If you want to proceed, enter YES (uppercase) now:"
+      read yn
+      [ "$yn" = "YES" ] || exit 1
+   fi
+   echo "Starting up $APROG" \
+        "(RELEASE OF `echo $AIPS_VERSION | sed -e 's/.*\///g'`)"
+   if [ "$DEBUG" = TRUE ] ; then
+       echo "using debugger $DBUGR (hope you typed it right!)"
+       exec $DBUGR $PDIR/$APROG.EXE
+    else
+       exec $PDIR/$APROG.EXE
+    fi
+fi

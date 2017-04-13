@@ -1,0 +1,422 @@
+; FLATN
+;---------------------------------------------------------------
+;! Re-grid multiple fields into one image incl sensitivity
+;# Task IMAGING OOP
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1997-2007, 2009-2010, 2013, 2016
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FLATN     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FLATN: Re-grid multiple fields and pointings to one image
+                                   Input images
+INNAME                                Image name (name)
+INCLASS                               Image name (class)
+INSEQ              0.0      9999.0    Image name (seq. #)
+                                         (specify)
+INDISK             0.0         9.0    Image disk drive #
+NFIELD             1.0      4096.0 Max number of fields per
+                                      pointing
+NMAPS              1.0             Number of pointings
+                                   Output image
+OUTNAME                               Image name (name)
+OUTCLASS                              Image name (class)
+OUTSEQ            -1.0      9999.0    Image name (seq. #)
+OUTDISK            0.0         9.0    Image disk drive #
+IMSIZE          0.0     16384.0    Output image size in pixels
+COORDINA                           Central pixel coordinate
+                                   all 0 => use observed
+COOTYPE                            Desired projection type
+COOINC                             Desired coordinate increment
+COOREF                             Desired reference pixel
+ROTATE         -180.0      180.0   Rotation to be used (deg)
+REWEIGHT        0.0         4.0    (1) Interpolation halfwidth
+                                   (2) Minimum fraction of good
+                                       pixels required (0->1/3)
+WEIGHTIT        0.0                Weight image down by WEIGHTIT
+                                   times radius from center in "
+EDGSKP                             Skip pixels around the edges
+                                   inscribed ellipse also used
+OPTYPE                             For mosaics only (NMAPS>1)
+                                   compute and output expected
+                                   noise ('NOIS') or weight
+                                   ('WEIG').
+APARM                              (1) >0 => do 3-D corr.
+                                      ONLY for snapshots
+                                   (2) Parallactic angle (deg)
+                                   (3) Zenith angle (deg)
+                                   (4-8) radial scaling parms
+                                   (9) Linear scaling
+PBPARM                             Beam parameters (NMAPS > 1)
+                                   (1) Cutoff; (2) Use (3)-(7)
+                                   (3)-(7) Beam shape
+NOISE            0.0               Relative uncertainties by
+                                   pointing: 0 -> image header
+BADDISK          0.         36.    Disks to avoid for scratch
+----------------------------------------------------------------
+FLATN
+Type: Task
+Use: FLATN does an interpolation of a set of images (multiple fields
+     produced by IMAGR of multiple pointings) to a single image of
+     standard geometry centered on the pointing position of the first
+     pointing or a user-specified position.
+
+     Interpolation is done only in the first 2 dimensions.  FLATN will
+     interpolate over blanked pixels so that it can fill in small
+     blanked regions and handle edges without having to discard image
+     area.  Where images overlap, they are averaged with weighting
+     that accounts for the location within the pointing and for the
+     distance from the center of each field.  If there are multiple
+     pointings ("mosaicing') so that NMAPS > 1, the output image is
+     corrected for the single-dish beam patterns.  In that case, one
+     may compute a noise image (sigma) or a weight image (1/sigma^2)
+     instead of an actual image.
+
+     FLATN will search fields nnn through nnn+NFIELD-1 for sequence
+     numbers INSEQ through INSEQ+NMAPS-1 where INCLAS=xxxnnn with nnn
+     being a 3 digit number (no blanks - typically 001).
+Adverbs:
+  INNAME......The input image name.   Standard defaults.
+  INCLASS.....The input image class.  The first 2-3 characters determine
+              a base name and the last 4-3 are a numeric field number
+              nnn (i.e. ICL001 or IIM012 or IC3245).  Class names for
+              higher fields are nnn through nnn+NFIELD-1.  Old style
+              names in which the last 2 characters represent the field
+              number minus one in extended Hex are also supported.
+  INSEQ.......The input image sequence number. <= 0 => 1
+              NOTE THAT THIS DEFAULT IS DIFFERENT FROM USUAL.
+  INDISK......The input image disk drive no. 0 => any
+  NFIELD......The maximum number of fields imaged (1-4096) for any
+              pointing.
+  NMAPS.......The number of pointings - using INSEQ numbers INSEQ
+              through INSEQ+NMAPS-1.  If NMAPS > 1, the output image
+              will be corrected for a primary beam pattern; otherwise
+              it is not.  The product of NFIELD * NMAP is limited to
+              1048576.
+  OUTNAME.....The output image name.  blank => Standard defaults based
+              on INNAME.
+  OUTCLASS....The output image class.  Standard behavior.
+  OUTSEQ......The output image seq. no., 0=> highest unique
+              If >0; image will be created if new, overwritten if image
+              name exists.
+  OUTDISK.....Output disk drive no., 0=> highest with space
+  IMSIZE......Output image size in pixels [1=columns, 2=rows].  Default
+              is the input image size but you should probably use
+              something much larger.  (<= 8192)
+  COORDINA....The RA and declination coordinates are found as:
+              RA  = abs(CO(1)) + abs(CO(2))/60 + abs(CO(3))/3600
+                  if any of CO(1), CO(2), CO(3) < 0: Xpos = -Xpos
+              Dec = abs(CO(4)) + abs(CO(5))/60 + abs(CO(6))/3600
+                  if any of CO(4), CO(5), CO(6) < 0: Ypos = -Ypos
+              The units are standard FITS units (e.g degrees) except
+              that right ascensions are in hours of time.
+              RA = Dec = 0 => use the Observed RA and Dec (pointing
+              position) or if they is 0, use the center of field 1.
+              Note that COORDIN of 1-3 is treated as being in hour,
+              minutes, and seconds of time even if the axis is not a
+              right ascension.
+  COOTYPE.....Desired image projection ' ' => same as input
+              Allowed values '-SIN','-TAN','-ARC','-STG','-NCP' are
+              the familier projective geometries.  Full-sky
+              cylindrical geometries '-AIT','-GLS','-MER','-CAR',
+              '-MOL', and '-PAR' are also supported.  These geometries
+              turn into "oblique" coordinates when the reference
+              latitude/declination is not 0.0D0.  You are unlikelt to
+              want an oblique system.  But note that RA and DEC both
+              0.0 cause the task to take the RA and Dec of the first
+              image for projective geometries and the RA of the first
+              image with Dec=0.0 for the all-sky coordinates.
+  COOINC......Coordinate increment at the reference pixel in arc sec.
+              0 -> use that of first input image.  Be careful of sign.
+  COOREF......Coordinate reference pixel.  (0,0) -> use the output
+              image center.  Need not be in the image or integer in
+              value.
+  ROTATE......Rotation to be used.  Note that 0 is not a default
+              telling the task to use the rotation in the first image;
+              it is a real value instead.  Use GETHEAD to get the
+              first header rotation if desired setting ROTATE=KEYV(1).
+  REWEIGHT....Interpolation kernel parameters:
+              (1) Half width of the interpolating kernel
+                  (1 - 4).  Default = 1
+              (2) Minimum fraction of pixels in interpolation kernal
+                  area required for non-blanked output.
+                  <= 0 or >= 1  => 0.333
+  WEIGHTIT....If >0, reduce the weight in each image by WEIGHTIT *
+              Radius in arc seconds from the center pixel.  This is to
+              give less weight to pixels more affected by non-planar
+              affects.  Thus Wt = max (0.0001, 1.0 - WEIGHTIT*radius).
+              Note that this is a very stong taper if you are not
+              careful and it is applied along with the primary beam
+              correction when NMAPS > 1.  NOTE the inscribed ellipse
+              operation described with EDGSKP.
+  EDGSKP......Omit EDGSKP (or if EDGSKP < 0, -EDGSKP-1) pixels on all
+              sides of the input images.  This is to avoid various
+              edge effects from damaging the result.  If EDGSKP >= 0,
+              the inscribed ellipse of X radius NX/2-EDGSKP and Y
+              radius NY/2-EDGSKP is cheked and all points outside it
+              are given weight 0.0001.  (EDGSKP=0 -> 5 for the ellipse
+              but the whole image is used otherwise.)  To include all
+              pixels set EDGSKP=-1.
+  OPTYPE......When NMAPS > 1, control of what is computed and output:
+              'NOIS'  a noise image based on the assumption that the
+                      noise in an image is constant before application
+                      of the primary beam correction and is given by
+                      NOISE(i) below for pointing i.
+              'WEIG'  a weight image given by (1/sigma^2).
+              other   a beam corrected, noise weighted average image.
+              If NMAPS=1, OPTYPE is ignored.
+  APARM.......Transformation parameters:
+               (1) = if > 0 then apply 3-D corrections
+                     SEE EXPLAIN OHGEO or FLATN
+                   This really works well only for snapshots and for
+                   fields that are not too far from the pointing
+                   position.
+               (2) Parallactic angle for 3-D correction if not
+                   already a header keyword. (degrees)
+               (3) Zenith angle for 3-D correction if not
+                   already a header keyword. (degrees)
+               (4-8) Parameters for radial scaling for primary
+                     beam effects.
+               (4) = Antenna FWHM at nominal sky frequency (deg)
+                   0 => no scaling.
+               (5) = Fractional bandwidth
+               (6-8) C1, C2, C3
+                   SEE EXPLAIN FLATN (or OHGEO)
+               (9) Linear scaling factor, 0 => 1.0
+                   SEE EXPLAIN FLATN (or OHGEO)
+  PBPARM......Primary beam parameters used only if NMAPS > 1:
+              (1) Lowest beam value to believe: 0 -> 0.1
+              (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+              --------------------------------------------------------
+              In FLATN only: if PBPARM(1) > 0 and PBPARM(2) > 0 and
+              PBPARM(3) through (7) are all 0, then no primary beam
+              correction is made.  All other tasks use the VLA or ATCA
+              beam if PBPARM(3) = 0 even though PBPARM(2) > 0.
+              --------------------------------------------------------
+              (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See explain for details
+  NOISE.......Expected image noise per pointing.  0 -> check header of
+              first field in pointing for ACTNOISE, if missing use 1.
+              The absolute scaling affects the output noise or weight
+              images but is otherwise not relevant.  This just scales
+              one pointing relative to another.  The average value of
+              NOISE is used for all pointings in excess of 64 unless
+              ACTNOISE is present in those headers.  Note that
+              ACTNOISE is written im image headers by IMEAN when it
+              succeeds in fitting the true noise of an image.
+  BADDISK.....Disks to avoid for the scratch files.
+----------------------------------------------------------------
+
+Primary Beam Parameters
+
+     FLATN corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+0.0738          -0.897E-3       2.71 E-7        -0.242E-10
+0.3275          -0.935          3.23            -0.378
+1.285           -1.329          6.445           -1.146      *
+1.465           -1.343          6.579           -1.186
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.
+
+3-D Corrections:
+
+   Corrections can be made for the distortion of an image made by a
+coplanar array which is not normal to the field center.  This case
+includes snapshots made with the VLA or syntheses made with an
+east-west interferometer using u, v and ws in the sine (????-SIN)
+projection.  In these cases the array elements are confined to a plane
+(or are nearly so) but the normal to this plane is oriented in a
+direction other than the center of the image produced.  This will
+cause a distortion of the geometry but not of the image.  OHGEO will
+correct for this distortion if APARM(1) > 0 and two parameters
+("parallactic" angle and "zenith" angle are provided.  These are the
+parallactic and zenith angles of the image center.  For east-west
+arrays these values are from a "zenith" of the appropriate celestial
+pole; for the VLA these are with respect to the instrumental zenith.
+   The parallactic and zenith angles can be provided in degrees as
+either catalog header keywords 'PARANGLE' and 'ZENANGLE' or as
+APARM(2&3) in which case they will be converted into header keywords.
+Note: for VLA snapshots task WFCLN and IMAGR can provide the necessary
+catalog keywords.
+   The 3D correction is based on the distance from the tangent point
+which may be the same as the pointing position (DO3DIMAG false) or
+different (DO3DIMAG true in IMAGR).  The coordinate reference pixel
+must give the tangent point position.  The x and y coordinates must be
+RA and Declination or vice versa or this program will not work
+properly.
+   Note: this correction will not correct for image distortion caused
+by a noncoplanar array such as an image made from VLA data consisting
+of multiple snapshots or an extended synthesis.
+
+Radial Scaling for Primary Beam Effects.
+
+In synthesis observations the variation of the primary antenna
+gain over the observed bandpass can cause the effective
+observing frequency to vary radially from the antenna pointing
+position.  This will cause a radial variation in apparent image
+scale; usually a contraction of the scale with increasing
+radius.  A correction can be made for this using parameters
+APARM(4-8).
+   Note there may also be a constant scale error due to an
+incorrect assumed central frequency.  This correction will not
+correct for this effect.
+   The radial corrections are based on the position offset from the
+original pointing center and this information MUST be in the catalog
+header.  GETHEAD can obtain these values using keywords 'OBSRA' and
+'OBSDEC' to see if non-zero values are present.
+
+APARM(4)
+   If APARM(4) is larger than zero the a radial scaling is done.
+This value is the antenna primary beam FWHM in degrees at the
+nomimal sky frequency.  For the VLA (25 m antenna) this is
+7.203E8/Freq (Hz).
+
+APARM(5)
+   This value is the fractional bandpass which is the true
+bandpass divided by the nominal frequency.
+
+APARM(6-8)
+   These coefficients, called C1, C2 and C3, parameterize the
+beam shape.  For a Gaussian beam C1 = 2*log(2)/3 = 0.4621, C2=0
+and C3=0.  For a uniformly illuminated circular aperture (a good
+approximation for the VLA) C1=0.46, C2=0 and C3=0.58 gives a
+good approximation out to a distance of FWHM.
+NOTE: THIS CORRECTION CAN GIVE VERY VERY WRONG ANSWERS OUTSIDE
+OF THE FWHM!!!
+
+Linear scaling:
+
+   An error in the assumed center frequency of data used to make
+a synthesis image will cause a misscaling of the image as
+discussed in the previous section.  If the assumed bandpass
+shape is incorrect there will be a constant scaling error over
+the entire image.  This effect can be corrected in a number of
+other tasks (UVADC, WFCLN) and if this correction has already
+been applied it should NOT be reapplied here.  This factor is
+the ratio of the true centroid frequency to the assumed
+frequency.
+   If APARM(9) is greater than 0 then it is used as an overall
+scaling factor which is used in addition to any scaling from
+APARM(4-8).

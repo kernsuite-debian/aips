@@ -1,0 +1,198 @@
+#!/usr/bin/perl -T
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2001, 2004
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# secure stuff
+require 5;
+use CGI;
+
+$aipsweb = "/home/nraoweb/nm/content/aips/"; # where the XXX.CHANGE.DOCs are
+
+$ENV{'PATH'} = "/bin:/usr/bin";
+$ENV{'IFS'} = " ";
+
+$now = localtime();             # in case we need it...
+
+CGI::ReadParse;
+$query = new CGI;
+
+print $query->header;           # http header only
+                                # This stuff replicates the "gold" style.
+                                # We need PHP; cgi's don't do server side
+                                # includes, and this (below) is a mess!
+                                # Plus, if we change the style, it doesn't
+                                # automagically update.  Grr...
+printf("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n");
+printf("<!-- Compliant with NRAO HTML Standards, v0.1, 1999.08.10 Stephan Witz, AOC -->\n");
+printf("<html><head>\n");
+printf("<title>NRAO - AIPS CHANGE.DOC Search Results</title>\n");
+printf("</head>\n");
+printf("<body text=\"#000000\" bgcolor=\"#ffffff\" link=\"#0000ff\" vlink=\"#000066\">\n");
+printf("<div align=\"center\">\n");
+printf("<table align=\"center\" border=\"0\" cellspacing=\"0\" cellpadding=\"0\" width=\"580\">\n");
+printf("  <tr><td align=\"center\">\n");
+printf("    <a href=\"/index.shtml\"><img vspace=\"15\" border=\"0\" width=\"580\" height=\"34\"\n");
+printf("     src=\"/images_buttons/banner_secondpage_top.gif\" alt=\"NRAO\"></a>\n");
+printf("    </td></tr><tr><td valign=\"top\">\n");
+
+# Get other useful info.  Should probably substr() these too...
+
+$rip = $ENV{'REMOTE_ADDR'};	# Remote IP address
+$rho = lc($ENV{'REMOTE_HOST'});	# Remote host name if any
+$bro = $ENV{'HTTP_USER_AGENT'};	# Browser, not that we really care...
+$who = $ENV{'REMOTE_USER'};	# May not be set
+$ref = lc($ENV{'HTTP_REFERER'});# Only allow approved referrers.
+
+
+
+if ( $#ARGV == -1 ) {
+  printf("<TITLE>AIPS Recent Changes</TITLE></HEAD><BODY>\n");
+  printf("<H2 ALIGN=CENTER><A HREF=\"/aips/\"><IMG");
+  printf(" SRC=\"/aips/aips.gif\"");
+  printf(" ALT=\"AIPS\"></A>\n");
+  printf(" Search CHANGE.DOC entries\n");
+  printf("<A HREF=\"http://www.nrao.edu/\"><IMG ");
+  printf(" SRC=\"/aips/nraologo_tiny.gif\" ");
+  printf(" ALT=\"NRAO\"></A></H2>\n\n");
+  printf("<P>The AIPS code management system includes one file called\n");
+  printf("<CODE>CHANGE.DOC</CODE> in which most major code changes are\n");
+  printf("documented.  You can list the entries that contain a given word\n");
+  printf("(or part of a word) by entering the word in the appropriate\n");
+  printf("place below.  What you get back is a chronological list (from\n");
+  printf("early to late) of all entries in that file which contain the\n");
+  printf("word in question.</P>\n\n");
+  printf("<P>This is a good way of finding out what will be in the next\n");
+  printf("release of Classic AIPS ('TST').  However, changes for 'NEW' and\n");
+  printf("'OLD' will also be listed, oldest entries first.  Remember 'TST'\n");
+  printf("is NOT available outside of NRAO unless you are prepared to run\n");
+  printf("a midnight job.  See also the <A\n");
+  printf("HREF=\"patch.html\">patches</A>\n");
+  printf("information.  Also, bear in mind that bug fixes you see\n");
+  printf("mentioned here for TST may have been introduced in TST, not the\n");
+  printf("public version! </P>\n\n");
+  printf("<ISINDEX PROMPT=\"Find CHANGE.DOC entries for... \">\n\n");
+  printf("<P>Enter the word on which you want information.\n");
+  printf("For example, if you want to see recent CHANGE.DOC entries for\n");
+  printf("MX, you would enter</P><PRE>\n     MX\n</PRE>\n");
+  printf("<P>in the search field above.</P>\n");
+  printf("<P>The CHANGE.DOC files for all currently on-disk versions of\n");
+  printf("AIPS will be searched for the item you specify.\n");
+} else {
+  $item = substr($ARGV[0], 0, 20);
+  $item =~ s/%(..)/pack("c",hex($item))/ge;
+  # Escape the nasty metacharacters
+  # (List courtesy of http://www.cerf.net/~paulp/cgi-security/safe-cgi.txt)
+  #  $item =~ s/([;<>\*\|\`&\$!\#\(\)\[\]\{\}:\'\"\n])/\\$item/g;
+  # SECURITY FIX: REMOVE NEWLINES
+  # $item =~ tr/\n//d;
+  # Nah, do it right.  INCLUDE these characters, zap all others:
+  $item =~ s/[^a-zA-Z0-9\-_\+\@%\.]//g;
+  if ($item =~ /\// || $item =~ /\./ || $item =~ /\\/ ||
+      $item =~ /shit/i || $item =~ /fuck/i || $item =~ /damn/i ||
+      $item =~ /goddamn/i) {
+    printf("<TITLE>Invalid Input</TITLE></HEAD><BODY>\n");
+    printf("<H2>Invalid Input</H2>\n\nYour input was not valid.\n");
+    goto end;
+  }
+  printf("<title>AIPS CHANGE.DOC entries (version 'TST') for $item</title>\n");
+  printf("</head><body>\n");
+  printf("<table width=\"100%\" border=\"0\" cellpadding=\"0\">\n");
+  printf(" <tr>\n");
+  printf("  <td align=\"left\">\n");
+  printf("   <a href=\"/aips/\"><img\n");
+  printf("    src=\"/aips/aips.gif\" alt=\"AIPS\"></a></td>\n");
+  printf("  <td align=\"center\" valign=\"top\"><strong>AIPS CHANGE.DOC\n");
+  printf("   entries for</strong><br><em>$item</em></td>\n");
+  printf("  <td align=\"right\">\n");
+  printf("   <a href=\"http://www.nrao.edu/\"><img\n");
+  printf("    src=\"/aips/nraologo_tiny.gif\" alt=\"NRAO\"></a></td>\n");
+  printf(" </tr></table><p>\n\n");
+  @files = ("TST", "NEW", "OLD");
+  $oldelim = $/;
+  $/ = "\n\n";			# paragraph mode
+  $count = 0;
+  foreach $file (@files) {
+    printf("<h3>Changes relating to $item in version $file</h3>\n\n");
+    printf("<hr><pre><code>\n");
+    $pathn = $aipsweb . $file . ".CHANGE.DOC";
+    if (! open(FILE, $pathn)) {
+      printf STDERR "CGI CHANGE: Error opening $pathn: $!\n";
+      printf "<p>Sorry, CHANGE.DOC for version $file is not available.</p>\n";
+    } else {
+      while (<FILE>) {          # if you blush easily, don't read this!
+	s/shit/junk/ig;
+	s/fuck/junk/ig;
+	s/goddamn/goshdarn/ig;
+	s/damn/dang/ig;         # dang me, they oughtta get a rope and...
+	print if /$item/i;
+	$count++;
+      }
+      close (FILE);
+    }
+    printf("</code></pre>\n\n");
+  }
+  $/ = $oldelim;
+  if ($count < 1) {
+    printf("<h1>Nothing found for $item</h1>\n");
+    printf("<p>Sorry, nothing found for $item in AIPS CHANGE.DOC files.\n");
+    printf("</P><P>You can go\n");
+    printf("<a href=\"/cgi-bin/CHANGES\">back</A>\n");
+    printf("to the CHANGES page, or to the\n");
+    printf("<A HREF=\"/aips/\">AIPS</A> home page");
+    printf("from here.\n<HR>\n");
+  }
+}
+end:
+printf("    <!-- start of nrao-trailer.shtml -->\n");
+printf("    </td>\n");
+printf("  </tr>\n");
+printf("  <tr><td>&nbsp;<!-- white space --></td></tr>\n");
+printf("  <tr>\n");
+printf("    <td align=\"center\">\n");
+
+printf("<img src=\"/images_buttons/bottom_banner.png\" alt=\"========\"\n");
+printf(" border=\"0\" width=\"580\" height=\"26\" usemap=\"#L115\">\n");
+printf("<map name=\"L115\">\n");
+printf("<area shape=\"rect\" coords=\"0,0,74,25\" alt=\"[Home]\"\n");
+printf("  href=\"http://www.nrao.edu/\"> <area shape=\"rect\" coords=\"75,0,194,25\" alt=\"[Contact Us]\"\n");
+printf("  href=\"http://www.nrao.edu/cgi-bin/contact\">\n");
+printf("<area shape=\"rect\" coords=\"195,0,319,25\" alt=\"[Directories]\"\n");
+printf("  href=\"http://www.nrao.edu/navbar/directories.shtml\">\n");
+printf("<area shape=\"rect\" coords=\"320,0,401,25\" alt=\"[HELP!]\"\n");
+printf("  href=\"http://www.nrao.edu/navbar/help.shtml\">\n");
+printf("<area shape=\"rect\" coords=\"402,0,489,25\" alt=\"[Search]\"\n");
+printf("  href=\"http://www.nrao.edu/search/\">\n");
+printf("<area shape=\"rect\" coords=\"490,0,579,25\" alt=\"[Site Map]\"\n");
+printf("  href=\"http://www.nrao.edu/navbar/sitemap.shtml\">\n");
+printf("</map>\n");
+printf("    </td>\n");
+printf("  </tr>\n");
+printf("  <tr><td><hr></td></tr>\n");
+printf("  <tr><td>\n");
+printf("<div align=\"right\"><em>Facility created by ");
+printf("<a href=\"/~pmurphy/\">");
+printf("Pat Murphy</a>\n</em></div></td></tr></table></body></html>\n");
+

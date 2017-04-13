@@ -1,0 +1,168 @@
+@@
+Task Data file    TD100000
+
+
+A. Overview
+
+
+Function:  The task data file is used to pass data to spawned tasks and
+to return a "return code" to the initiating tasks.
+
+Details:  The only programs in the AIPS system which are allowed to
+spawn tasks are AIPS, BATER, AIPSCn, and AIPSBm.  These tasks use
+the task data file to pass binary parameter data to spawned tasks.
+This file is the only mechanism for direct intertask communication.
+Other forms of intertask communication are accomplished indirectly via
+the changes produced in the various catalog, map, history, plot, et al.
+files by the normal functioning of verbs and tasks.  SHOW and TELL
+use file type TC to pass parameters to running tasks in a manner
+similar to that used for the TD file.
+
+Name:  The file is named TD100000.  It is a permanent file and must
+contain at least 46 256-word records.  It must be created during system
+installation.
+
+
+B. File structure
+
+
+     The file consists of 46 256-word physical records.  They are
+ordered logically in the file as
+
+    FIELD    TYPE             DESCRIPTION
+
+      1      I*4(256)    Control record
+      2      I*4(768)   Data area: NPOPS = 1
+      3      I*4(768)   Data area: NPOPS = 2
+      4      I*4(768)   Data area: NPOPS = 3
+      5      I*4(768)   Data area: NPOPS = 4
+      6      I*4(768)   Data area: NPOPS = 5
+      7      I*4(768)   Data area: NPOPS = 6
+      8      I*4(768)   Data area: NPOPS = 7
+      9      I*4(768)   Data area: NPOPS = 8
+     10      I*4(768)   Data area: NPOPS = 9
+     11      I*4(768)   Data area: NPOPS = A
+     12      I*4(768)   Data area: NPOPS = B
+     13      I*4(768)   Data area: NPOPS = C
+     14      I*4(768)   Data area: NPOPS = D
+     15      I*4(768)   Data area: NPOPS = E
+     16      I*4(768)   Data area: NPOPS = F
+
+The control record is divided into fifteen five-word entries and the
+remaining 181 words are ignored.  Each entry has the structure:
+
+    WORD     TYPE             DESCRIPTION
+
+     1       I*4(2)      Task name: (Hollerith)
+     3       I*4         Return code
+     4       I*4(2)      Reserved
+
+The data areas are simply 768 words of binary data.  Their structures
+are almost totally determined by the task being activated.  The only
+standards are that all task-dependent values are in floating point
+and that the first N integer values convey
+     1       I*4         The logon user number
+     2       I*4         The assigned TV device number
+     3       I*4         The assigned TK device number
+     4       I*4         The MSGKILL parameter
+     5       I*4         The ISBATCH parameter
+     6-8     I*4         reserved
+     9       R*4         DOWAIT value
+    10       R*4         Version string (4 characters)
+
+Words 8 * NWDPFP + 3 through 768, as needed, contain the adverb values
+required by the task in binary form.  Note: character adverbs are sent
+as packed strings, but use (NCHAR + 3) / 4 floating-point locations no
+matter how many characters actually fit in a floating-point value.
+
+
+C. Usage notes
+
+
+     This file is clearly important and somewhat dangerous.  It must be
+handled carefully and kept available to the full system as much as
+possible.  There are standard routines for handling the file.  There
+should not be a need for new routines and/or new uses of this file.
+
+
+D. Routines and commons for writing the task data file
+
+
+     There are two standard subroutines which write on the task data
+file: AU2 which spawns tasks for AIPS and AIPSBn and RELPOP which
+resumes the initiating programs.  The subroutines AUA (called CUA in
+BATER) which does the verb SUBMIT, CHSTOP which can start up batch
+queues for AIPSCn, and GTPARM, which is described in the next section,
+also write on this file.
+
+     Except for the batch submission and activation process, task
+activation is done by the following process.  AU2 writes the standard
+values (listed above) into the first 8 integers and 2 reals of the
+data area corresponding to the current value of NPOPS (physical
+records 3*NPOPS - 1 through 3*NPOPS + 1).  The remainder is filled by AU2
+with the adverb values for the task.  Then AU2 places the root task name
+in record one in the entry corresponding to the current value of NPOPS
+(i.e. words 5*NPOPS - 4 through 5*NPOPS - 2) and the initial return
+code (-999) in the return code entry (5*NPOPS).  Finally, AU2 releases
+control of the task data file, activates the task, and waits for a
+resumption signal from the spawned task using subroutine TASKWT.  That
+signal is now given by changing the -999 return code to some other
+value (or by aborting).  AU2 determines the order of the adverbs
+required by the task by reading adverb names from the Inputs text file
+associated with that task.  Using the POPS language subroutines, AU2
+locates the adverbs in the symbol table, determines from the symbol
+table the number of words of data corresponding to the adverb name and
+the location of those words in the K array, and moves those words to
+the data area.  Note that this makes tasks impervious to changes in
+POPS and the structure of the K array.
+
+     RELPOP is the subroutine used by spawned tasks to resume AIPS,
+AIPSBn, and BATER.  A one word "return code" is written on record 1
+in the entry corresponding to the current value of NPOPS.  At present,
+this return code has only a binary meaning.  A value of zero means
+that the spawned task was happy, at least when it called RELPOP.  Any
+other value implies problems and causes batch jobs to abort.
+
+     The activation of AIPSCm and AIPSBn is less complicated.  AIPSC
+requires three adverbs: BATQUE, the desired batch queue number, DETIME,
+the desired delay time before starting the job, and VERSION, the
+desired release for the AIPSB to be used.  AIPSB requires only the
+job number that QMNGR wants to be run.  Thus, Inputs files and language
+routines are not needed.  For reasons of speed and simplicity in
+dealing with the message file, the AIPSs run their batch checkers
+(AIPSC) with NPOPS = NINTRN+1 through 2*NINTRN.  To force this, AUA
+uses the areas appropriate to that value of NPOPS.  BATER and its
+checker both use NPOPS = 2*NINTRN+1.  The checker programs will
+activate the batch control program QMNGR if it is not already running.
+To do this, Checker uses the data area appropriate to the value of
+NPOPS under which the QMNGR is supposed to run (2*NINTRN+2).  Other
+than these differences, the activation of AIPSCn and AIPSBm
+procedes by the same process as for other tasks.  (Note: NINTRN is the
+maximum number of simultaneous interactive AIPSs allowed.)
+
+
+E. Routines and commons for reading the task data file
+
+
+     The subroutine GTPARM is used by all spawned tasks to obtain the
+data passed by the initiating program.  GTPARM reads the first record
+in the task data file and locates the entry containing the root task
+name.  This location implies the value of NPOPS which is to be used
+and the location in the task data file of the binary data.  GTPARM then
+moves the requested number of words from the disk area to a buffer
+provided by the calling program and initializes MSGCNT, NPOPS, NLUSER,
+TSKNAM, and MSGCNT in the common /MSGCOM/.  Finally, GTPARM zeros the
+entry containing the task name and updates the control record (# 1) in
+the task data file.  This last operation is needed in order to prevent
+interference between AIPSm's and AIPSBm's in initiating tasks with
+the same root name.  GTPARM also returns a parameter (RQUICK) which
+instructs the task to resume the initiating program as soon as possible
+or only after the task has done its thing.  It is this parameter which
+forces batch processes to be synchronous, but allows asynchronous
+processes for interactive users.  The formula is simply
+
+      RQUICK  =  (.NOT. DOWAIT)  .AND.  (NPOPS .LE. 2 * NINTRN)
+                   .AND.  (ISBTCH.NE.32000)
+
+GTPARM also picks up the assigned TV and TK device numbers and the code
+to suppress messages (if the user asserted MSGKILL TRUE).

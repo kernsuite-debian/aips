@@ -1,0 +1,903 @@
+; FILLM
+;-----------------------------------------------------------------------
+;! reads VLA on-line/archive format uv data tapes (post Jan 88)
+;# TASK TAPE UV VLA
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1997, 1999-2008, 2010
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FILLM     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FILLM     Task to read a VLA archive tape
+INTAPE                             Tape drive number
+DATAIN                             Non-blank: disk file name
+NFILES                             Number of files to advance
+                                   Also applies to ON-LINE!
+BAND                               Freq. band:
+                                     (4,P,L,S,C,X,U,K,A,Q)
+QUAL             -1.0    32767.0   Source qualifier -1=>all
+CALCODE                            Calibrator code
+VLAOBS                             VLA obs. pgm. name ('AZ99')
+VLAMODE                            VLA obs. mode ('  '=any)
+REFDATE                            Reference date. 'yyyymmdd'
+TIMERANG *                         Timerange selected
+BCHAN             0.0      512.0   First spectral channel
+ECHAN             0.0      512.0   Highest spectral channel
+OUTNAME                            Output UV file name (name)
+OUTSEQ           -1.0     9999.0   Output UV file name (seq. #)
+OUTDISK           0.0        9.0   Output UV file disk unit #.
+DOUVCOMP         -1.0        1.0   1 (T) => compressed data
+DOCONCAT         -1.0        1.0   1 (T) => append data to old
+                                   files
+APARM    ?                         1 0 : append files
+         ?                           1 : each scan => new file
+         ?                           2 : close current files,
+         ?                               create new ones.
+         ?                           3 : immediate stop.
+NCOUNT                             Number of files to read
+DOWEIGHT         -1.0       10.0   Use nominal sensitivity to
+                                   scale weights?
+                                   = 10, use Memo 108 weights
+DOACOR           -1.0        1.0   Load autocorrelation data?
+CPARM                              User options.
+                                   1 => Avg. time (seconds)
+                                   2 => bitmap    (see help)
+                                        = 16 for planets & Sun
+                                   3 => Max. OK IF status
+                                        <=3 => 3
+                                   4 => Control dropping of
+                                        shadowed data
+                                        < 0 => no shadow check
+                                        0 => system bit when ok
+                                             else 25m
+                                        > 0 => Shadow limit is
+                                              CPARM(4) in meters
+                                   5 = channel code (see HELP)
+                                   6 => Subarray number-see HELP
+                                   7 => FQ entry tolerance (kHz)
+                                        (see HELP)
+                                   8 => CL table time incr. min
+                                   9 => TY table time incr. min
+                                   10=> Calibrator avg. time
+DPARM                              Selection by Frequency
+                                   1+2 => A Frequency (Hz)
+                                   3+4 => B Frequency (Hz)
+                                   5+6 => C Frequency (Hz)
+                                   7+8 => D Frequency (Hz)
+                                   9 => tolerance for A&C
+                                   10 => tolerance for B&D
+BPARM                              Opacity and Gain curve
+                                   control (see help)
+CALIN                              Antenna gains file
+------------------------------------------------------------------------
+FILLM
+Task:  This task will create AIPS uv data file(s) and fill it by
+       reading selected data from a VLA archive tape or disk files.
+       Multiple output files will be written if necessary; continuum,
+       "channel 0" and line data will be written into separate files.
+       Also, if several spectra are present with incompatible
+       polarizations (e.g., RR and LL at different frequencies), they
+       are written into separate files.  Up to 8 simultaneous output
+       files may be written.
+          Data from several files on a tape or disk and from several
+       tapes may be written into the same output file(s).
+          This program reads VLA tapes written after January 88.
+       Older tapes may be read by the obsolescent FILLR; the
+       alternative will be to have older tapes transcribed to the new
+       format.  This has been done with the entire VLA archive.
+
+       **************************************************************
+       This version of FILLM writes times centered in the on-line
+       integration.  Previous versions wrote times at the end of the
+       integrations.  Do not use UVFIXPRM(13) any longer in UVFIX for
+       data loaded using this version of FILLM (31DEC07, 6 July 2007)
+       **************************************************************
+
+       The default opacity model is now based on an algorithm of Josh
+       Marvel.  It uses the older model which mixes surface weather
+       data with a seasonal model but always evaluates it at K Band.
+       Then a large table is used to relate the K Band opacity to that
+       at other frequencies.  This allows different opacities for each
+       IF, while the old method used the same opacity for any IFs
+       within the same band.  The old method is available by setting
+       BPARM(1) to 100.  See EVLA Memo # 143 "Improving the frequency
+       resolution of the default atmospheric opacity model" by Josh
+       Marvil (NRAO), 04/06/2010.
+
+          If you are at the Array Operations Center in Socorro, you
+       may run a special version of FILLM to load your data as they
+       are being observed.  Set VERSION='ONLINE' and mount an
+       "ON-LINE" tape device for INTAPE.  In the new release of this
+       system (after 20-Aug-2003), FILLM will begin reading data from
+       the current UT day's disk archive.  Thus, all data taken for
+       you during the current day (or even previous days) may be
+       loaded, not just those data taken after you started the on-line
+       FILLM.  See NFILES below for details.  This new version of
+       FILLM will not stop automatically after your run.  Set a stop
+       time (carefully) or remember to kill the on-line FILLM after
+       your run has finished.  There are several procedures which TELL
+       on-line FILLM to take certain actions.  These are QUIT (stop at
+       end of scan), FEW (make as few files as possible), MANY (make a
+       new file for each scan), BREAK (create new files now, then
+       append to them as appropriate), STOP (stop now).  Accessing
+       files that are currently being written by on-line FILLM has
+       certain risks; BREAK guarantees that the previous files will
+       not encounter these collisions.  The multiple files will have
+       to be put back together later with DBCON.  On-line FILLM is to
+       be used only to load data for an experiment on which you are
+       an official investigator.  Any other use has the potential to
+       cause serious harm to your scientific career.
+Adverbs:
+  INTAPE.....Tape drive from which to read data.
+  DATAIN.....If non-blank, the data are already on disk and are to be
+             read from disk file DATAIN (with the file number
+             concatenated).  Thus,
+                  DATAIN='MYAREA:VLAtapes/file_
+                  NFILE = 4
+             will cause files from directory $MYAREA/VLAtapes named
+             file_5, file_6, file_7, etc. to be read.  (Note that
+             DATAIN= is the only command on the line and there is no
+             close '.)     See EXPLAIN for a discussion.
+             To use the VLA archive directly, contact NRAO at
+                analysts@nrao.edu.
+             The web has tools to review the contents of the archive
+                http://www.vla.nrao.edu/astro/archive/vladb/
+             and to request data from the archive
+                http://www.vla.nrao.edu/astro/archive/archreq/
+  NFILES.....Number of tape files to advance before reading:
+             For tape, 0 is the start of the current file, 1 the next
+             file, -1 the previous file.  For off-line disk, see
+             DATAIN above.
+             For ON-LINE, -1 is the start of yesterday's disk file,
+             0 is the start of today's file, and 1 is the current end
+             of today's file (i.e. right now).
+  BAND.......Name of desired frequency band i.e., '4','P','L','S','C',
+             'X','U','K','A', or 'Q'.  1st char. => A-C IF, 2nd char.
+             => B-D IF.  If 2nd character is blank, it is set to the
+             1st character.  A resulting blank means fill any band
+             found.  Bands are defined as:
+                4   0.0  -  0.15   GHz      X   8.0 - 12.0   GHz
+                P   0.15 -  0.7             U  12.0 - 18.0
+                L   0.7  -  2.0             K  18.0 - 26.5
+                S   2.0  -  4.0             A  26.5 - 40.0
+                C   4.0  -  8.0             Q  40.0 - 56.0
+             Note that some receivers in the EVLA can observe
+             frequencies in more than one of these official bands.
+             Beginning in Feb, 2008, the VLA data format includes a
+             code to tell which receiver was used.  FILLM will use
+             that when available, to select data by band to to name
+             data sets.
+  QUAL.......Source qualifier number, -1 => all.
+  VLAOBS.....The name of the observing program on the VLA, e.g.,
+             'AZ99'.  blank => all found in the selected time range.
+             It is a very good idea to set this parameter.  Note, if
+             this parameter is set, real-time FILLM will stop after
+             some data are read and then data some another program is
+             encountered.
+  VLAMODE....The VLA observing mode (2 chars.).  Normal interferometer
+             mode is '  ' and all modes are accepted when VLAMODE is
+             blank.  Solar mode is 'S*' where *=any character.  In solar
+             mode, data with the specified VLAMODE and data with blank
+             mode are kept.
+  REFDATE....Reference date 'yyyymmdd' ('dd/mm/yy' accepted but
+             deprecated),  ' ' => first found
+             Better get it right!!! ... or use ' '.
+             Task FXTIM can be used if you end up with negative times.
+  TIMERANG...Range of IAT times to be read wrt REFDATE. 0=>all.  See
+             EXPLAIN FILLM for details.
+  BCHAN......Lowest 1-rel spectral channel number to be passed.
+             Continuum and channel 0 data will always be written. 1 is
+             the first channel of the spectrum.  0 => 1.
+             In Z-mode, where the on-line system also writes the 0-lag
+             channel, BCHAN and ECHAN are ignored and full spectrum
+             containing that 0-lag channel are      written.
+  ECHAN......Highest 1-rel channel number to be read.
+             0 => highest on tape.
+  OUTNAME....Output UV file name (name).  Standard behavior with
+             default 'ref. date'.  The class for continuum data will
+             be 'm BAND' where m is the band code.  Line data will be
+             broken up into 'channel 0' and proper spectral data with
+             classes 'CH 0  ' and 'LINE  '.
+                If the output file already exists then the new data is
+             appended to the end of the existing file if DOCONCAT is
+             true.
+  OUTSEQ.....Output UV file name (seq. #).  0 => highest unique.
+  OUTDISK....Disk drive # of output UV file.  0 => highest disk with
+             space for the file.
+  DOUVCOMP...If true (> 0) the output data is written in compressed
+             format.  This can result in a substantial reduction in
+             disk space needed.  WARNING: in compressed form, a single
+             weight is kept for all spectral channels, IFs, and
+             polarizations of the sample time and baseline.  If the
+             weights are substantially different, this may cause a
+             serious loss of sensitivity in imaging; see the DOWEIGHT
+             option.
+  DOCONCAT...If true (>0) then data is to be appended to an existing
+             file if possible.  Possible output files can be selected
+             by OUTNAME, OUTDISK and OUTSEQ.
+  APARM......Used in SHOW/TELL only and only make sense when running
+             FILLM in real time
+             (1) =1 => new file for each scan,
+                 =2 => create new files now, append following scans
+                       into them
+                 =3 => stop now
+                 else => concatenate files read in if similar enough.
+  NCOUNT.....Number of files to attempt to read, writing to a single set
+             of output files.   0 => all.  Ignored by ON-LINE version.
+  DOWEIGHT...> 0 => use nominal sensitivity (plus integration time) to
+             set data weights.  Equivalent to mod(CPARM(2),8) = 0.
+             Note that weights are not fully retained if the data are
+             stored in compressed form (spectral channels,
+             polarizations, and IFs are merged in weight at each
+             time/baseline sample).  Using "correct" weights for the
+             different IFs and antennas allows poorer receivers to be
+             downweighted which can make a considerable difference in
+             the sensitivity of the final images.  Weights set in this
+             way must be calibrated along with the visibilities
+             (DOCAL=2 does this in all calibration tasks).
+             AIPS Memo 108 by Bryan Butler suggests that the weights
+             should be 2.3667 (for continuum before 7/30/98 and all
+             line data) and 2.9417 (continuum after 7/30/98) times
+             larger than normally computed by FILLM.  To have this
+             correction applied, set DOWEIGHT=10.
+  DOACOR.....> 0 => load autocorrelation data for spectral-line
+             observations.  In continuum modes, the autocorrelation
+             data are never loaded.
+  CPARM......User options.
+             (1)  Averaging time in seconds.  If 0, no averaging
+                  beyond that done on-line will be performed.
+                  Averaging of a sample will be terminated if the
+                  accumulated integration time is >= that requested or
+                  the elapsed time from first sample to current sample
+                  is >= CPARM(1).
+                  Note a special, hidden use: when CPARM >= 100000, it
+                  will use CPARM-100000 as averaging time and will
+                  produce an OT table (over the top table).
+             (2)  u * 2048 + t*1024 + s*512 + r*256 + q*64 + p*32 +
+                    n*16 + m*8 + k*4 + j*2 + i
+                      where i, j, k, m, n, p, q, r, s, t, u are
+                      0 (no) or 1 (yes)
+                  i: ignore on-line "Tsys fluctuating" flags.  Other
+                     on-line flags are summarized in the IF/antenna
+                     status and controlled under CPARM(3).
+                  j: NOTE change: a TY table is now always written.
+                     j = 0 => fill backend Tsys for P- and 4-band, and
+                     front-end Tsys for all other bands. j=1 does the
+                     opposite.  Back-end Tsys are used for EVLA
+                     antennas since they do not have a front-end Tsys.
+                  k: use all correlator pairs in holography mode.
+                  m: use nominal sensitivity to set weights
+                     DOWEIGHT > 0 also selects this.
+                  n: planet/solar mode - do not change source name
+                     when position changes.
+                  p: include pointing mode data
+                  q: output the on-line "channel-0" rather than
+                     re-compute it from the current data
+                     (on-line sum done before Hanning -> unreliable,
+                     but there are modes in which it will be of much
+                     wider bandwidth and hence good for continuum)
+                  r: ignore changing qualifiers for common source name
+                  s: don't load visibilities for which one of the
+                     antennas had failed its last attempted reference
+                     pointing
+                  t: include TIP data
+                  u: output correlation coefficients (i.e. not scaled
+                     by the measured nominal sensitivity).  Note that
+                     Solar data are always written as correlation
+                     coefficients.
+             (3)  Data with VLA on-line system flag levels>ABS(CPARM(3))
+                  are flagged in the output file.  Since flag levels < 4
+                  in the archive are merely informative, CPARM(3) is
+                  set to 3 when the input is 0 <= CPARM(3) <= 3 and
+                  set to -3 when -3 <= CPARM(3) < 0.  This instructs
+                  FILLM to flag all data with significant on-line
+                  flags.  Setting CPARM(3) negative instructs FILLM to
+                  discard all IFs whenever any one or more IF is
+                  flagged in the archive.  So, for the most
+                  conservative flagging, set -3 <= CPARM(3) < 0.  For
+                  typical flagging, set 0 <= CPARM(3) < 3.  For no
+                  flagging, set CPARM(3) >= 16 (since the maximum
+                  on-line flag level is 15).  Note that this is only
+                  antenna/IF level flagging - for antenna level
+                  flagging control based on shadowing and failed
+                  reference pointing, see CPARM(2), bit s, and
+                  CPARM(4).
+             (4)  Control shadow checking
+                  < 0       => don't drop shadowed data
+                  = 0       => drop data using system bit (knows about
+                               other science subarrays) in versions in
+                               which the bit is reliable, otherwise 25m
+                  > 0       => drop data when the baseline <= CPARM(4) m
+                               (the antenna that is "behind" is
+                               flagged).  Note = 25.0 now causes FILLM
+                               to compute shadowing on its own.
+             (5)  If spectral-line data for a given source/band
+                  with more than one "number of channels" is
+                  present in the data, one may be specified by
+                  CPARM(5).  The value to be entered is an
+                  encryption of the number of channels in each
+                  IF.  Values can be determined from task PRTTP
+                  or as described in EXPLAIN FILLM.
+                  0 => any.
+             (6)  Subarray number desired.  Default behavior
+                  (CPARM(6)=0) depends on VLAOBS. If VLAOBS is
+                  specified, the first subarray with data belonging to
+                  code VLAOBS becomes the current subarray.  If VLAOBS
+                  is blank, the subarray number defaults to 1.  If the
+                  bit 2**3 (8) is on, then the Van Vleck correction is
+                  applied to continuum data.  This is needed for very
+                  strong sources where the non-linearity of the
+                  correction begins to matter.  This is still in an
+                  experimental phase and should be used with extreme
+                  caution.
+             (7)  FQ entry tolerance for deciding what FQ number
+                  to assign to a frequency.
+                  Continuum:
+                  > 0 => tolerance in kHz.
+                  <=0 => 100 kHz
+                  Spectral line **** CHANGED JULY 2, 2001 ****
+                  > 0 => tolerance in kHz.
+                  < 0 => all data are given the same FQ number.
+                  = 0 => a new number is assigned to data that
+                         differ from any previous frequency by
+                         an amount greater than the frequency
+                         equivalent of 30 km/sec.  (i.e., half
+                         maximum Doppler shift between sources
+                         180 degrees apart.
+             (8)  Time increment (min.) for CL table entries.
+                  0 => 5 min.
+             (9)  Time increment (min.) for TY table entries
+                  0 => input data increment
+             (10) Averaging time for calibrators (sec).
+                  0 => same as CPARM(1).
+  DPARM......Selection by frequency.  If data needs to be
+             selected by frequency more precisely than by
+             observing band then the desired frequencies and
+             tolerances allowed are specified by DPARM.
+             1+2 = the frequency for if A (Hz)
+             3+4 = the frequency for if B (Hz)
+             5+6 = the frequency for if C (Hz)  0 => 1+2.
+             7+8 = the frequency for if D (Hz)  0 => 3+4.
+             9 = tolerance for A and C ifs.  0 => all.
+             10 = tolerance for B and D ifs.  0 => all.
+  BPARM......Opacity and gain curve control.
+             Opacity is controlled by BPARM(1) and BPARM(10):
+                BPARM(1) <  0  ->  no opacity correction.
+                BPARM(1) =  0  ->  set BPARM(1) = 20
+                0 < BPARM(1) <= 10  ->  opacity correction is done,
+                    with zenith opacity given by BPARM(1).
+                BPARM(1) > 10  ->  opacity correction is done, with
+                    zenith opacity taken as weighted average from
+                    surface weather and seasonal model, with the weight
+                    of the surface weather portion given in BPARM(10),
+                    and the weight of the seasonal model portion given
+                    by 1 - BPARM(10).
+                BPARM(1) > 100 -> same as above but using the old
+                    model where opacities depend only on observing
+                    band rather than being the new, IF-dependent
+                    values.  BPARM(1) > 100 may be appropriate for
+                    backwards compatibility, but the new opacities are
+                    thought to be rather more accurate.
+                BPARM(10) - weight of surface weather model.  0 -> 0.5
+                    If you want 0 set it < 0.
+             Gain curve is controlled by BPARM(2):
+                BPARM(2) <  0     ->  no gain curve correction.
+                0 <= BPARM(2) < 2  ->  gain curve correction, with
+                    coefficients which vary as a function of band and
+                    antenna.  These coefficients are read from a file.
+                2 <= BPARM(2) < 3 ->  gain curve correction, with
+                    coefficients which vary only as a function of band
+                    only.  These coefficients are read from a file.
+                BPARM(2) >= 3     ->  gain curve correction, with
+                    coefficients specified in BPARM(3), BPARM(4),
+                    BPARM(5), and BPARM(6) for all bands and
+                    antennas.
+  CALIN......The name of a file to provide the antenna gains used to
+             populate the initial CL table.  If CALIN is left blank,
+             it defaults to a system file located at:
+             'AIPSIONS:VLA.GAINS'.  The file is in free format with
+             fields: a 1-character band code, antenna number, begin
+             date in form YYYYMMDD, end date YYYYMMDD, and 4 gain
+             curve coefficients.
+------------------------------------------------------------------------
+FILLM:  Task to import data into AIPS from a VLA archive data tape.
+DOCUMENTERS: W.D. Cotton, G.C. Hunt, B.J. Butler, NRAO.
+RELATED PROGRAMS: PRTTP, All AIPS uv programs
+
+                          PURPOSE
+
+    FILLM reads a VLA archive format visibility tape, creates
+and fills an AIPS uv data base.  Since such a tape may contain
+data for different observing programs and bands, the user must
+specify the data that he/she desires.
+    An output file may contain either continuum, 'channel 0',
+or line data for multiple sources observed in the same observing
+band.  AC and BD data will be written as IFs 1 and 2 if
+possible.  The two exceptions are: 1) continuum data in split
+band mode (e.g., P and L band) and 2) Spectral modes in which two
+or more different spectra are observed such that a) they are at
+different bands, b) they have a different number of channels, or
+c) the channel widths are different.  In these two cases, the
+data is split into separate files.
+    Output file(s) will be automatically expanded as necessary
+and unused space released when FILLM terminates or opens another
+output file.  If the file expansion fails for some reason FILLM
+will quit saving the data already read.
+
+COMMENTS
+     The tape must be properly mounted and the correct density
+specified.  This is most easily done using the MOUNT command in
+AIPS.  When through reading the tape and no other tape
+processing is anticipated, use DISMOUNT to free the tape drive
+for other users.  The contents of a tape may be determined using
+task PRTTP.
+
+DATAIN
+     It is now (as of 2002-07-22) possible to read the data from disk
+files instead of magnetic tape.  All files to be read in a single run
+of FILLM must reside in the same disk directory and have the same name
+except for the last character or characters (no leading zeros) which
+define the file number.  Thus, you could copy tape files with dd to
+disk and then read them with FILLM or you could ftp them from some
+archive to your local disk and then read them.  Note that remote tape
+does not work for FILLM (from disk).  The analysts at the AOC in
+Socorro will have access to a disk archive and can prepare data files
+suitable for loading with FILLM for you to download via anonymous ftp.
+For example, when I ask them to find the data for program AB1024, they
+find that tape XH02045 data files 1 through 10 contain some of my data.
+I then copy those files to a disk directory which I call
+          $VLADATA/AB1024
+using file names file_1, file_2, ... File_10.  Then in FILLM I set
+          DATAIN='VLADATA:AB1024/file_
+          NFILES = 0; NCOUNT=10
+to read all of these files.  Note that I put the DATAIN= command last
+on its line and did not follow it with a close quite (').  This allows
+the lower case letters to be retained.
+
+SOLAR MODE
+     Solar mode observing is indicated by either a VLA observing code
+of 'S*' or by a value of VLAMODE='S*' where '*' may be any character.
+In solar mode and when the CALCODE on the tape is ' ' (assumed to be
+the sun) then the visibility data written to disk are divided by the
+"nominal sensitivity" and the "nominal sensitivity" is written into
+the TY table as the system temperature.  When the CALCODE on tape is
+non-blank then the visibility data are not modified.  Values of the
+system temperatures in the TY table may be plotted with SNPLT.
+
+HOLOGRAPY MODE
+     In "holography" data from the VLA, reference antennas are
+pointed towards the nominal source position, as normal.  All
+other antennas are pointed to an offset position controlled by
+the observer.  The angular offset from the nominal position, for
+each antenna, is written to tape in the same variables that are
+normally used for u,v,w.  In this mode, only data on a baseline
+between a reference antenna and an offset (non-reference) is
+considered useful.  The correlations observed on these baselines
+is stored in the multi-source file in the normal way.  Data is
+calibrated as usual and then extracted into complex maps to give
+the antenna beam patterns.  These data can now be Fourier
+transformed to give aperture distributions.
+
+NFILES:
+     AIPS counts tape label, header and trailer labels as
+separate files so they should be included in the number of files
+to advance.  FILLM will quit after examining one file containing
+VLA data if it has not encountered any of the desired data.  If
+data has been found it will continue until it either reaches the
+end of the tape or reads the maximum number of files specified
+in CPARM(9).  Use PRTTP to determine what data is in which file.
+
+TIMERANG:
+     The desired time range is expressed as the time will be
+described in AIPS; i.e., the time includes the number of days
+since the reference date.  The reference date is kept in the
+catalogue header as the "Observing Date".  Unless REFDATE is
+specified the reference date is undefined (the day number is 0)
+until selected data has been found.  The reference day then
+becomes the current day if the output file has just been created
+or the previous reference day if the file previously existed.
+     If REFDATE is specified then its value is used as the
+reference value and TIMERANG is with respect to this date.
+
+OUTDISK:
+     Make sure there is enough space for the source data on
+the specified OUTDISK (see below).  This is especially
+important if many large data bases will be written onto the
+disk.  A value of 0 allows the task to try all disks to fit the
+output files.  In this later case, the output files may reside
+on different disks.
+
+DOCONCAT:
+     Data from several tapes may be written into the same AIPS
+uv data file if DOCONCAT is true (>0.0).  FILLM will search the
+catalog for multi source files whose OUTNAME, OUTDISK and OUTSEQ
+match.  If DOCONCAT=true then the data will be appended to any
+existing file whose attributes match.  Data must be appended to
+the file in the correct time order or UVSRT and INDXR must be
+run on the file to get it into correct time order.
+
+CPARM:
+CPARM(1): The data are averaged using all unflagged data with time tags
+within the specified period after the first record in a given
+integration.  The time tags, u, v, w, etc. for each visibility written
+will be the average for the integration regardless of the flagging;
+that is the u, v, w may not correspond to the true weighted average.
+
+CPARM(2): bit map: bit0 + 2*bit1 + 4*bit2 + ... + 256*bit8
+     bit0 - The VLA on-line system sets correlator-based flags for
+correlators that it determines to be bad.  In continuum, these flags
+apply to individual correlation pairs; in spectral line, these apply
+to individual spectral channels.  If bit0=1, then these flags from
+the on-line system are ignored, in which case the data need to be
+carefully edited. (This feature is not yet implemented in the on-line
+system though!)
+     bit1 - The TY table is now always written.  It has, for each
+polarization a Tsys column and a Tant column.  The Tsys column contains
+what is called the 'nominal sensitivity', which is the conversion
+factor from correlation coefficient to pseudo-Janskys.  These values
+are not calibrated and thus do not give true Janskys when used for the
+conversion, but are a useful function of time, ignoring the absolute
+values.  See also the discussion involving the weighting scheme which
+uses the nominal sensitivity values.  Since May 1, 1996 the on-line
+system has also written system temperatures to the archive tapes, which
+FILLM puts in the Tant columns.  These should be correct antenna
+temperatures in Kelvins within the noise tube calibration and total
+power fluctuation accuracies (reported to be about 20% uncertain).
+The default (bit1=0) is to use backend Tsys for P- and 4-band data
+and front-end Tsys for all other bands in the Tant columns.  The
+reverse (bit1=1) may be done but is not generally recommended.  EVLA
+antennas do not have a front-end Tsys and so back-end is always used
+for them.
+     bit2 - In holography mode, usually only correlations involving
+the reference antenna are passed on.  If bit2=1, ALL correlations
+involving ALL antennas are passed on.
+     bit3 - The nominal sensitivity (see discussion in bit1 above)
+can also be used to "correctly" set the data weights by setting
+bit3=1.  In principle, you always want to do this whether you plan to
+use natural or uniform or any other kind of weighting scheme.  In
+practice, if the weights so generated are incorrect, things can go
+wrong in an apparently mysterious way.  If PRTUV shows really strange
+weights, you can run UVMOD to reset the weights to (t_int/[10 sec]),
+the traditional weights value.  If you have set weights "correctly"
+(bit3=1), then you should set DOCALIB = 2 in all AIPS tasks allowing
+calibration.  This applies the calibration to the weights as well as
+to the visibilities.  If you have had to set the weights back to the
+old values (or used bit3=0 [and DOWEIGHT<=0]), then use DOCALIB = 1
+which calibrates only the visibilities.  DOWEIGHT > 0 also selects
+this behavior.
+     bit4 - Whenever a source changes position, it is assumed that
+this is truly a different source, and that a new entry in the SU
+table should be written (with subsequent visibilities at that new
+position pointing to that new source).  This is useful for, e.g.,
+mosaicing observations (if no source qualifiers are used to
+distinguish between the pointing centers).  If, however, your source
+truly moves during the observation (the Sun and planets, e.g.), then
+you won't necessarily want new entries in the SU table.  Setting
+bit4=1 overrides the default behavior, and does not create these
+new source table entries.  Note that you will almost always want to
+set bit4=1 for solar system observations.
+     bit5 - Normally, FILLM will not enter pointing mode data into
+the created datasets.  If bit5=1, then pointing mode data will be
+included.
+     bit6 - Because of demonstrated problems with the on-line version
+of the "channel-0" dataset in some instances, FILLM now recomputes
+channel-0 on-the-fly from the input line dataset by default.  Setting
+bit6=1 overrides this behavior, and takes the channel-0 directly from
+the archive.  This may be useful if data selection has been used to
+reduce the number of channels written to the archive, so that the
+on-line channel-0 is of wider bandwidth than that created by FILLM.
+     bit7 - unsupported.
+     bit8 - Whenever a source qualifier changes, FILLM normally makes
+a new entry in the SU table (with subsequent visibilities with that
+qualifier pointing to that new source).  Setting bit8=1 overrides this
+behavior and essentially ignores the source qualifiers, using only the
+source names to determine when new SU entries should be made.
+
+CPARM(3): The VLA on-line system sets IF-based flags for IFs that it
+determines to be bad from monitor information.  Flags are given the
+values 0-15.  In general, flag values less than 4 are informative and
+do not reflect bad data quality.  CPARM(3) defines the level at which
+the data is considered good: the higher the value, the more data is
+accepted.  If CPARM(3) is set above 3, then the data need to be
+carefully edited.
+
+CPARM(4): Data for which one antenna shadows another antenna is
+normally rejected since in crosstalk and interference can pose serious
+problems at very short baselines.  CPARM(4) specifies the shortest
+baseline in meters the user considers to be unaffected by shadowing.
+Any visibility with a baseline shorter than CPARM(4) will be flagged.
+CPARM(4) = 0 defaults to the obvious case where the baseline equals
+one antenna diameter D.  Sometimes a more conservative treatment may
+be necessary, and CPARM(4) values larger than 25 meters may be used.
+Note that the actual shadowing in meters s and CPARM(4) are related
+by: s = D - CPARM(4).  In the default case (CPARM(4) = 0 or 25.0),
+the shadowing is determined from the archive tape.  In all other
+cases, the shadowing is determined by FILLM itself.  In this case,
+there may be shadowed antennas that are not found by FILLM, because
+it knows nothing about antennas which are in different subarrays
+from the one it is checking for shadowing.  The default case does
+not suffer from this problem, as the on-line check for shadowing
+includes all antennas, regardless of subarray (including even the
+master pad!).
+
+CPARM(5): VLA archive tapes may contain data for a given band with
+different numbers of spectral channels at different times.  Such data
+must be kept in separate files.  CPARM(5) is used to specify which set
+of data is desired by specifying the number of channels.  If CPARM(5)
+<= 0 then the first set encountered will be used.  The default will
+have the desired action in almost all practical situations.
+     The value of CPARM(5) to select a given configuration of
+channels is given by the following:
+channel code = 4096*log2(NCHA) + 256*log2(NCHB) + 16*log2(NCHC)
+                                                   + log2(NCHD).
+Where NCHA = number of channels in IF A if less than 256, 0 if =
+256 or 2 if = 512.  If the number of channels is larger than or
+equal to 256 the entire value is to be made negative.  NCHB,
+NCHC and NCHD are the number of channels in IFs B, C and D.
+This is how the value is stored on the tape.
+
+     Since only Ken Sowinski can predict the values for unused
+IFs, it is best not to try to guess it, but instead to run task
+PRTTP which will give the values on the tape.
+
+CPARM(7): FQ numbers are assigned to data whose frequency
+characteristics differ from previous data, i.e., bandwidths are
+different, a different sideband is recorded, or the frequency itself
+differs by an amount greater than the maximum Doppler shift possible
+(i.e., a difference greater than that caused by a velocity change of
+30km/s).  It is also useful for the user to have some control over
+this selection so CPARM(7) allows the definition of a frequency
+tolerance.
+
+     In continuum, setting CPARM(7) <= 0.0 will force the
+assumption of a 100 kHz difference.  This means that, by
+default, all different frequencies will have different FQ
+numbers.  If CPARM(7) > 0 then the value is taken to be the
+desired frequency tolerance in kHz.
+
+     In spectral line, CPARM(7) < 0 will result in all data having
+the same FQ number.  If CPARM(7) = 0 then the frequency tolerance will
+be half of the maximum frequency difference due to the Earth's
+rotation for sources 180 degrees apart (i.e., 10**-4 * observing
+frequency).  If CPARM(7) > 0 then the value is taken to be the desired
+frequency tolerance in kHz.
+
+     An example: if the user had observed the 1665 and 1667 MHz
+line of OH and wanted just to separate the two so he/she could
+process all 1665 MHz data in one pass, then CPARM(7) should be
+set to 500.0, i.e., 500kHz; this allows a window of 1.0 MHz, and
+anything that lies inside the first frequency found +/- 1 MHz
+would be assigned the same FQ number.
+
+CPARM(8): A CL table will be written with a time interval between
+entries of CPARM(8) min.  0 defaults to 5 min.
+
+CPARM(9): VLA archive tapes may contain several files.  Using CPARM(9)
+the number of files read can be controlled.  The default (0) is to
+keep reading the entire tape; this may produce unpredictable results
+if there are other types of files following the true archive records.
+
+CPARM(10): The averaging time for calibrators may be specified
+differently than for non calibrator sources.  Any source with a
+non-blank calibrator code is considered a calibrator for this
+purpose.  It may be desirable for calibrator averaging times to be
+shorter that for program sources if the averaging time of the program
+sources is relatively long and the calibrator scans are short.  This
+allows better editing of the calibrator data.
+
+DPARM:
+    If the desired frequencies need to be specified more
+accurately than observing band, say for frequency switching in a
+given band, the frequencies of the A, B, C, and D "IFs" of the
+VLA can be specified in DPARM.  Since only single precision
+values are passed to FILLM by AIPS, two words are provided to
+specify the frequency.  The frequency used will be the sum of
+the two, e.g., if DPARM(1) = 1665.0E6 and DPARM(2)=0.33333E6
+then the requested frequency for the A "IF" is 1665.33333 MHz.
+C and D frequencies default to the A and B values.
+    The maximum allowable deviation from the specified values are
+given by DPARM(9 & 10).  Example:
+    DPARM= 1420e6,0,1670e6,0,0,0,0,0,1e6,1e6
+will cause the selection of data when the AC IF-pair has a
+frequency between 1419 and 1421 MHz AND the BD IF-pair has a
+frequency between 1669 and 1671 MHz.  All other data will be
+ignored.
+
+BPARM:
+   The BPARM adverb array is used to specify corrections made to the
+initial CL table attached to the data.  These corrections currently
+include that for opacity and antenna gain curve, both as a function
+of elevation and time.  The defaults (BPARM(n)=0) will get you our
+current best estimate for these two corrections.  To turn these
+corrections off completely, set BPARM(1)=-1; BPARM(2)=-1.  This will
+get you behaviour similar to FILLM pre-31DEC01.  Note that if you
+forgot to turn these corrections off, and don't really want them,
+there is no need to run FILLM again - simply use EXTDEST to get rid
+of CL table version 1 (that created by FILLM), and run INDXR on the
+dataset.
+
+BPARM(1): Determines if an opacity correction is written into
+the CL table or not.  There are 3 possibilities for this:
+ BPARM(1) < 0       ->  do not do any opacity correction in the
+                        CL table.  This is what FILLM used to do
+                        pre-31DEC01.
+ BPARM(1) = 0       ->  equivalent to setting BPARM(1)=20, BPARM(10)=.5
+                        (see description below).
+ 0 < BPARM(1) <= 10 ->  do an opacity correction, and take
+                        BPARM(1) as the zenith opacity.
+ BPARM(1) > 10      ->  do an opacity correction, and determine the
+                        zenith opacity as a function of time from a
+                        combination of the day of year (a seasonal
+                        model) and the surface weather data on the
+                        archive tape (a weather model).  In this
+                        case, the zenith opacity is determined by:
+                          tau = 0.0       - P-, and 4-bands
+                          tau = 0.01      - L-, C-, and X-bands
+                          tau = ww * fw(Ts,Td) + ws * fs(doy)
+                                          - U-, K-, and Q-bands
+                        where fw is the value of the weather model
+                        opacity (given surface ambient temperature Ts,
+                        and surface dewpoint temperature Td), and fs is
+                        the value of the seasonal model opacity (given
+                        day of year doy).  ww and ws are the relative
+                        weights for the two opacity models, and sum to
+                        1.  See VLA Scientific Memo XXX (in preparation,
+                        B. Butler) for a description of fw(Ts,Td) and
+                        fs(doy).  When BPARM(1)>10, the value of ww is
+                        given in BPARM(10) (and ws = 1-ww).  To get
+                        an opacity determined only by surface weather
+                        measurements, set BPARM(10) = 1.0.  To get
+                        an opacity determined only by season/day of
+                        year, set BPARM(10) = 0.0.  To get a straight
+                        average (the default behaviour), set
+                        BPARM(10) = 0.5 (or, equivalently, set
+                        BPARM(1) = 0).
+   Note that in the case where 0 < BPARM(1) < 10 (user specified
+opacity), this opacity value is used for *all* data, regardless of
+frequency/band.  There is currently no mechanism for specifying
+different opacities for different bands.  If you have multiple
+frequencies in the same subarray, it is strongly recommended that you
+either let the opacity be calculated (by setting BPARM(1) > 10, or
+BPARM(1) = 0), or run FILLM in multiple passes, using the BAND adverb
+to select the proper band, and setting BPARM(1) to the proper value for
+each separate band.
+
+BPARM(2): Determines if a gain curve correction is written into
+the CL table or not.  There are 4 possibilities for this:
+ BPARM(2) <= 0      ->  do not do any gain curve correction in the
+                        CL table.  This is what FILLM used to do
+                        pre-31DEC01.
+ 0 < BPARM(2) < 2   ->  do a gain curve correction, with coefficients
+                        which vary as a function of band and antenna.
+                        These coefficients are read from the file
+                        specified in CALIN.
+ 2 <= BPARM(2) < 3  ->  do a gain curve correction, with coefficients
+                        which vary only as a function of band.  These
+                        coefficients are read from the file specified
+                        in CALIN.
+ BPARM(2) >= 3      ->  do a gain curve correction, with coefficients
+                        specified in BPARM(3) through BPARM(6) for all
+                        bands and antennas.
+The default (BPARM(2)=0) is to have coefficients which vary as a
+function of both band and antenna.
+   The gain curve looks like:
+       G = c0 + c1 * ZA + c2 * ZA*ZA + c3 * ZA*ZA*ZA
+where ZA is the zenith angle, and c0, c1, c2, and c3 are the
+coefficients.  So, in the case where you want to specify the
+coefficients in BPARM explicitly, c0 = BPARM(3), c1 = BPARM(4),
+c2 = BPARM(5), and c3 = BPARM(6).  Note that what is written into
+the CL table is the gain curve correction, which is 1/G.
+   Note that caution should be exercised when applying gain curve
+corrections to data taken prior to 2001.  This is because no careful
+record was kept of how the gain curves changed over time (e.g., as a
+result of re-setting the panels or optics).  Gain curves were
+determined approximately once per year during the period 1995-2001.
+
+CALIN:
+The name of a file to provide the antenna gains used to populate the
+initial CL table.  If CALIN is left blank, it defaults to a system
+file located at: 'AIPSIONS:VLA.GAINS'.  The file is in free format
+with fields: a 1-character band code, antenna number, begin date in
+form YYYYMMDD, end date YYYYMMDD, and 4 gain curve coefficients.
+Look at the default system file for guidance.
+
+SOME EXPLANATION ABOUT TIME STAMPS
+
+Time stamps on the MODCOMP tapes mark the end of each integration
+interval. When these tapes are read by FILLM, time stamps remain
+unchanged for CPARM(1)=0 (no off-line integration). When the online
+integration time is t, the time stamps look as follows:
+
+     |_______|_______|_______|_______|
+
+     0       t       2t      3t      4t
+
+This simplicity is gone when CPARM(1) is some multiple of the online
+integration time.  For time stamps in AIPS uv data, the following
+definition holds:
+
+             ts = tc + 0.5t                                     (1)
+
+ts = time stamp assigned by FILLM
+
+tc = time at the center (midway) of the integration. In the example
+     above, tc would be 0.5t, 1.5t, 2.5t, etc.
+
+This definition coincides with the end-of-integration definition when
+FILLM does not apply off-line integration. The origin and the
+justification of this definition lies back in the gray past. One
+advantage of this definition is that the new time stamp after
+averaging is the average of the old time stamps (which is not the case
+if the definition of 'end of integration' were used).
+
+If we assign an off-line integration in FILLM twice the online
+integration time, the picture above looks like:
+
+     |_______________|_______________|
+
+     0               2t              4t
+
+tc now becomes:      tc = t, 3t, ...
+
+and ts:              ts = 1.5t, 3.5t, ...
+
+Which does not follow the end-of-integration definition anymore (in
+which case ts obviously would have been 2t and 4t). Note that these
+time stamps are purely fictitious: they are not used for calculating
+anything; after all, the u's, v's, and w's are read from tape
+independently.
+
+One case in which these times become important is when using UVFIX. In
+UVFIX the user can specify the clock correction (to be subtracted from
+each time stamp to obtain the true center time) in UVFIXPRM(13). For
+VLA data, this correction is one-half the online MODCOMP integration
+time t.
+
+
+EXECUTION TIMES:
+     On an otherwise unloaded (?) Convex C1 with 120 IPS tape
+drive, reading 125,000 vis with 30 second averaging (4 hours of
+continuum data) took 290 cpu sec and 600 real sec.  The data
+was split between two tapes and 10 sec integrations were
+recorded on the tape.
+
+
+DISK SPACE:
+     The size of a data set loaded via FILLM with DOUVCOMP=-1 is
+approximately:
+
+ # vis. * (6 + (# poln[1,2 or 4]) * (# freq) * (# IF) * 3) / 256
+
+in units of 512 AIPS-byte (1024 byte on most systems) blocks.
+The granularity of the disk may increase this somewhat.  Also
+CL, SU and NX tables will require additional disk space.
+
+     If DOUVCOMP=1 then the disk space needed for the main data
+file becomes:
+
+ # vis. * (8 + (# poln[1,2 or 4]) * (# freq) * (# IF)) / 256
+
+This represents a disk savings of a factor of 1.9 for 2 IF
+continuum data or nearly a factor of 3 for large line data sets.
+The sizes of the tables are unaffected by DOUVCOMP.

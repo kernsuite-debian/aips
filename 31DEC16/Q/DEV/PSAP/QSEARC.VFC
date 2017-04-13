@@ -1,0 +1,122 @@
+      SUBROUTINE QSEARC (NF, NT, MF, MT, ND, NR, DATA)
+C-----------------------------------------------------------------------
+C! Subroutine call version of VFC routine; replaced by vector version.
+C# Obselete
+C-----------------------------------------------------------------------
+C;  Copyright (C) 1995
+C;  Associated Universities, Inc. Washington DC, USA.
+C;
+C;  This program is free software; you can redistribute it and/or
+C;  modify it under the terms of the GNU General Public License as
+C;  published by the Free Software Foundation; either version 2 of
+C;  the License, or (at your option) any later version.
+C;
+C;  This program is distributed in the hope that it will be useful,
+C;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+C;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+C;  GNU General Public License for more details.
+C;
+C;  You should have received a copy of the GNU General Public
+C;  License along with this program; if not, write to the Free
+C;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+C;  MA 02139, USA.
+C;
+C;  Correspondence concerning AIPS should be addressed as follows:
+C;         Internet email: aipsmail@nrao.edu.
+C;         Postal address: AIPS Project Office
+C;                         National Radio Astronomy Observatory
+C;                         520 Edgemont Road
+C;                         Charlottesville, VA 22903-2475 USA
+C-----------------------------------------------------------------------
+C-----------------------------------------------------------------------
+C   Pseudo-AP version
+C   QSEARC is a routine to do a gridded fringe search by means of
+C   padded FFTs.  The number (size) of the FFTs is NF (MT) +
+C   NR (MF).
+C   Inputs:
+C      NF    I  No. frequency channels.
+C      NT    I  No. time points.
+C      MF    I  No. points for freq. FFT.
+C      MT    I  No. points for time FFT.
+C      ND    I  No. delay channels to search.
+C      NR    I  No. rate channels to search.
+C      DATA  I  Base address of data array (NT,NF)
+C    Also expects in the AP memory:
+C       0  => COS (PHASE0)    PHASE0 = 0.0
+C       1  => SIN (PHASE0)
+C       2  => COS (del PHASE T)  del PHASE T = -2*Pi*(NR/2)/MT
+C       3  => SIN (del PHASE T)
+C       4  => COS (del Phase F)  del PHASE F = -2*Pi*(ND/2)/MF
+C       5  => SIN (del PHASE F)
+C        These phases should make the center come out in cell
+C        (ND/2+1, NR/2+1)
+C    Output: (in AP memory)
+C       0 => 1 dim. array index for peak.
+C       1 => peak amplitude
+C       2 => peak phase.
+C-----------------------------------------------------------------------
+      INTEGER   NF, NT, MF, MT, ND, NR, DATA, INTER, FINAL, FFT, LOC1,
+     *   MF2, MT2, COUNT, NN, DDATA, NR2, ND2, NT2, LOOP, PEAK,
+     *   MONE, ZERO, ONE, TWO, FOUR
+      INCLUDE 'INCS:DAPC.INC'
+      INCLUDE 'INCS:CAPC.INC'
+      INCLUDE 'INCS:EAPC.INC'
+      DATA MONE, ZERO, ONE, TWO, FOUR /-1, 0, 1, 2, 4/
+C----------------------------------------------------------------------
+C                                        Set pointers.
+      DDATA = DATA
+      MF2 = MF * 2
+      MT2 = MT * 2
+      NT2 = NT * 2
+      NR2 = NR * 2
+      ND2 = ND * 2
+      INTER = DDATA + (NF * NT2)
+      FINAL = INTER + (NF * NR2)
+      FFT = FINAL + (NR * ND2)
+      NN = NR * ND
+      COUNT = NF
+      LOC1 = INTER
+C                                        Do first XFORM,
+C                                        First rotate phase.
+      DO 100 LOOP = 1,COUNT
+         CALL QVCLR (FFT, ONE, MT2)
+         CALL QPHSRO (DDATA, TWO, FFT, TWO, ZERO, TWO, NT)
+C                                        Do time FFT.
+         CALL QCFFT (FFT, MT, MONE)
+C                                         Save result.
+         CALL QCVMOV (FFT, TWO, LOC1, TWO, NR)
+C                                        Update phase ramp.
+         CALL QPHSRO (ZERO, TWO, ZERO, TWO, FOUR, TWO, ONE)
+C                                        Update data pointer.
+         DDATA = DDATA + NT2
+C                                        Update result pointer.
+         LOC1 = LOC1 + NR2
+ 100     CONTINUE
+C                                         Second transform loop.
+      COUNT = NR
+      LOC1 = FINAL
+      DO 200 LOOP = 1,COUNT
+         CALL QVCLR (FFT, ONE, MF2)
+C                                         Move to FFT work space.
+         CALL QCVMOV (INTER, NR2, FFT, TWO, NF)
+C                                         Freq. FFT.
+         CALL QCFFT (FFT, MF, MONE)
+C                                         Move to output array.
+         CALL QCVMOV (FFT, TWO, LOC1, TWO, ND)
+C                                         Update output pointer.
+         LOC1 = LOC1 + ND2
+C                                         Update input pointer.
+         INTER = INTER + 2
+ 200     CONTINUE
+C                                         Find max amp.
+      CALL QCVMMA (FINAL, TWO, ZERO, NN)
+      PEAK = SPAD(15)
+C                                         Save index in AP LOC 0 I*4
+      APCORI(1) = SPAD(15)
+C                                         Polar conversion.
+      PEAK = (PEAK * 2) - 2
+      LOC1 = FINAL + PEAK
+      CALL QPOLAR (LOC1, TWO, ONE, TWO, ONE)
+C
+ 999  RETURN
+      END

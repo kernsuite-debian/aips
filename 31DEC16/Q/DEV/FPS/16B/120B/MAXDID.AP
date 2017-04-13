@@ -1,0 +1,123 @@
+         $TITLE MAXDID
+         $ENTRY MAXDID,5.
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"
+"  MICROCODE ROUTINE FOR FPS AP 120-B ARRAY PROCESSOR
+"
+"  MAXDID finds the maximum absolute value of a vector plus a
+"  random number.  The random numbers are preselected and used 
+"  cycically from a given vector.
+"
+"    CALLING SEQUENCE - CALL MAXDID (A, I, C, D, N)
+"                       A = Source vector base address
+"                       I = Increment of A
+"                       C = Dither vector 0 = no. elements (integer)
+"                                         1 = next element address (integer)
+"                                         2... random numbers (real)
+"                       D = Destination vector.
+"                                         0 = MAX(ABS(A)+Random) (real)
+"                                         1 and SPAD 15 = location of max
+"                                                (integer)
+"
+"             D(1) = MAX (ABS (A(mI))+C(2+k))  m = 0 to N-1   (real)
+"                                              k = MOD (C(2)+m, C(1))
+"             D(2) = Address of Value in D(1)  (integer)
+" 
+"         Set SPAD
+A         $EQU  0.
+I         $EQU  1.
+C         $EQU  2.
+D         $EQU  3.
+N         $EQU  4.
+MAXN      $EQU  5.     "Max. random number address - 1
+FIRST     $EQU  6.     "Min. Random number address - 1
+SAVE      $EQU  7.     "Temporary storage of address
+ADDR      $EQU  15.    "Address of maximum
+"
+"     DPX = Current Maximum absolute value.
+"
+"                                        SETUP
+MAXDID:   MOV C,FIRST; SETMA           "FETCH #RANDOMS.
+          INCMA;                       "FETCH ADDR. OF NEXT RANDOM.
+               MOV A,ADDR;             "INIT ADDR TO A
+               DPX<DB; DB=ZERO         "INIT MAX TO 0.0
+          MOV A,SAVE; SETMA            "1. FETCH A, SAVE VALUE IN SAVE
+          LDSPI MAXN; DB=MD            "MAXN=# RANDOMS.
+          LDSPI C; DB=MD               "C=NEXT RANDOM NO. ADDR.
+          MOV C,C; SETMA;              "1. FETCH 1ST RANDOM
+               FABS MD                 "1. ABS(A)
+          DEC N                        "DECREMENT N BEFORE LOOP
+          INC FIRST                    "FIRST=ADDR OF 1ST RAND-1
+          ADD FIRST,MAXN               "MAXN=ADDR-1 OF LAST RANDOM
+          SUB# C, MAXN;                "1. CHECK RAND. INDEX
+               FADD;                   "1. PUSH
+               DPY<MD                  "1. DPY=1ST RANDOM
+          BGT LOOP;                    "1. CHECK RAND. INDEX
+               FADD DPY,FA             "1. ABS(A)+RANDOM
+          MOV FIRST,C                  "1. RESET RAND. ADDR.
+"
+"                                       LOOP
+"
+LOOP:     ADD I, A; SETMA;             "1. FETCH A
+               FADD                    "2. PUSH
+          INC C; SETMA;                "1. FETCH RANDOM
+               FSUB DPX, FA;           "2. CHECK FOR NEW MAX.
+               DPY(1)<FA               "2. SAVE CURRENT VALUE IN DPY(1)
+          SUB# C, MAXN;                "1. CHECK RAND ADDR.
+               FSUB NC,NC              "2. SAME RESULT FOR SECOND TEST
+          FABS MD;                     "1. ABS(A)
+               BGT AA                  "1. CHECK RAND. ADDR.
+          MOV FIRST,C                  "1. RESET RAND. ADDR.
+AA:       FADD;                        "1. PUSH
+               DPY<MD;                 "1. SAVE RANDOM IN DPY
+               DEC N;                  "1. CHECK LOOP COUNT 
+               BFGE LEND               "2. CHECK NEW MAX.
+"     NEW MAXIMUM
+          MOV SAVE,ADDR;               "2. SAVE POSITION.
+               DPX<DPY(1)              "2. SAVE NEW MAX
+          MOV N,N                      "1. RESET LOOP CHECK
+LEND:     FADD DPY,FA;                 "1. ABS(A)+RANDOM
+               MOV A,SAVE;             "1. SAVE CURRENT A
+               BGT LOOP                "LOOP
+"
+"     FINISHED - WIND DOWN.
+"
+         FADD;                         "2. PUSH
+              INC C; DPY<DB; DB=SPFN   "1. INCR C FOR NEXT CALL IN DPY
+         FSUB DPX,FA;                  "2. CHECK FOR NEW MAX
+              DPY(1)<FA                "2. SAVE CURRENT VALUE IN DPY(1)
+         FADD                          "2. PUSH
+         MOV FIRST,FIRST; SETMA; MI<DPY "SAVE NEW RANDOM ADDR.
+         BFGE .+2                      "2. CHECK FOR NEW MAXIMUM.
+         DPX<DPY(1);                   "2. NEW MAX.
+              MOV SAVE,ADDR            "2. NEW POSITION
+         MOV D,D; SETMA; MI<DPX        "2. STORE MAX.
+         INCMA; MI<DB; DB=SPFN; 
+                   MOV ADDR,ADDR       "STORE POSITION
+         RETURN
+         $END

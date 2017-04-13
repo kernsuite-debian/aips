@@ -1,0 +1,289 @@
+; SNSMO
+;---------------------------------------------------------------
+;! smooths and filters a calibration SN table
+;# Task Calibration
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1997, 2001, 2003, 2005, 2010, 2014-2015
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+SNSMO     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+SNSMO     Task which smooths and filters solution (SN) tables
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+SOURCES                            Source list ' '=>all.
+DOBTWEEN        -1.0         1.0   > 0 -> smooth all sources
+                                   together; else separate them
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select, 0=>all
+BIF               0.0      100.0   Lowest IF number 0=>all
+EIF               0.0      100.0   Highest IF number 0=>all
+TIMERANG                           Time range to use.
+ANTENNAS                           Antennas to correct.
+SUBARRAY          0.0     9999.0   Subarray; 0 => all.
+SAMPTYPE                           Smoothing function: BOX, MWF,
+                                   GAUS, EXP, LINE, 2PT, 2PTH
+BPARM                              Smoothing parameters
+                                   (1-5) support, (6-10) FWHM
+                                   for amp,phase,rate,delay,MBD
+CUTOFF            0.0              Cutoff for functional forms
+DOBLANK                            Blanked value interpolation
+SMOTYPE                            Data to smooth: AMPL, PHAS,
+                                   BOTH, DELA, VLBI, VLRI, VLMB,
+                                   VLDE
+CPARM                              Range of allowed delays and
+                                   rates.
+DELCORR                            Allowed range of dispersion
+NPIECE            0.0              Number IF groups used in
+                                   FRING (re APARM(5))
+NORMALIZ         -1.0        4.0   > 0 => apply a global
+                                   normalization; = 0 adjust a
+                                   pre-existing normalization
+INVERS                             Input SN table; 0=>highest
+OUTVERS                            Output SN table; 0=>new
+REFANT                             Reference antenna 0=>pick.
+BADDISK           0.0     9999.0   Disks to avoid for scratch
+----------------------------------------------------------------
+SNSMO
+Task: This task references and smooths an SN table.  First rates and
+   delays can be clipped to a specified range of values.  Next phase
+   like values (phase, delays and rate) are rereferenced if necessary
+   to a single antenna.  This rereferencing is done in a manner which
+   should preserve the coherence of the two orthoginal polarization
+   systems.
+      Following the referencing the solutions are smoothed in a manner
+   to preserve coherence, rates may be averaged before smoothing and
+   the average phase difference between the orthogonal polarizations
+   before smoothing is enforced on the solutions after smoothing.
+   Blanked solutions will be interpolated or not under control of
+   DOBLANK.
+
+   WARNING: THIS TASK WAS CHANGED 27 MARCH, 2003.  The smoothing no
+   longer propagates good solutions indefinitely.  Instead the support
+   size is strictly enforced.  Additional smoothing options are now
+   available.  DOBLANK is now changed: if it is < 0, failed solutions
+   are not fixed, if it is >= 0 they are fixed.  If it is <= 0, good
+   solutions are smoothed, if it is > 0 good solutions are not
+   altered.
+
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  SOURCES....list of sources to process: '*' = all;
+             a "-" before a source name means all except ANY source
+             named.
+  DOBTWEEN...> 0 => smooth all SN values regardless of source.
+             <= 0 => smooth only SN values from the same source.
+             Well-separated calibrators may have different phases just
+             because of different atmosphere, so one would not want to
+             smooth them together.  This can be achieved via doing one
+             source at a time, but DOBTWEEN allows one to do all
+             sources at once - at least if the choice is a simple one.
+  FREQID.....Frequency identifier to select (you may determine which
+             is applicable from the OPTYPE='SCAN' listing produced by
+             LISTR).
+  BIF........First IF to process. 0=>all.  Set to 1 for VLMB and VLDE.
+  EIF........Highest IF to process. 0=>all higher than BIF
+             Set to all for VLMB, VLDE.
+  TIMERANG...Time range of the data to be used. In order:
+             Start day, hour, min. sec, end day, hour, min. sec.
+             Days relative to reference date.
+  ANTENNAS...A list of the antennas to be modified.  If any number is
+             negative then all antennas listed are NOT to be modified.
+             All 0 => use all.
+  SUBARRAY...The subarray to modify.  0 -> all.
+  SAMPTYPE...The type of smoothing.
+                'BOX ' = boxcar smoothing (default)
+                'MWF ' = Median window filter
+                'GAUS' = Gaussian
+                'EXP ' = Exponential
+                'LINE' = Linear (1 - abs(t-t0)/sigma)
+                '2PT ' = Two-point
+                '2PTH' = Two-point + "Hanning"
+  BPARM......Parameters for smoothing function.
+             Function support full-width width in hours.
+               (1) => support time for amplitudes,
+               (2) => support time for phase,
+               (3) => support time for rates
+               (4) => support time for singleband delay
+               (5) => support time for multiband delay, dispersion
+             Added parameter (FWHM) for GAUS, EXP, LINE
+               (6) => smoothing FWHM time for amplitudes,
+               (7) => smoothing FWHM time for phase,
+               (8) => smoothing FWHM time for rates
+               (9) => smoothing FWHM time for singleband delay
+              (10) => smoothing FWHM time for multiband delay,
+                      and dispersion
+             In all cases, the substitution for blanked and good
+             solutions is governed by DOBLANK (see below)
+  CUTOFF.....Cutoff for GAUS, EXP, LINE.  The sum of the weighting
+             function in the support region must exceed CUTOFF for the
+             smoothed value to be regarded as valid.  Be careful, a
+             value of 1.5 means that the sample itself must be good
+             and the sum over other good samples in the support range
+             must exceed 0.5.  < 1.e-6 => 1.e-6.
+  DOBLANK....Blanked value interpolation:
+             > 0: replace previously blanked values with smoothed
+                  values, leave previously good values unchanged.
+             = 0: replace previously blanked and previously good
+                  values with smoothed values.
+             < 0: replace previously good values with smoothed values,
+                  leave previously blanked values blanked.
+             Note that DOBLANK >= 0 requires a SMOTYPE that smooths
+             both phase and amplitude, namely BOTH, FULL, VLBI, or
+             VLMB.
+  SMOTYPE....Specified the data to be smoothed. '    '=>'AMPL'
+               'AMPL' = amplitude smoothing only,
+               'PHAS' = phase smoothing only,
+               'BOTH' = amplitude and phase,
+               'DELA' = delay smoothing only,
+               'VLBI' = Coherent phase, rate and delay smoothing.
+                        Phases smoothed in each IF separately.
+               'VLRI' = Coherent phase, rate and delay smoothing.
+                        Phases smoothed in each IF separately, but
+                        rates are averaged over IF as well as
+                        polarization.
+               'VLMB' = Like VLBI and VLRI but phases are averaged
+                        over IF after correction for multi-band delay,
+                        before smoothing. The average phase is the
+                        phase of vector average of the complex
+                        amplitudes. The average amplitude is the
+                        scalar average of the amplitudes.
+               'VLDE' = Like VLMB but phases of the first IF in each
+                        piece (group of IFs) are smoothed and then the
+                        phases in all other IFs in that group are
+                        computed from the first IF and the smoothed
+                        delays.  Thus iF the phase difference from one
+                        IF to the next is due solely to delay (FRING
+                        included both IFs in a single group) you
+                        should use this option abd set NPIECE
+                        carefully.
+               'FULL' = same as VLBI
+  CPARM......Data can be clipped by comparison with a median window
+             filter.  The width of the Median window is specified in
+             CPARM(1-5).  The maximum allowed deviation is given in
+             CPARM(6-10). 0 => all values are OK.
+               (1) => smoothing time for amplitudes,
+               (2) => smoothing time for phase
+               (3) => smoothing time for rates
+               (4) => smoothing time for singleband delay
+               (5) => smoothing time for multiband delay, dispersion
+               (6) => Max. deviation for amplitudes,
+               (7) => Max. deviation for phase, (deg)
+               (8) => Max. deviation for rates (mHz)
+               (9) => Max. deviation for singleband delay (nsec)
+               (10) => Max. deviation for multiband delay (nsec)
+             The clipping on rates is based on the MWF of the average
+             rate over IF compared to the individual rates.  The
+             amplitude, phase, and SB delay are done one IF at a
+             time.
+  DELCORR....The clip level for deispersion (ns/m/m).
+  NPIECE.....The IFs were combined in FRING into NPIECE pieces under
+             control of APARM(5).  <=0 -> NIF.  This helps handle
+             phase when smoothing delay so set this carefully.  Note:
+             NPIECE = 1 for APARM(5) = 1 or 2.  NPIECE = APARM(5)-1
+             for APARM(5) > 2 in FRING.
+  NORMALIZ...Controls whether a global gain normalization is applied
+             to the table.  If there was one previously and NORMALIZ=0
+             or if NORMALIZ > 0, a global normalization is applied.
+             Otherwise, the global normalization parameter is left
+             unchanged.
+  INVERS.....input version number of the SN table to smooth.
+             0 => Highest.
+  OUTVERS....output version of SN table to write.
+             0 => create new table.
+  REFANT.....Reference antenna to use.  All phase-like values in the
+             SN table will be referenced to this antenna. 0=> use the
+             one used in the most solutions.
+  BADDISK....A list of disks on which scratch files are not to be
+             placed.  This will not affect the output file.
+----------------------------------------------------------------
+SNSMO:  Smooths solution (SN) tables.
+Documentor: W. D. Cotton
+Related Programs: CALIB, FRING, CLCAL, SNCOR
+
+     This task re-references an SN table to a common antenna (REFANT)
+and then allows smoothing of a variety of data types in an solution
+(SN) table.  This re-referencing and smoothing is done in a way that
+will maintain phase coherence between the right and left (or
+orthogonal linear) systems.
+     Phase smoothing is done after removing the integral of the fringe
+rate which is then replaced after smoothing.  This allows the
+possibility of sensible phase smoothing with non-zero fringe rates. It
+is recommended that this task not overwrite the original table to
+protect aginst errors.
+
+     The SN table differs from the standard SN table by the inclusion
+of multiband delays for the two polarizations and the IF phases are at
+the IF frequency.
+
+SMOTYPE = 'VLBI'
+     This option causes the residual rates for R and L polarizations
+to be averaged to maintain R-L coherence.  The rates in each IF are
+processed independently.  Values in the "Multiband" delay columns will
+be processed but the phases in each IF are processed independently.
+
+SMOTYPE = 'VLRI'
+     This option causes all residual rates for a given time and
+antenna to be averaged over both IF and polarization and the phases
+for the two polarizations of a given IF are forced to maintain R-L
+coherence.  Values in the "Multiband" delay columns will be processed
+but the phases in each IF are processed independently.
+
+SMOTYPE = 'VLDE'
+     This option is designed for data which has been fringe fitted for
+delays in groups of IFs (FRING APARM(5) > 0).  In this case the phase
+in each IF should be the sum of the phase of the first IF in the group
+and the product of the delay times the frequency difference of that IF
+and the first IF of the group.  The phase of that first IF in each
+group is smoothed and then the phases for the other IFs in the group
+are determined from the smoothed delays.  Amplitudes, delays, and
+rates are set as in VLMB.  This is the recommended approach when you
+have done groups including a single group (the multi-band delay
+method).  Note that you must set NPIECE carefully for this option -
+use    MAX (1, APARM(5)-1).
+
+SMOTYPE = 'VLMB'
+     This option is designed for data which has been fringe fitted for
+a multiband delay.  In this case the phase in each IF should be
+estimates of the same (or identical) values.  Thus the phases are
+corrected for the multi-band delay and then averaged in IF before
+smoothing. The average phase is the phase of vector average of the
+complex amplitudes to which the phase due to the multi-band delay is
+restored.. The amplitude is the scalar average of the amplitudes.
+
+SAMPTYPE
+    '2PT ' - interpolates in time between the two nearest neighbors of
+             a flagged sample within the support time range
+             This mode is really only for DOBLANK > 0.
+    '2PTH' - interpolates in time between the two nearest neighbors of
+             a sample within the support time range, then averages the
+             sample (if good) with the interpolated value.  When there
+             is only one good neighbor, the sample itself counts
+             double if it is good.

@@ -1,0 +1,124 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1997, 2000, 2002-2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# UPDAREAS
+#-----------------------------------------------------------------------
+# Check to see if $SYSAIPS/AREAS.DAT appears in PUTBCK.UNQ.  If so,
+# we MAY need to regenerate the $SYSUNIX files AREAS.CSH and AREAS.SH
+# and will definitely need to create any new directories.
+#-----------------------------------------------------------------------
+#                                       Clean up signals 1 2 3 and 15.
+trap 'rm -f /tmp/ENVOLD.$$ /tmp/ENVNEW.$$ /tmp/MKDIR.$$; \
+   exit 1' 1 2 3 15
+rm -f UPDAREAS.ERR
+touch UPDAREAS.ERR
+say() {
+   echo "UPDAREAS  - $*" >>$LogFile
+}
+say2() {
+   echo "UPDAREAS  - $*" | tee -a UPDAREAS.ERR >>$LogFile
+}
+#                                       SYSAIPS:AREAS.DAT changed?
+if grep ' SYSAIPS *AREAS.DAT' PUTBCK.UNQ > /dev/null ; then
+   say "File      : SYSAIPS:AREAS.DAT found in PUTBCK.UNQ"
+   say "This means there may be directories to create or delete"
+#                                       Capture old environment.
+   PRINTENV | grep "=$AIPS_ROOT/" | \
+      sed -e "s,.*=$AIPS_ROOT,$AIPS_ROOT,g" > /tmp/ENVOLD.$$
+#                                       copy
+   AREAS="$ServerRoot/$VerName/SYSTEM/AREAS.DAT"
+   UPDCOPYSUB $AREAS $SYSAIPS/AREAS.DAT
+   say "Copied    : $AREAS"
+   say "To        : $SYSAIPS/AREAS.DAT"
+   NEWER=`find $SYSAIPS/AREAS.DAT -newer PUTBCK.UNQ -print 2> /dev/null`
+   case $NEWER in
+
+      $SYSAIPS/AREAS.DAT)
+#                                       See if we need to regenerate it
+         if grep ' SYSUNIX *AREAS.SH' PUTBCK.UNQ >/dev/null ; then
+            if grep ' SYSUNIX *AREAS.CSH' PUTBCK.UNQ >/dev/null ; then
+               say "also found: AREAS.CSH/SH, will NOT generate them"
+            else
+               say "AREAS.CSH not found in PUTBCK list!!!"
+               say "****************************************"
+               say "    AIPS MANAGER: GENERATE THIS FILE"
+               say " BY RUNNING THE SYSUNIX/AREAS SCRIPT!!"
+               say "****************************************"
+            fi
+         else
+            say "AREAS.SH not found in PUTBCK list!!!"
+            say "****************************************"
+            say " WILL TRY TO REGENERATE AREAS.SH FILE"
+            say " THIS MAY NOT WORK; AIPS MANAGER NOTE!"
+            say "****************************************"
+#                                       Regenerate $SYSUNIX/AREAS.*SH.
+            chmod +w $SYSUNIX/AREAS.CSH $SYSUNIX/AREAS.SH
+            $SYSUNIX/AREAS
+            say "Remade    : $SYSUNIX/AREAS.CSH"
+            say "and       : $SYSUNIX/AREAS.SH"
+         fi
+#                                       Generate new "logicals"
+         . $SYSUNIX/AREAS.SH
+#                                       Capture new environment.
+         PRINTENV | grep "=$AIPS_ROOT/" | \
+           sed -e "s,.*=$AIPS_ROOT,$AIPS_ROOT,g" > /tmp/ENVNEW.$$
+#                                       Create new directories.
+#                                       This does NOT zap old ones.
+         diff /tmp/ENVOLD.$$ /tmp/ENVNEW.$$ | sed -n -e 's/> *//p' \
+            > /tmp/MKDIR.$$
+         rm -f /tmp/ENVOLD.$$ /tmp/ENVNEW.$$
+         cat /tmp/MKDIR.$$ | {
+            while read AREA
+            do
+               say "Create    : $AREA"
+#                                       See if area already exists
+               if test -d $AREA
+               then
+                  say "already exists."
+               else
+#                                       Use -p to create intermediates
+                  if mkdir -p $AREA 2>> UPDAREAS.ERR
+                  then
+                     say "done"
+                  else
+                     say2 "Create of : $AREA"
+                     say2 "failed!"
+                  fi
+               fi
+            done
+         }
+         rm -f /tmp/MKDIR.$$
+         ;;
+
+      *)
+         say2 "Copy of   : $AREAS"
+         say2 "to        : $SYSAIPS/AREAS.DAT"
+         say2 "failed!"
+         ;;
+   esac
+fi
+

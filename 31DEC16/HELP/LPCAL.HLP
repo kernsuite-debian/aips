@@ -1,0 +1,434 @@
+; LPCAL
+;---------------------------------------------------------------
+;! Determines instrumental polarization for UV data
+;# TASK UV CALIBRATION POLARIZATION
+;---------------------------------------------------------------
+;;  Copyright (C) 1995-2003, 2006-2009
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                          Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+LPCAL     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+LPCAL   Task to compute instrumental polarization corrections
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+                                   Data selection (multisource):
+CALSOUR                            Source to calibrate with
+TIMERANG                           Time range to use.
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select.
+BCHAN             0.0     2048.0   Start channel 0=>all
+ECHAN             0.0     2048.0   End channel 0=>all
+BIF               0.0      100.0   Lowest IF number 0=>all
+EIF               0.0      100.0   Highest IF number 0=>all
+ANTENNAS                           Antennas to solve for.
+UVRANGE           0.0              UV range in kilolamdba
+SUBARRAY          0.0     1000.0   Subarray, 0=>1
+                                   Cal. info for input:
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CAL table to apply.
+                                   CLEAN map. If not given,
+                                   unpol. source is assumed.
+BLVER                              BL table to apply.
+FLAGVER                            Flag table version
+DOBAND           -1.0       10.0   If >0 apply bandpass cal.
+                                   Method used depends on value
+                                   of DOBAND (see HELP file).
+BPVER                              Bandpass table version
+SMOOTH                             Smoothing function. See
+                                   HELP SMOOTH for details.
+IN2NAME                               Cleaned map name (name)
+IN2CLASS                              Cleaned map name (class)
+IN2SEQ            0.0     9999.0      Cleaned map name (seq. #)
+IN2DISK           0.0        9.0      Cleaned map disk unit #
+IN2VERS          -1.0      255.0   First CC file version #.
+NCOMP                              Number of sub-models,
+                                   1 value per field
+NMAPS             0.0     4096.0   No. Clean map files (fields)
+CMETHOD                            Modeling method:
+                                   'DFT','GRID','    '
+CMODEL                             Model type: 'COMP','IMAG'
+                                   'SUBI' (see HELP re images)
+SOLINT                             Preavg. interval (min)
+                                   0 => no averaging.
+PRTLEV           -1.0       10.0   Print statistics 0=>results
+                                   1=>results&residuals
+CPARM                              Task enrichment parameters
+                                   (1) > 0 => average in IF
+                                      and find common solution.
+                                   (2) > 0 => compute model
+                                      using the image
+BADDISK           0.0     1000.0   Disk no. not to use for
+                                      scratch files.
+---------------------------------------------------------------
+LPCAL
+Task:  This task reads a data UV file and a total intensity
+       source model and determines the effective feed
+       parameters for each antenna and IF.  These parameters
+       are placed in the antenna (AN) table. Polarization
+       corrections can then be applied by setting DOPOL=1 in
+       LISTR, VBPLT, POSSM, or SPLIT.
+            Model images made with both values of IMAGR's DO3DIMAG
+       option are handled correctly, as are multi-scale images.  Set
+       NMAPS = NFIELD * NGAUSS.
+
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+
+The following are used for multisource data files only:
+  CALSOUR....Source to use for feed calibration. Only one can
+             and will be used. Must be set for multisource
+             files.
+  TIMERANG...Time range of the data to be used. In order:
+             Start day, hour, min. sec,
+             end day, hour, min. sec. Days relative to ref.
+             date.
+  SELBAND....Bandwidth of data to be selected. If more than
+             one IF is present SELBAND is the width of the
+             first IF required. Units = kHz. For data which
+             contain multiple bandwidths/frequencies the task
+             will insist that some form of selection be made
+             by frequency or bandwidth.
+  SELFREQ....Frequency of data to be selected. If more than
+             one IF is present SELFREQ is the frequency of the
+             first IF required. Units = MHz.
+  FREQID.....Frequency identifier to select (you may determine
+             which is applicable from the OPTYPE='SCAN' listing
+             produced by LISTR). If either SELBAND or SELFREQ
+             are set, their values override that of FREQID.
+             However, setting SELBAND and SELFREQ may result in
+             an ambiguity.  In that case, the task will request
+             that you use FREQID.
+  BCHAN......First channel to use. 0=>1
+  ECHAN......Highest channel to use. 0=>all higher than BCHAN
+  BIF........First IF to process. Old values for feed parameters
+             and calibrator polarizations for unprocessed IFs
+             are unchanged.  0=>all.
+  EIF........Highest IF to process. 0=>all higher than BIF
+  ANTENNAS...A list of the antennas to  have solutions
+             determined. If any number is negative then all
+             antennas listed  are NOT to be used to determine
+             solutions and all others are. All 0 => use all.
+The following may be used for all data files (except as noted):
+  UVRANGE....Range of projected spacings to be included in
+             1000's of wavelengths.  0  =>  1, 1.E10
+  SUBARRAY...Subarray number to use. 0=>1.
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....version number of the CL or SN table to apply to
+             the data.  0 => highest.
+  BLVER......Version number of the baseline based calibration
+             (BL) table to appply. <0 => apply no BL table,
+             0 => highest.
+  FLAGVER....Specifies the version of the flagging table to be
+             applied.  0 => highest numbered table.  <0 => no flagging
+             to be applied.
+  DOBAND.....If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+  BPVER......Specifies the version of the BP table to be applied.
+             <0 => no bandpass correction done.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+  IN2NAME....Cleaned map name (name). If not given, LPCAL assumes that
+             the source is unpolarized.  Note: a CLEAN image may be
+             given only for one source. An Ipol, Lpol or Rpol image is
+             expected.
+             If the source table contains a flux, then that flux will
+             be used to scale the components model to obtain the
+             stated total flux.  This is needed since initial Cleans
+             may not obtain the full flux even though they represent
+             all the essentials of the source structure.
+  IN2CLASS...Cleaned map name (class).
+  IN2SEQ.....Cleaned map name (seq. #).  This must be the
+             same for all fields.
+  IN2DISK....Disk drive # of cleaned map.  0 => any.
+  IN2VERS....CC file version # for the first sub-model.
+             Applies to all fields. 0 => 1.
+  NCOMP......THIS ADVERB IS USED IN A NON-STANDARD WAY IN LPCAL:
+             Number of regions within the facet, each supported by a
+             separate well-prepared Clean components file, to be
+             used.  The CC file version numbers to be used are IN2VERS
+             through IN2VERS+NCOMP(i)-1 for sub-models 1 through
+             NCOMP(i) in facet i.  There is a limit of 10 sub-models
+             over all facets included.  The polarization of each
+             sub-model may be different and will be determined by
+             LPCAL along with the instrumental parameters.  Each
+             sub-model CC file should be prepared with CCEDT or TABED
+             or in the imaging to include only the region over which
+             the source polarization is thought to be roughly
+             constant.
+  NMAPS......Number of image files to use for model.  For multi-scale
+             models, set NMAPS = NFIELD * NGAUSS to include the Clean
+             components of the extended resolutions.  If more than one
+             file is to be used, the NAME, CLASS, DISK and SEQ of the
+             subsequent image files will be the same as the first file
+             except that the LAST 3 or 4 characters of the CLASS will
+             be an increasing sequence above that in IN2CLASS.  Thus,
+             if INCLASS='ICL005', classes 'ICL005' through 'ICLnnn'
+             or 'ICnnnn', where nnn = 5 + NMAPS - 1 will be used.  Old
+             names (in which the 4'th character is not a number) are
+             also supported: the last two characters are '01' through
+             'E7' for fields 2 through 512.  In old names, the highest
+             field number allowed is 512; in new names it is 4096.
+  CMETHOD....This determines the method used to compute the
+             model visibility values.
+             'DFT' uses the direct Fourier transform, this
+             method is the most accurate.
+             'GRID' does a gridded-FFT interpolation model
+             computation.
+             '    ' allows the program to use the fastest
+             method.
+             NOTE: when using a model derived from data with
+             different uv sampling it is best to use 'DFT'
+  CMODEL.....This indicates the type of input model; 'COMP' means that
+             the input model consists of Clean components, 'IMAG'
+             indicates that the input model consists of images.
+             'SUBI' means that the model consists of a sub-image of
+             the original IMAGR output.  If CMODEL is '   ' Clean
+             components will be used if present and the image if not.
+             SUBI should work for sub-images made with DO3DIM true and
+             sib-images of the central facet made with DO3DIM false,
+             but probably will not work well for shifted facets with
+             DO3DIM false.  Use BLANK rather than SUBIM in such cases.
+             CALIB will set a scaling factor to correct image units
+             from JY/BEAM to JY/PIXEL for image models.  If the source
+             table contains a flux, then that flux will be used to
+             scale the components model to obtain the stated total
+             flux.  This is needed since initial Cleans may not obtain
+             the full flux even though they represent all the
+             essentials of the source structure.
+  SOLINT.....Time interval to average data before determining
+             correction in min. 0 => no averaging.
+  PRTLEV.....If larger than 0.0, show fit residuals.
+  CPARM......Task enrichment parameters:
+             (1) If CPARM(1) is greater than 0 then data in the
+                 selected IFs will be averaged before doing the
+                 solutions.  NOTE: the IFs must be phase
+                 coherent for this to be useful.
+             (2) If CPARM(2)>0 will compute models from images rather
+                 than CLEAN components.  But you must also set CMETHOD
+                 and CMODEL.
+  BADDISK....Disk numbers on which scratch files are not to
+             be placed.
+---------------------------------------------------------------
+LPCAL:  Task to determine effective feed polarization
+        parameters for VLBI arrays.
+Documentor: K. J. Leppanen
+Related Programs: CALIB, LISTR, SPLIT, CLCOR, CCEDT,PCAL,SPCAL
+
+
+PCAL, SPCAL or LPCAL?
+---------------------
+PCAL was designed for the VLA and works well for unresolved
+of slightly resolved calibrators with uniform polarization.
+LPCAL was designed for VLBI and allows the use of calibrators
+that have significant structure and differential polarization
+across the source.  It will also handle unpolarized calibrators.
+SPCAL was designed for spectral line experiments and solves
+for frequency dependent D-terms.  Like PCAL SPCAL demands
+an unresolved calibrator.
+
+
+                        LPCAL
+                        =====
+
+     Polarization calibration of synthesis array visibility
+data consists of two distinct parts: 1) the determination of
+the effective response of the feeds to the incident radiation
+and the correction of the observations to the values which
+would have been obtained with perfect feeds and 2) the
+determination and removal of systematic phase delay
+differences between the right and left hand polarization
+systems.  LPCAL determines the effective response of the feeds
+and stores this information in the AN table. Routines which
+can apply calibration tables can then be instructed to apply
+the polarization corrections by setting the adverb DOPOL=TRUE.
+
+     LPCAL can be used in two cases: 1) the polarization
+structure of the calibrator is not known, but a total
+intensity model for it is available and can be used to derive
+the polarization structure in the way explained below; 2) the
+calibrator is unpolarized. In the first case the parallactic
+angle range for the calibrator has to be sufficient to allow
+for the solution of source polarization. For a bright
+unpolarized calibrator even one scan should be sufficient and
+no total intensity model is required. LPCAL uses a linear
+approximation for the feeds, which becomes inaccurate if the
+polarization leakage in the feeds (D-terms) exceeds 5
+percent. This should not be the case for new instruments like
+the VLBA. Note that the parallactic angles of the source must
+differ at different interferometer elements. This means that
+VLA data cannot be calibrated with LPCAL.
+
+     A source with unknown polarization structure can be used
+as a calibrator if its polarization structure can be modeled
+as a weighted sum of a small number of sub-models, derived by
+simply splitting the total intensity (Stokes I) CLEAN
+model. The weights in the sum are initially unknown complex
+values that are solved for during the feed solution. Such a
+model is likely to be a good representation of the
+polarization structure of maser sources, which consist of
+distinct masing regions.  It is often an adequate assumption
+for continuum sources that can be well modeled by a small
+number (say, less than five) of gaussians.
+
+STEPS BEFORE RUNNING LPCAL
+--------------------------
+     Before fringe fitting, apply the correction for
+parallactic angle using CLCOR, OPCODE='PANG'. Fringe fit the
+parallel hand visibilities using normal procedures for
+multiband data making sure that all solutions are referenced
+to the same antenna. Don't let FRING rereference the solutions
+if a change in the reference antenna cannot be avoided; i.e.
+set DPARM(7) = 1. Instead, use SNSMO to rereference the
+solutions. To find R-L phase and single-band delay offsets
+between the IFs, use BLAVG, FRING, and POLSN as described in
+the BLAVG help file. Self-calibrate the parallel hand data;
+this will also yield a total intensity source model for LPCAL.
+
+     If the systematic phase delay difference between the
+right and left hand systems is time variable (e.g. variable
+ionospheric Faraday rotation at the reference station used in
+fringe fitting) then the phase drift needs to be removed
+before running LPCAL (see CLCOR).  If the systematic phase
+offsets are essentially constant then they may be removed
+after running LPCAL. To do this, first use LISTR with
+STOKES='POLC'; DOPOL=1 and appropriate calibration on a source
+with known polarization angle to determine the phase offset
+and then apply a correction using CLCOR and OPCODE='POLR'.
+Note: this will modify the AN table (rotate the D-term phases)
+as well as the CL table.
+
+TOTAL INTENSITY MODEL
+---------------------
+     For a calibrator with unknown polarization, LPCAL needs a
+total intensity source model, which is usually given as a set
+of sub-models (CC tables). The division into sub-models can be
+made with the task CCEDT automatically or manually. The
+division should be made in such a way that the polarized
+structure of the resulting sub-models is well approximated by
+their (scaled) total intensity structure with constant
+polarization angle (similarity assumption). Usually one would
+use a Stokes I model, but Stokes L or R models are also
+accepted. It is crucial that the sum of the total intensity
+sub-models gives a good fit to the parallel-hand
+visibilities. Otherwise there is no hope that it can be the
+basis for a successful model of the polarization structure.
+
+Example 1:
+
+     In case of H2O or SiO masers, each significant maser spot
+should constitute an independent sub-model, since each can
+have a different degree and angle of linear polarization.
+These models can be given as separate CC tables, obtained by
+splitting the original CC table with CCEDT. If the source has
+very extended structure it may be necessary to map it using
+multiple fields in MX. LPCAL can read CLEAN models from
+multiple fields, each having one or more CC tables (again, one
+per sub-model). Give the number of fields in NMAPS, the
+CC version number of the first model in IN2VERS (applies to
+all fields), and the numbers of consecutive CC models to use
+in NCOMP (one value per field).
+
+Example 2:
+
+     If using a continuum calibrator, the preferable way to
+produce the sub-models may be the automatic splitting feature
+of CCEDT. Try running CCEDT with CPARM=10,0 on the CC table
+produced by IMAGR or MX. For manual splitting with CCEDT (and
+TVBOX, for example), it may be useful to make a heavily
+super-resolved image to see how the CLEAN components tend to
+group.
+
+RUNNING LPCAL
+-------------
+IN2NAME, IN2CLASS, IN2SEQ, IN2DISK:
+     These specify the total intensity model to use. A total
+intensity model is irrelevant if emission from all parts of
+the source is unpolarized, in which case these should be
+left empty. Note, however, that even then the input uv-data
+must have been self-calibrated, i.e., the complex gains must
+be correct.
+
+IN2VERS, NCOMP, NMAPS:
+     See example 1 above.
+
+SOLINT:
+     The data will be preaveraged to SOLINT minutes before the
+solution. This should be set sufficiently short to avoid
+smearing of source structure. For extended maser sources 0.5
+minutes can be too much! Regardless of SOLINT, only one
+solution per station and possibly IF is made by LPCAL.
+
+PRTLEV:
+     LPCAL will solve for the fractional linear polarization
+of each sub-model and print out the solutions. PRTLEV<0
+suppresses this printing. Note that the source solutions are
+not saved anywhere. PRTLEV=1 (recommended) produces useful
+information about the residuals.
+
+SINGLE SOURCE FILES
+-------------------
+     In principle, LPCAL can work on a single source file
+followed by SPLIT to apply the correction.  However, in
+practice, it is preferable to convert the input file to
+multisource file using task MULTI followed by INDXR to create
+an index table.
+

@@ -1,0 +1,227 @@
+; MWFLT
+;---------------------------------------------------------------
+;! applies linear & non-linear filters to images
+;# Task Analysis Imaging
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1998, 2004, 2006
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+MWFLT     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+MWFLT     Applies a nonlinear low/high pass filter to an image.
+INNAME                             Input image name (name)
+INCLASS                            Input image name (class)
+INSEQ             0.0     9999.0   Input image name (seq. #)
+INDISK            0.0        9.0   Input image disk unit #
+OUTNAME                            Output image name (name)
+OUTCLASS                           Output image name (class)
+OUTSEQ           -1.0     9999.0   Output image name (seq. #)
+OUTDISK           0.0        9.0   Output image disk unit #.
+BLC                                Bottom left corner of input
+TRC                                Top right corner of input
+OPCODE                             Operation codes: 'ROW '
+                                   'MW  ','ALFA','MODE','NRML'
+                                   ;MAX ', 'MIN '
+CPARM                              1,2: Filter Box width, height
+                                   ('ROW' 2: "Median" pixel
+                                   3: include fraction
+                                   4: >0 => Print progress
+                                   5: 'ROW' pixel increment
+                                   6: 'ROW' Saturation Limit
+                                   7: 'ROW' Saturation Value
+DPARM                              1:Data Scale, 2:Filter scale
+                                   3:'NRML' background scale
+----------------------------------------------------------------
+MWFLT
+Task:  Task which applies various high or lowpass filters to images.
+       Handles blanking and data cubes.  MWFLT is based on the TAFFY
+       paraform, and uses its scrolling buffer ability.  It implements
+       five filters which work on a matrix of pixels surrounding and
+       containing each input pixel.  The dimensions of this matrix are
+       passed to the task via CPARM.
+Adverbs:
+  INNAME.....Input image name (name).       Standard defaults.
+  INCLASS....Input image name (class).      Standard defaults.
+  INSEQ......Input image name (seq. #).     0 => highest.
+  INDISK.....Disk drive # of input image.   0 => any.
+  OUTNAME....Output image name (name).      Standard defaults.
+  OUTCLASS...Output image name (class).     Standard defaults.
+  OUTSEQ.....Output image name (seq. #).    0 => highest unique.
+  OUTDISK....Disk drive # of output image.  0 => highest disk
+             number with sufficient space.
+  BLC........Bottom right corner in input image of desired
+             subimage.  Default is entire image.
+  TRC........Top right corner in input image of desired
+             subimage.  Default is entire image.
+  OPCODE.....User specified operation code:
+             'ROW' => Median window filter for rows.  Result is
+                      data +/- Median filter of pixels in the
+                      CPARM(1) pixels on the row surrounding and
+                      containing each input point.  CPARM(2) is
+                      the Nth point of the CPARM(1) pixels to
+                      used for the sky.  A true median is
+                      CPARM(2)=CPARM(1)/2  The output values
+                      are scaled by DPARM()s (D() below):
+                      output = D(1)*input + D(2)*MW(input)
+                      Highpass, sky removal:  D(1)=1,D(2)=-1
+                      Low pass, star removal: D(1)=0,D(2)=1
+             'MW'  => Median window filter.  Result is data
+                      +/- Median filter of pixels in the
+                      CPARM(1)xCPARM(2) window surrounding and
+                      containing each input point.
+                      output = D(1)*input + D(2)*MW(input)
+                      (Much slower than 'ROW')
+             'MAX '=> Take maximum value in the CPARM(1)xCPARM(2)
+                      window surrounding the pixel
+                      output = D(1)*input + D(2)*MWMax(input)
+             'MIN '=> Take minimum value in the CPARM(1)xCPARM(2)
+                      window surrounding the pixel
+                      output = D(1)*input + D(2)*MWMin(input)
+             'ALFA'=> Alpha trim filter.  Median, but extreama
+                      are excluded.  Each result point is
+                      the mean of all the values in the
+                      CPARM(1)xCPARM(2) window surrounding and
+                      containing each input points which are
+                      greater than CPARM(3) percent of the
+                      values in the window and less than
+                      CPARM(3) percent of the values.
+                      (ie C(3)=25 => points 25 to 75 %)
+                      output = D(1) * input + D(2) * MW(input)
+             'MODE'=> Mode window filter.  Similar to Median
+                      except Mode used.  The mode approximated
+                      as 3 times the median of the distribution
+                      minus twice the mean.
+             'NRML'=> Normalization filter.  This filter is an
+                      extension of the alpha trim and mode
+                      filters.  It is mainly used to reduce the
+                      dynamic range of an image.  Each result
+                      point is the sum of the square root of the
+                      normalized mode of the distribution of
+                      pixels and a normalization function.  This
+                      function is simply the original data point
+                      minus the mode of the pixels in the window
+                      that are within the given alpha trim range
+                      (see above) times a scale factor based on
+                      the RMS of the distribution of pixels. The
+                      scale factor is inversely proportional to
+                      the RMS so that lighter features are
+                      enhanced while brighter features are
+                      reduced.  The formula is:
+                        RESULT(I)=(DATA(I)-MODE(I))*(D(1)-D(2))*
+                             (ABS(MODE(I))/DATAMAX)+D(2))/RMS(I)
+                             + D(3)*SQRT(ABS(MODE(I)/DATAMAX))
+  CPARM......CPARM(1) is the width of the window.
+             For 'ROW' CPARM(1) the maximum value is the length.
+                CPARM(2) is the Nth brightest value to use as
+                the median. (True median is CPARM(2)=C(1)/2)
+             For other opcodes CPARM(2) is the window height.
+                The window values must be odd, greater than 0,
+                and less than or equal 201.
+             For 'ALFA' or 'NRML' CPARM(3) is the fraction of
+                points in the window which define the cutoffs.
+                This value must be between zero and 0.5.
+                CPARM(4) specifies whether row numbers should be
+                output as the task is running (-1 => no)
+  DPARM......If OPCODE is not 'NRML', DPARM(1) is the scale for
+                the input image in calculating the output image.
+                DPARM(2) is the scale for the median.
+                output = input*DPARM(1) + median*DPARM(2)
+                   Median highpass, sky subtraction:
+                      D(1)=1,D(2)=-1
+                   Median lowpass, star removal:
+                      D(1)=0,D(2)=1
+                   If image is a negative, to remove sky and
+                   make positive:
+                      D(1)=-1,D(2)=1
+                   Default: DPARM(*)=0 => DPARM(1)=1,DPARM(2)=-1
+
+             'NRML', DPARM(1) is the maximum RMS to be in
+             the output image, DPARM(2) is the minimum RMS
+             to be in the output image, and DPARM(3) is the
+             weight of the square root of the background in
+             the calculation of the output image.
+----------------------------------------------------------------
+MWFLT:  Task which applies Median Filters
+DOCUMENTOR: Glen Langston, Thad A. Polk/Don Wells NRAO.
+RELATED PROGRAMS:  All AIPS image tasks.
+
+                          PURPOSE
+
+
+     MWFLT is designed to apply lowpass or highpass filters to images.
+It uses the 'scrolling buffer' concept with space for a 201-row buffer.
+It allows a framework which allows the implementation of any operator
+which depends on the pixels within a window of user specified size.
+MWFLT can handle up to 7 dimensional images and supports blanking.  A
+subimage of the
+input image may be selected.
+
+     Since optical images often do not have correct coordinate info,
+MWFLT also will update the coordinate type increment, reference pixel
+and reference location via the CPARM adverb.  If the input image has
+blanks for the axis types, the axis type is assume to be a tangent
+projection of Ra and Dec.
+
+               DETAILS ABOUT SPECIFIC OPCODES
+
+ROW:  Median filter of data in one row.  Considerably faster than MW.
+       CPARM(1) is the width of the median filter (no maximum).
+       CPARM(2) is the Nth value of the sorted list of pixels to use as
+       the filter output.  A true median is CPARM(2)=CPARM(1)/2.  If the
+       image is full of objects, then the sky is better subtracted by a
+       smaller CPARM(2).  For negative images, make CPARM(2) bigger.
+MW:   Median window filter.  The median calculation uses a two
+       dimensional merge sort algorithm to keep all the pixels within
+       the window in sorted order.  The result is the pixel value in the
+       middle of this sorted array.
+MAX:  Uses the MW code, but returns the max in the window
+MIN:  Uses the MW code, but returns the min in the window
+       See L Rudnick, (2002), PASP, 114, 427 for uses that may be made
+       of this simple filter.  Larry recommends setting CPARM(1) and
+       CPARM(2) to at least 3x beam extent in pixels and DPARM = 0,1.
+       Then run OPCODE='MIN' on the input image and OPCODE='MAX' on the
+       output of 'min' to get all emission larger than 3x beam.  This
+       can be subtracted from the original image with COMB to get only
+       more compact emission.
+ALFA: Alpha-trimmed mean filter, which is formed by taking the average
+       of a subset of the data points in the window. The subset is
+       defined as all those data points greater than CPARM(3) percent of
+       the data and less than CPARM(3) percent of the data.
+MODE: Mode filter.  The mode of the distribution is approximated as 3
+       times the median of the distribution minus twice the mean.  In
+       addition, outliers of the distribution are excluded by
+       calculating the standard deviation of the sample and using the
+       Chauvenet rule to calculate a normal distribution cutoff value
+       for the sample.  Only those pixels whose values are between the
+       two cutoff limits are allowed to enter the median, mean, and
+       standard deviation calculations.  This result is a much closer
+       estimate of the true background than is the mean.
+NRML: Normalization filter.  It calculates the result as the sum of the
+       square root of the mode of the distribution and a normalization
+       function.  This function is simply the original data point minus
+       the mode of the pixels in the window that are within the given
+       alpha trim range times a scale factor that is inversely
+       proportional to the r.m.s. of the distribution of pixels.  This
+       operator is mainly useful in reducing the dynamic range of images
+       while enhancing lighter features.

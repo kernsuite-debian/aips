@@ -1,0 +1,368 @@
+PFTLOAD.RUN by Don Wells & Bill Cotton, NRAO-CV, Dec84-Feb85.
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+* This is the "load file" of the Perley-Feigelson Test problem.
+* It compiles the POPS code and leaves it in SAVE/GET files.
+* The file PFTEXEC.RUN executes the files.
+* See PFT.HLP for documentation (HELP PFT, EXPLAIN PFT).
+* =============================================================
+* Remember prior state to permit restoration at end:
+STORE 1
+RESTORE 0
+CORE
+* ============================================================
+* Declare variables for the procedures:
+PROCEDURE DCLRVR
+   STRING*50 BMBTXT
+   STRING*12 PRCSV1, ZAPSV2, NCLSV2, PHDSV1, PHDSV3, CHKSV2
+   STRING*12 CVTSV1, CVTSV3
+   STRING*8 TNAME
+   STRING*6 ZAPSV1, ZAPSV3, ZIGSV1, NCLSV1, NCLSV3, CHKSV1
+   STRING*6 ZIGSV2, ZIGSV3, PHDSV2, PHDSV4, CVTSV2, CVTSV4
+   STRING*5 ZIGTSK, TPLTSK
+   STRING*4 TCODE
+   STRING*1 TMODE
+   SCALAR   TMASK, ERATIO, IGWSV1, FIXFLT, CVTSV5
+   RETURN
+FINISH
+* Procedure to print fatal error message:
+PROCEDURE PFTBOMB(BMBTXT)
+   TYPE 'FATAL ERROR:', BMBTXT
+   I = 1; I = I / 0; RETURN
+FINISH
+* Procedure to list current catalog:
+PROCEDURE PRTCAT
+   PRCSV1 = INNAME; INNAME = '*' !! TNAME; INCLASS = ' '
+   INSEQ = 0; CATALOG; INNAME = PRCSV1; FREESPAC; RETURN
+FINISH
+* Procedure to print header of a file:
+*               (inname, inclass)
+PROCEDURE PRTHED(PHDSV1, PHDSV2)
+   PHDSV3 = INNAME; INNAME = PHDSV1
+   PHDSV4 = INCLASS; INCLASS = PHDSV2; IMHEADER
+   INNAME = PHDSV3; INCLASS = PHDSV4; RETURN
+FINISH
+* Procedure to execute a task:
+PROCEDURE IGW (INCLASS, TASK); INPUTS; IGWSV1 = DOWAIT
+   DOWAIT = TRUE; GO; DOWAIT = IGWSV1; RETURN
+FINISH
+* Procedure to "ZAP" output files of specified class:
+*                (class), assumes OUTNAME
+PROCEDURE OUTZAP (ZAPSV1)
+   ZAPSV2 = INNAME; INNAME = OUTNAME
+   ZAPSV3 = INCLASS; INCLASS = ZAPSV1; ALLDEST
+   INNAME = ZAPSV2; INCLASS = ZAPSV3; RETURN
+FINISH
+* Procedure to "ZAP" prior output files, then execute:
+*              (inclass, task, outclass)
+PROCEDURE ZIGW (ZIGSV1, ZIGTSK, ZIGSV2)
+   OUTZAP(ZIGSV2); ZIGSV3 = OUTCLASS; OUTCLASS = ZIGSV2
+   IGW(ZIGSV1, ZIGTSK); OUTCLASS = ZIGSV3; RETURN
+FINISH
+* Procedure to list header of tape file and read it:
+PROCEDURE TPLOD(TPLTSK); TPHEAD; IGW(' ', TPLTSK); RETURN
+FINISH
+* Procedure to convert file format between float and fix:
+*           (name, class, desired); desired: 1=int, 2=float
+PROCEDURE CONVERT(CVTSV1, CVTSV2, FIXFLT)
+   CVTSV3 = INNAME; INNAME = CVTSV1; CVTSV4 = INCLASS;
+   INCLASS = CVTSV2; KEYWORD = 'BITPIX'; GETHEAD;
+   IF (KEYVALUE(1)=FIXFLT) THEN ELSE CVTSV5 = DOWAIT
+      DOWAIT = TRUE; GO CNVRT; DOWAIT = CVTSV5
+      TYPE INNAME!!'.'!!INCLASS!!' converted to', FIXFLT
+   END; INNAME = CVTSV3; INCLASS = CVTSV4; RETURN
+FINISH
+* Procedure to compare test image against master:
+*               (inclass), assumes OUTNAME
+PROCEDURE CHECK (CHKSV1); SCALAR TINY99
+   APARM = 0.0; APARM(1) = 1.0; APARM(2) = -1.0;
+   CHKSV2 = INNAME; INNAME = OUTNAME
+   IN2NAME = 'M' !! TNAME; IN2CLASS = CHKSV1
+   CONVERT(INNAME, CHKSV1, 1); CONVERT(IN2NAME, IN2CLASS, 1)
+   PRTHED(IN2NAME, IN2CLASS);
+   OPCODE = 'SUM'; ZIGW (CHKSV1, 'COMB', 'DIFF')
+   TYPE '#################################################'
+   TYPE '###########------' !! CHKSV1 !! '------#####################'
+   TYPE '#################################################'
+   INCLASS = 'DIFF'; BLC = 0; TRC = 0; IMSTAT; ERATIO = PIXVAL
+   INCLASS = IN2CLASS; KEYWORD = 'DATAMAX'; GETHEAD
+   ERATIO = ERATIO / KEYVALUE(1)
+   TYPE 'Relative to maximum:', ERATIO
+   IF ERATIO<0 THEN ERATIO = -ERATIO END
+   TINY99 = 1.5768E-20 * 1E-10
+   IF ERATIO<TINY99 THEN ERATIO = TINY99 END
+   TYPE 'Number correct bits:', -3.3219 * LOG (ERATIO)
+   TYPE '#################################################'
+   TYPE '#################################################'
+   INNAME = CHKSV2
+   RETURN
+FINISH
+* Procedure to rename a file:
+*                  (inclass, outclass), assumes OUTNAME
+PROCEDURE NEWCLASS (NCLSV1, OUTCLASS)
+   NCLSV2 = INNAME; INNAME = OUTNAME
+   NCLSV3 = INCLASS; INCLASS = NCLSV1
+   RENAME; INNAME = NCLSV2; INCLASS = NCLSV3; RETURN
+FINISH
+* Dummy procedure in case ALLDEST not executed:
+PROCEDURE YES; RETURN
+FINISH
+* ================================================
+* Set default variable values:
+TNAME = 'PFT'; TASK = TNAME; TMASK = 127; TMODE = 'T'
+INNAME = TMODE !! TNAME; INCLASS  = ' '; INSEQ  = 0
+OUTNAME = 'T' !! TNAME; OUTCLASS = ' '; OUTSEQ = 0
+CLR2NAME; CLR3NAME
+* Save current POPS image to allow restore after each step:
+CORE
+SAVE PFT000
+* ================================================
+* Check variables:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET
+   IF (TCODE='INIT') THEN
+      INNAME = 'M' !! TNAME; OUTNAME = 'M' !! TNAME
+   ELSE IF ((TCODE = 'TEST')!(TCODE='WRIT')) THEN
+      INNAME = TMODE !! TNAME; OUTNAME = 'T' !! TNAME
+   ELSE IF (TCODE = 'READ') THEN
+      OUTNAME = 'M' !! TNAME
+   END END END; INPUTS
+   I=(TCODE='INIT')!(TCODE='TEST')!(TCODE='WRIT')!(TCODE='READ')
+   IF (I) THEN ;
+      ELSE PFTBOMB('TCODE MUST BE INIT,TEST,WRIT, OR READ!')
+   END
+   IF ((TMASK<1)!(TMASK>127)) THEN
+      PFTBOMB('MUST HAVE 0<TMASK<128 !')
+   END
+   IF ((TCODE='TEST')!(TCODE='WRIT')) THEN
+      IF ((TMODE='T')!(TMODE='M')) THEN ;
+         ELSE PFTBOMB('TMODE MUST BE T OR M IF TCODE=TEST/WRIT!')
+      END
+   END
+   I = (INTAPE<1)!(OUTTAPE<1)!(INDISK<1)!(IN2DISK<1)!(OUTDISK<1)
+   IF (I) THEN
+      PFTBOMB('NEED INTAPE,OUTTAPE,INDISK,IN2DISK &OUTDISK >0 !')
+   END
+   TPUT; RETURN
+FINISH
+CORE
+SAVE PFTINIT
+* ========================================================
+* Read/Write the input visibility dataset:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET
+*   Eventually we will be able to remove the REWIND/AVFILE
+*   operations below and substitute operations to write and
+*   read the RUN files as a FITS extensions.
+   IF (TCODE = 'WRIT') THEN
+      PRTCAT; REWIND; NFILES = 3; AVFILE;
+      INNAME = 'D' !! TNAME;
+      DOEOT = FALSE; DONEWTAB = TRUE;
+      IGW('UVDATA', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      REWIND; NFILES = 3; AVFILE;
+*     first, delete any existing master files:
+      INCLASS = '*';
+      INNAME = 'D' !! TNAME; ; ALLDEST
+      INNAME = 'M' !! TNAME; ; ALLDEST
+      SOURCE = '3C274'; NPOINTS = 8; NFILES = 0;
+      OUTNAME = 'D' !! TNAME; FREESPAC; TPLOD('UVLOD')
+      PRTCAT
+   END END
+   RETURN
+FINISH
+CORE
+SAVE PFT000RW
+* ================================================
+* Sort the visibility data:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET; J = 1
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      INNAME = 'D' !! TNAME; PRTHED(INNAME, 'UVDATA')
+      SORT = 'XY'; ROTATE = 0.0
+      ZIGW ('UVDATA', 'UVSRT', 'UVSRT'); PRTHED(OUTNAME, 'UVSRT')
+      PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('UVSRT', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      NPOINTS = 8; TPLOD('UVLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+CORE
+SAVE PFT001
+* ================================================
+* Compute the dirty map:
+GET PFT000
+PROCEDURE PFTPROC; STRING*6 BEAMCL; TASK = TNAME; TGET; J = 2
+*     Use IBEM for older versions of UVMAP, IBEAM for newer:
+   BEAMCL = 'IBEAM'
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IMSIZE = 256; CELLSIZE = 8; UVTAP = 2; XTYPE = 4;
+      YTYPE = 4; OUTZAP('IMAP'); OUTZAP(BEAMCL)
+      OUTZAP('UVBEAM'); ZIGW('UVSRT', 'UVMAP', 'UVMAP');
+      NEWCLASS('IMAP', 'UVMAP'); NEWCLASS(BEAMCL, 'UVBEAM')
+      PRTHED(OUTNAME, 'UVMAP'); PRTHED(OUTNAME, 'UVBEAM')
+      IF (TCODE = 'TEST') THEN
+         CHECK('UVMAP'); CHECK('UVBEAM')
+      END; PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('UVMAP', 'FITTP'); IGW('UVBEAM', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      TPLOD('IMLOD'); TPLOD('IMLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+CORE
+SAVE PFT002
+* ================================================
+* Clean the dirty map:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET; J = 4
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IN2NAME = INNAME; IN2CLASS = 'UVBEAM';
+      NITER = 2000; BOX = 64, 64, 192, 192;
+      ZIGW('UVMAP', 'APCLN', 'APCLN'); PRTHED(OUTNAME, 'APCLN')
+      IF (TCODE = 'TEST') THEN CHECK('APCLN') END
+      ZIGW('APCLN', 'SUBIM', 'APRES')
+      BMAJ = -1; BITER = NITER; OUTCLASS = 'APRES'; OUTSEQ = 1
+      IN2NAME = INNAME; IN2CLASS = 'UVBEAM';
+      IGW('UVMAP', 'APCLN'); PRTHED(OUTNAME, 'APRES')
+      IF (TCODE = 'TEST') THEN CHECK('APRES') END; PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('APCLN', 'FITTP'); IGW('APRES', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      TPLOD('IMLOD'); TPLOD('IMLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+CORE
+SAVE PFT004
+* ================================================
+* Compute revised gain solution by self-calibration:
+GET PFT000
+PROCEDURE PFTPROC; STRING*12 SAVEIT; TASK = TNAME; TGET; J = 8
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      INNAME = 'D' !! TNAME; IN2NAME = SAVEIT
+      IN2CLASS = 'APCLN'; OUTCLASS = 'ASTEMP';
+      APARM = 0; BPARM = 0; DOCAT = TRUE;
+      ZIGW('UVDATA', 'ASCAL', 'ASTEMP')
+      PRTHED(OUTNAME, 'ASTEMP'); INNAME = OUTNAME
+      ZIGW('ASTEMP', 'UVSRT', 'ASCAL');
+      PRTHED(OUTNAME, 'ASCAL'); OUTZAP('ASTEMP'); PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('ASCAL', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      NPOINTS = 8; TPLOD('UVLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+CORE
+SAVE PFT008
+* ================================================
+* Make a new map with MX
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET; J = 16
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IN2DISK = OUTDISK
+      STOKES = 'I'; NFIELD = 1; CELLSIZE = 8; IMSIZE = 256;
+      UVTAPER = 2; XTYPE = 4; YTYPE = 4; NITER = 0;
+      OUTZAP('MXBEAM'); ZIGW('ASCAL', 'MX', 'MXMAP');
+      NEWCLASS('IMAP', 'MXMAP'); NEWCLASS('IBEAM', 'MXBEAM')
+      OUTZAP('UVWORK')
+      PRTHED(OUTNAME, 'MXMAP'); PRTHED(OUTNAME, 'MXBEAM')
+      IF (TCODE = 'TEST') THEN CHECK('MXMAP') END; PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('MXMAP', 'FITTP'); IGW('MXBEAM', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      TPLOD('IMLOD'); TPLOD('IMLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+* OUTSEQ=1
+CORE
+SAVE PFT016
+* ==========================================================
+* Make a new clean map with MX:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET; J = 32
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      OUTZAP('IBEAM'); OUTZAP('MXCLN'); OUTZAP('MXBEM');
+      IN2NAME = ' '; IN2CLASS = ' ';
+      STOKES = 'I'; NFIELD = 1; CELLSIZE = 8; IMSIZE = 256;
+      UVTAPER = 2; XTYPE = 4; YTYPE = 4;
+      NITER = 2000; ZIGW('ASCAL', 'MX', 'ICLN')
+      NEWCLASS('IBEAM', 'MXBEM'); NEWCLASS('ICLN', 'MXCLN')
+      OUTZAP('UVWORK'); PRTHED(OUTNAME, 'MXCLN')
+      IF (TCODE = 'TEST') THEN CHECK('MXCLN') END; PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('MXCLN', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      TPLOD('IMLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+OUTSEQ=1
+CORE
+SAVE PFT032
+* ================================================
+* Deconvolve the map using Maximum Entropy:
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET; J = 64
+   IF(((TCODE='INIT')!(TCODE='TEST'))&(MOD(TMASK,2*J)>=J))THEN
+      IN2NAME = INNAME; IN2CLASS = 'MXBEAM'
+*      NOTE: we do just enough iterations to get VM going,
+*      not nearly enough to converge (we just check math):
+      NITER = -3; ERROR = 0.01; FLUX = 200.0;
+      GAIN = 0.03; NPOINTS = 85;
+      CONVERT(INNAME, 'MXMAP', 1); CONVERT(IN2NAME, IN2CLASS, 1)
+      ZIGW('MXMAP', 'VM', 'IVM'); PRTHED(OUTNAME, 'IVM')
+      IF (TCODE = 'TEST') THEN CHECK('IVM') END; PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      IGW('IVM', 'FITTP')
+   ELSE IF (TCODE = 'READ') THEN
+      TPLOD('IMLOD'); PRTCAT
+   END END END; RETURN
+FINISH
+CORE
+SAVE PFT064
+* ================================================
+* Thats all, folks!
+GET PFT000
+PROCEDURE PFTPROC; TASK = TNAME; TGET
+   IF (TCODE = 'TEST') THEN
+      PRTCAT
+   ELSE IF (TCODE = 'WRIT') THEN
+      REWIND; NFILES = 3; IGW(' ', 'PRTTP')
+   ELSE IF (TCODE = 'READ') THEN
+      REWIND; PRTCAT
+   END END END
+   TYPE 'That"s all, Folks!'
+   RETURN
+FINISH
+CORE
+SAVE PFT9999
+* ================================================
+* Restore to prior status:
+RESTORE 1
+CORE
+SGDESTR PFT000
+SGINDEX

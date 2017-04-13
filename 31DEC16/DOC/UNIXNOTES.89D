@@ -1,0 +1,340 @@
+************************************************************************
+*            15OCT89 Installation Problems on UNIX Systems             *
+************************************************************************
+
+------------------------------------------------------------------------
+
+The location of the program directory $YVTVPGM in the Y-routine
+directory tree (i.e., $YVTVPGM=$YVTV/PGM) may cause INSTEP2 failures.
+The failure only occurs if "YVTVPGM" is referenced in
+$SYSLOCAL/LIBR.DAT.  When the MAKEAT procedure is invoked in INSTEP2
+to generate an "@" file (i.e., YGEN.LIS) for driving the Y-routine
+COMRPLs, the *program* file $YVTVPGM/TVMON.FOR gets included in the
+list of *subroutines* to process.  COMRPL succeeds in compiling TVMON,
+however, it then tries to stage $YVTVPGM/TVMON.o for replacement in
+every object library associated with "YVTVPGM" in $SYSLOCAL/LIBR.DAT
+(i.e., those required for linking $YVTVPGM programs).  This will lead
+to corruption of one or more of the subroutine object libraries (i.e.,
+$LIBR/*/SUBLIB) with a program object module (i.e., TVMON.o).
+
+The problem has been remedied for 15JAN90 and later releases by:
+
+   1) relocating the $YVTVPGM directory to $YPGM/VDEV
+
+   2) renaming the directory logical (i.e., environment variable)
+   YVTVPGM to YPGVDEV and defining it in the appropriate AREAS.* files
+   to be $AIPS_VERSION/Y/PGM/VDEV
+
+   3) changing any references to YVTVPGM in the various LIBR.DAT files
+   to YPGVDEV
+
+Sites installing 15OCT89 should do the same *before* initiating
+INSTEP2. If INSTEP2 has *already* been executed, the following
+corrective action is recommended (i.e., in addition to the above):
+
+   1) remove any extant $LIBR/*/TVMON.o (e.g., "rm $LIBR/*/TVMON.o")
+
+   2) remove TVMON.o from all $LIBR/*/SUBLIB object libraries (i.e.,
+   archive files using "ar".  For example,
+
+      "ar d $LIBR/AIPSUB/SUBLIB TVMON.o"
+
+   3) on systems that require it (i.e., Berkeley UNIX-based systems),
+   execute "ranlib" on all object libraries from which TVMON is deleted
+   in the step above.  For example,
+
+      "ranlib $LIBR/AIPSUB/SUBLIB"
+
+NOTE: Step #3 is not necessary (but harmless) for any $LIBR/*/SUBLIB
+for which "ar" reports "ar: TVMON.o not found".
+------------------------------------------------------------------------
+
+************************************************************************
+*            15OCT89 Installation Problems on Sun Systems              *
+************************************************************************
+
+------------------------------------------------------------------------
+
+Section 7.1.3 of the installation guide says:
+
+4) There is a change in the fpa floating-point exception handling as
+of OS 4.0.  In $APLSUN/ZABOR2.C, the call to "sigfpe_handler" should
+be changed to a call to "fpa_handler".  On Sun 4 systems, the
+reference to "sigfpe_handler" (or "fpa_handler") should be eliminated
+entirely.
+
+However, it should say "... In $APLSUN/ZABORS.C, ...".  The routine
+ZABOR2 was renamed to ZABORS as part of the source code overhaul.
+
+------------------------------------------------------------------------
+
+Section 7.1.3 of the installation guide says:
+
+5) Under OS 4.0, in _$APLUNIX/ZTPCL2.C, errno 1 (not owner) occurs
+while closing the 2nd "dup'ed" (see _$APLUNIX/ZTPOP2.C) file descriptor
+for the tape drive.  The work around is to copy _$APLUNIX/ZTPCL2.C to
+your local Z-routine directory and simply comment out the second close
+statement.  It's curious that _$APLUNIX/ZDAOPN.C and _$APLUNIX/ZDACLS.C
+do very similar open's and close's for disk, but ZDACLS.C doesn't get
+this error.
+
+However, commenting out the second "close" statement does not work.
+The "dup'ed" file descriptor still needs to be close'd (i.e., even
+though "close" considers it an error) and the recommended work around
+is to simply ignore the error by commenting out the statement that
+sets *ierr = 1, i.e.,
+
+                                        /* Close second buffer file   */
+                                        /* descriptor.                */
+   fd = *(fcb + Z_mfcb + Z_fcbfd);
+   if (close (fd) != 0 && *ierr == 0) {
+      *(fcb + Z_mfcb + Z_fcberr) = errno;
+/*
+      *ierr = 1;
+*/
+      }
+
+------------------------------------------------------------------------
+
+The call to "signal" in the ZABORS routine should also be changed from
+"signal (SIGILL, SIG_DFL)" to "signal (SIGIOT, SIG_DFL)" or under
+SunOS 4.0.x "signal (SIGABRT, SIG_DFL)".   If not, the abort handler
+can go into an infinite loop.  Unlike most other UNIX systems, the Sun
+implementation of the "abort" C library function issues a SIGIOT="IOT
+instruction" rather than a SIGILL="illegal instruction".  SunOS 3.5
+documentation says SIGIOT is not generated on Suns (must mean other
+than by "abort"). Under SunOS 4.0.x, SIGABRT = SIGIOT = 6.  The SunOS
+4.0.x documentation says SIGABRT will replace SIGIOT in the future.
+
+------------------------------------------------------------------------
+
+The $SYSSUN/LIBR.DAT file contains an error in the specification of
+the "alternate" TV implementations (i.e., Sun Screen Server versus
+virtual TV).  In particular, the sections mapping the source code
+areas for the SSS and virtual TV implementations to their respective
+object libraries both contain the same implementation code (i.e.,
+":0:"). This causes COMRPL to corrupt $LIBR/YSSS/SUBLIB with object
+modules generated from $YVTV source code and/or cause COMRPL to
+corrupt $LIBR/YVTV/SUBLIB with object modules generated from $YSSS
+source code.  The solution is to change the section:
+
+Y-routines
+
+$LIBR/YSSS/SUBLIB:0:$YSSS
+$LIBR/YSSS/SUBLIB:0:$YGEN
+
+$LIBR/YVTV/SUBLIB:0:$YVTV
+$LIBR/YVTV/SUBLIB:0:$YGEN
+
+to:
+
+Y-routines
+
+$LIBR/YSSS/SUBLIB:0:$YSSS
+$LIBR/YSSS/SUBLIB:0:$YGEN
+
+$LIBR/YVTV/SUBLIB:2:$YVTV
+$LIBR/YVTV/SUBLIB:2:$YGEN
+
+If the above change is not made before INSTEP2 invokes MAKEAT to
+generate YGEN.LIS, the $LIBR/YSSS/SUBLIB and/or $LIBR/YVTV/SUBLIB
+object libraries will be corrupted and the INSTEP3 (and/or INSTEP4)
+will fail when linking programs that need Y-routine libraries in their
+link lists.  After correcting $SYSLOCAL/LIBR.DAT, the following
+extreme (but sure) solution is recommended:
+
+   1) delete the $LIBR/YSSS and $LIBR/YVTV directories and their
+   contents
+
+   2) "cd" to the $INSUNIX directory and "rm YGEN.LIS"
+
+   3) re-execute INSTEP2
+
+Then proceed/continue with INSTEP3 and/or INSTEP4.
+
+------------------------------------------------------------------------
+
+At some point in the evolution of SunOS 3.x, the disabling of
+exclusive use upon closing a terminal device quit working as
+advertised (i.e., closing the device should be sufficient) and causes
+the second execution of a Tektronix oriented task (e.g., TKPL) or verb
+to fail still get a "device busy" error.  This has been averted now by
+adding an "ioctl" call with TIOCNXCL on the device to explicitly
+relinquish exclusive before closing it. This should not be necessary,
+didn't used to be necessary and, at least under Convex OS 7.1, still
+isn't necessary, but should not cause a problem either.  Sun sites
+should copy $APLBERK/ZTKCL2.C to their local Z-routine directory and
+add the following lines:
+
+                                        /* Turn off exclusive use.    */
+   ioctl (fd, TIOCNXCL, 0);
+
+immediately after the line:
+
+   ioctl (fd, TIOCSETP, &tek);
+
+------------------------------------------------------------------------
+
+SunOS 4.0 introduced another compilication regarding the use of
+Tektronix terminals in "AIPS REMOTE" mode (i.e., where the user's
+control "terminal" is defined as the output device for the TK* tasks
+and verbs).  The technique that used to work under SunOS 3.x was to
+define all the TEKTK1* device logicals as the alias for the user's
+control terminal (i.e., /dev/tty).  This no longer works under SunOS
+4.0.  Instead, the TEKTK1* device logicals need to be defined as
+"`tty`".  In the AIPS startup scripts (i.e., AIPS and aips), change
+the following lines:
+
+         TEKTK10=/dev/tty; export TEKTK11
+         TEKTK11=/dev/tty; export TEKTK11
+         TEKTK12=/dev/tty; export TEKTK12
+         TEKTK13=/dev/tty; export TEKTK13
+         TEKTK14=/dev/tty; export TEKTK14
+         TEKTK15=/dev/tty; export TEKTK15
+         TEKTK16=/dev/tty; export TEKTK16
+
+to:
+         TEKTK10=`tty`; export TEKTK11
+         TEKTK11=`tty`; export TEKTK11
+         TEKTK12=`tty`; export TEKTK12
+         TEKTK13=`tty`; export TEKTK13
+         TEKTK14=`tty`; export TEKTK14
+         TEKTK15=`tty`; export TEKTK15
+         TEKTK16=`tty`; export TEKTK16
+
+------------------------------------------------------------------------
+
+Section 7.1.3 of the installation guide gives a work around for a
+partial record reading problem in the form of a modified version of
+the routine $APLUNIX/ZTPMI2.C.  The text of the routine given is in
+error for the overhauled AIPS because it declares the routine arguments
+as "short int".  Instead, the text of the modified version should read:
+
+#include <errno.h>
+
+ztpmi2_(oper, fcb, buff, nbytes, ierr)
+/*--------------------------------------------------------------------*/
+/*! read/write from/to a tape device                                  */
+/*# IO-basic Tape                                                     */
+/*--------------------------------------------------------------------*/
+/*;  Copyright (C) 1995                                               */
+/*;  Associated Universities, Inc. Washington DC, USA.                */
+/*;                                                                   */
+/*;  This program is free software; you can redistribute it and/or    */
+/*;  modify it under the terms of the GNU General Public License as   */
+/*;  published by the Free Software Foundation; either version 2 of   */
+/*;  the License, or (at your option) any later version.              */
+/*;                                                                   */
+/*;  This program is distributed in the hope that it will be useful,  */
+/*;  but WITHOUT ANY WARRANTY; without even the implied warranty of   */
+/*;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the    */
+/*;  GNU General Public License for more details.                     */
+/*;                                                                   */
+/*;  You should have received a copy of the GNU General Public        */
+/*;  License along with this program; if not, write to the Free       */
+/*;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,     */
+/*;  MA 02139, USA.                                                   */
+/*;                                                                   */
+/*;  Correspondence concerning AIPS should be addressed as follows:   */
+/*;         Internet email: aipsmail@nrao.edu.                        */
+/*;         Postal address: AIPS Project Office                       */
+/*;                         National Radio Astronomy Observatory      */
+/*;                         520 Edgemont Road                         */
+/*;                         Charlottesville, VA 22903-2475 USA        */
+/*--------------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/*  Read/write "nbytes" 8-bit bytes of data from/to a tape device     */
+/*  using "map" I/O (i.e., double buffered, asynchronous I/O).        */
+/*  Inputs:                                                           */
+/*     oper     C*4    Operation code "READ" or "WRIT"                */
+/*     fcb      I(*)   File control block for opened tape drive       */
+/*     buff     I(*)   I/O buffer                                     */
+/*     nbytes   I      Number of 8-bit bytes to be transferred        */
+/*  Output:                                                           */
+/*     ierr     I      Error return code: 0 => no error               */
+/*                        2 => bad opcode                             */
+/*                        3 => I/O error                              */
+/*  Generic UNIX version - sysnchronous I/O actually, reports IO error*/
+/*  but not End Of File                                               */
+/*  SunOS 4.x partial record read bug fix version.                    */
+/*--------------------------------------------------------------------*/
+char oper[], buff[];
+int *fcb, *nbytes, *ierr;
+/*--------------------------------------------------------------------*/
+{
+                                        /* Offsets to entries in the  */
+                                        /* file control blocks        */
+   extern int Z_fcbfd, Z_fcbreq, Z_fcberr, Z_fcbxfr, Z_fcbsiz,
+      Z_fcbsp1, Z_fcbsp2, Z_fcbsp3, Z_fcbsp4;
+
+   extern int errno;
+   int fd;
+   register int i;
+   char op[5], scratch[32767];
+/*--------------------------------------------------------------------*/
+   *ierr = 0;
+                                        /* Form null terminated       */
+                                        /* opcode.                    */
+   for (i = 0; i < 4; i++)
+      op[i] = oper[i];
+   op[4] = '\0';
+                                        /* Get file descriptor from   */
+                                        /* the file control block as  */
+                                        /* stored there by ZTPOP2.    */
+   fd = *(fcb + Z_fcbfd);
+                                        /* Record byte request in the */
+                                        /* file control block.        */
+   *(fcb + Z_fcbreq) = *nbytes;
+                                        /* Also, zero error status &  */
+                                        /* transfer count entries.    */
+   *(fcb + Z_fcberr) = 0;
+   *(fcb + Z_fcbxfr) = 0;
+                                        /* Zero byte request just     */
+                                        /* initiates double buffered  */
+                                        /* I/O.                       */
+   if (*(fcb + Z_fcbreq) != 0) {
+                                        /* Perform the I/O and record */
+                                        /* the # of bytes transferred */
+                                        /* in *(fcb + Z_fcbxfr).      */
+                                        /* Record the system error    */
+                                        /* code (if any) in           */
+                                        /* *(fcb + Z_fcberr).         */
+/*
+      if (strcmp (op, "READ") == 0) {
+         if ((*(fcb + Z_fcbxfr) =
+            read (fd, buff, *(fcb + Z_fcbreq))) == -1) {
+            *(fcb + Z_fcberr) = errno;
+            *ierr = 3;
+            }
+         }
+*/
+      if (strcmp (op, "READ") == 0) {
+         if ((*(fcb + Z_fcbxfr) =
+            read (fd, scratch, 32767)) == -1) {
+            *(fcb + Z_fcberr) = errno;
+            *ierr = 3;
+         }
+         else {
+            if (*(fcb + Z_fcbxfr) > *(fcb + Z_fcbreq))
+               *(fcb + Z_fcbxfr) = *(fcb + Z_fcbreq);
+            for (i = 0; i < *(fcb + Z_fcbxfr) ; i++)
+               buff[i] = scratch[i];
+            }
+         }
+      else if (strcmp (op, "WRIT") == 0) {
+         if ((*(fcb + Z_fcbxfr) =
+            write (fd, buff, *(fcb + Z_fcbreq))) == -1) {
+            *(fcb + Z_fcberr) = errno;
+            *ierr = 3;
+            }
+         }
+                                        /* Bad opcode.                */
+      else {
+         *ierr = 2;
+         }
+      }
+                                        /* Exit.                      */
+   return;
+}
+
+------------------------------------------------------------------------

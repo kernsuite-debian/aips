@@ -1,0 +1,322 @@
+                   The MAIL-REMINDER utility for VAX/VMS
+
+                          Patrick P. Murphy, Ph.D.
+                    National Radio Astronomy Observatory
+                               P.O. Box "O"
+                        Socorro, NM 87801-0387, USA
+                              (505) 772-4337
+
+                           Bitnet: PMURPHY@NRAO
+                      SPAN/HEPNET: 6654::PMURPHY
+                    Arpa/Internet: PMURPHY@NRAO.ARPA
+                             uucp: ...uunet!nrao1!pmurphy
+
+SUMMARY
+
+     The MAIL-REMINDER utility may be used on a VAX/VMS host computer
+(including all the MicroVAX/VAXstation series) as a quasi-bulletin-
+board system.  When set up with a suitable account, it provides a
+repository for electronic mail messages received via VMS (or MicroVMS)
+MAIL, and provides any user of the system (or any group of users, if
+necessary) access to these messages.  A common usage for MAIL-REMINDER,
+and also the one it was created for, is to act as a centralized receiver
+for mail exploder services such as the BANANAS service offered by NRAO
+for the AIPS system.
+
+     What does it do?  Two things: (a) It checks for new mail, files it
+away in a specified folder if there is, and resubmits itself for a
+specified time in the future; (b) After running N times, it makes a
+summary of what arrived in the last N runs and mails this summary to a
+group of usernames as a reminder of what's going on.
+
+     In addition to this, the repository of messages can be accessed in
+two ways: (1) either by actually logging in to the captive account and
+scanning the messages with VMS MAIL ("captive" implies you can't do
+anything else from the account); or (b) doing a SET FILE <whatever> from
+a user's OWN account in VMS MAIL to access the captive account's mail
+file.  The <whatever> can either be the explicit filename or a logical
+name; we recommend the latter.
+
+     Although the MAIL-REMINDER was written for a specific application,
+it is quite generic in that it does not contain any specific assumptions
+about directories, optional software products above the basic VMS
+system, or the specific configuration of devices and peripherals at
+NRAO.  Thus, it is suitable for other e-mail broadcast services as long
+as the local users have access to a VMS or MicroVMS machine.
+
+
+DISCLAIMERS AND COPYRIGHT
+
+     The software is written in VAX/VMS DCL (VMS 4.4) and should work in
+any VMS or MicroVMS environment, versions 4.4 and up.  The software is
+Copyright (C) 1987 by Patrick P. Murphy and the National Radio Astronomy
+Observatory (NRAO).  All rights are reserved.  This software is in the
+public domain and may be freely copied and distributed, provided the
+copyright and this notice is propagated EXACTLY as it appears in this
+document and the source code.  NRAO and/or Patrick P. Murphy assume NO
+responsibility for bugs, errors, and other deficiencies in this code.
+It is distributed "as is", with NO support.  However, if errors are
+detected, we do ask that we be notified of them as soon as possible so
+we can attempt to rectify them.  Suggestions for improvement are also
+welcome.
+
+
+CHALLENGE!
+
+     The idea behind this facility is quite simple and generic.  This
+implementation is restricted to VMS, but there is NO reason why a UNIX
+version could not be developed.  We would like to challenge the reader,
+in particular if you are proficient in UNIX, to produce a UNIX version
+of MAIL-REMINDER with the same (or better!) functionality as this VMS
+version.  If you succeed, please let the author know and you will
+receive the grand prize: a special virtual AIPS banana as well as fame,
+the admiration of your peers, and the undying gratitude of the AIPS
+group!  (DG/AOS users: this challenge applies to you as well!!!)
+
+
+REQUIREMENTS
+
+     The following requirements must be met in order to establish the
+MAIL-REMINDER facility:
+
+    1.  A computer running VAX/VMS or MicroVMS version 4.4 or later;
+
+    2.  A "captive" account, capable of:
+                2.1.  Sending and receiving VMS mail;
+                2.2.  Running in batch mode, preferably interactive too.
+        You should talk to your systems manager about setting up such an
+        account; see Appendix A for the recommended UAF parameters.
+
+
+
+    3.  The following files.  You can use your own file name in place of
+        MAIL-REMINDER:
+                3.1.  MAIL-REMINDER.COM, the main command procedure;
+                3.2.  LOGIN.COM, the interactive/batch login procedure;
+                3.3.  LOGOUT.COM, used for logging out;
+
+    4.  The following OPTIONAL files:
+                4.1.  REMINDER.DIS, a distribution list of usernames;
+                4.2.  NOTICE.TXT, an introduction to people logging into
+                      the captive account.
+
+    5.  Finally, we recommend a system- or group-wide logical name that
+        will point at the relevant mail file to enable other users to
+        access that file from their own accounts.
+
+All of these requirements are covered in detail in the rest of this
+document.
+
+
+INSTALLATION PROCEDURE
+
+1.  First, set up a new account on your system to receive the incoming
+    mail messages.  Appendix A shows some typical parameters that your
+    system manager can use; if security is a concern, the login flags
+    are especially important.  Let us suppose you give this account a
+    username DBANANAS.
+
+    While you have your system manager's attention, ask him/her to set
+    up a system-wide logical name, e.g.
+        DEFINE/SYSTEM BANANA_MAIL disk:[directory]mailfile.MAI
+    where you substitute the appropriate names for the items in
+    lowercase.  Read on for details of what these are.  If you intend
+    on restricting the facility to a group, DEFINE/GROUP will do.
+
+2.  We assume that you receive this utility by electronic mail.  Each
+    file is sent (from VMS mail) as an individual message with the
+    SUBJECT field indicating the file name.  The next step is to extract
+    each file from your local MAIL facility to a separate file, and put
+    them in the default (login) disk/directory for the DBANANAS account.
+
+    There are a total of 6 files in the distribution: this file (called
+    MAIL-REMINDER.DOC) and the five others described in sub-items 3.1
+    through 4.2 of the previous section.  You can use the VMS mail's
+    EXTRACT/NOHEADER command, but you may still have to edit out any
+    mailer stamps that may have accumulated at the top of the file.
+
+3.  Once you have all the files on disk, you need to edit the main
+    MAIL-REMINDER.COM file.  At the beginning, there are several lines
+    that read like:
+
+    $!       Define the parameters needed.
+    $!       If you are going to change the time and/or mail parameters,
+    $!       the following five lines are ALL you should have to change.
+    $!
+    $ Short_Interval = "+1-"            ! Delta time, MUST be in DAYS!
+    $ LONG_INTERVAL  = 7                ! 7 times short interval
+    $ Mail_File      = "MAIL"           ! Use "MAIL" for default
+    $ Mail_Folder    = "MAIL"           ! Use "MAIL" for default
+    $ Distrib_List   = "REMINDER.DIS"   ! List of who to send summary to
+
+    Here is what each parameter means:
+
+    SHORT_INTERVAL:  how often the command procedure runs.  The default
+        -- and the minimum period -- is every day.  This is specified in
+        VMS delta time and MUST be of the form "+n-" where n is an
+        integer representing the number of days.
+    LONG_INTERVAL:  how often to send out the reminder message.
+        Specified as an integer, equal to the number of short intervals.
+        The default is 7 which with the SHORT_INTERVAL default would be
+        weekly.
+    MAIL_FILE:  The name of the mail file.  If you want the messages to
+        be filed away in a file other than the VMS default MAIL.MAI, put
+        the different file name here.  File type must remain .MAI .
+    MAIL_FOLDER:  The name of the folder the messages are to be put in.
+        If you are not familiar with or do not use folders, just set
+        this to the same as the value of MAIL_FILE.
+    DISTRIB_LIST:  The name of a file containing a list of people
+        (usernames) who want to be reminded by this facility.  The
+        format is simple: one username per line, with blank lines and
+        comments (preceded by an exclamation mark "!") ignored.  You can
+        put whatever format of usernames your local mail system is
+        configured to support, e.g. REMOTE::BILBO for a user on a remote
+        DECnet node, or ST%"BILLY" if you have software tools mail.  In
+        general, however, it will be a simple list of local usernames.
+        If the file does not exist, no "reminder" will be sent.
+
+    If you change the name of DISTRIB_LIST, please make sure that you
+    create it before setting wheels in motion!  (Unless you want to
+    disable this feature).  One further thing you can customize is the
+    section right after the ENDLOOP: label, to add a message after the
+    list of mail entries indicating to users how to read them.
+
+4.  Next, you will want to customize the LOGIN.COM file.  At the
+    beginning are three lines:
+
+        $ LOCAL_MAIL_DIRECTORY == "DISK$RES:[DBANANAS.MAIL]"
+        $ MAIL_PROTECTION      == "(GROUP:RW,WORLD:RW)"
+        $ SET_TERMINAL_COMMAND == "Set Terminal /Inquire /Line_Editing"
+
+    Let's go through them one at a time.
+    LOCAL_MAIL_DIRECTORY should be the default device/directory where
+        mail files are to be kept.  You HAVE to get into MAIL and do a
+        SET MAIL_DIRECTORY command if it's anything other than the login
+        area of the captive account.  This need only be done once.  For
+        example, with the above string, you would have to go into mail
+        and give the command SET MAIL_DIRETORY [.MAIL] .
+    MAIL_PROTECTION defines who can access the MAIL file.  VMS will
+        currently deny any group and world to mail files unless you do
+        something about it.  MAIL-REMINDER does that something and you
+        can let others in the captive mail account's group access it,
+        and/or let the "world" in (i.e. everyone).  It's a quirk of VMS
+        mail that you have to grant read AND write access.  If you want
+        to restrict access to users in the same group as DBANANAS, just
+        set this to "(GROUP:RW)".
+    SET_TERMINAL_COMMAND is the text of a DCL command to set the
+        terminal type.  As shown above, it will only work for DEC
+        terminals and their many emulators.  Just set the string to
+        blank (" ") if you don't want to set the terminal.  You only
+        lose line editing and keypad features (neither essential).
+
+    In addition to these three parameters, you will probably want to
+    modify the "remote privileged user" section, about 20 lines further
+    down in the login file.  It will look like:
+
+        $ remote_user = f$trnlnm("SYS$REM_ID", "LNM$JOB")
+        $ if remote_user .eqs. "" then goto CAPTIVE
+        $   if remote_user .eqs. "FRODO"   then goto EXIT
+        $   if remote_user .eqs. "BILBO"   then goto EXIT
+        $   if remote_user .eqs. "GANDALF" then goto EXIT
+        $   if remote_user .eqs. "ARAGON"  then goto EXIT
+
+    First, you need to have DECnet, even if you've only got a little
+    MicroVAX 2000.  I *think* the feature you need comes standard in
+    VMS, but I'm not sure.  If you can log into your machine again by
+    giving the DCL command SET HOST 0 (that's a zero), then you can use
+    this next feature.  If not, delete the above six lines from the
+    login, but make sure you can modify the files in the captive account
+    from another account, e.g. your own.
+
+    What you do is replace the names "FRODO", etc. above with the
+    username(s) of people who can use the account in a non-captive way.
+    These accounts will be able to do a SET HOST 0, log into DBANANAS or
+    whatever you have called it, and get to DCL command level (the
+    dollar prompt).
+
+    If you have DECnet, then the "privileged" users you define here will
+    be able to get to DCL level in the DBANANAS account by setting host
+    from any other machine in your DECnet environment, including the VAX
+    that DBANANAS is on.
+
+5.  You need to edit the LOGOUT.COM file.  As shipped, it will NOT auto-
+    matically log the "captive" user out.  This is to enable the
+    installer to customize the files in case DECnet is not available.
+    Find the lines that look like:
+
+        $!
+        $! LOGOUT          ! Change to "$ LOGOUT" at end of installation
+        $!
+
+    and change "$! LOGOUT" to read "$ LOGOUT" at the start of the line.
+
+6.  Finally, you are ready to submit the batch job.  MAIL-REMINDER will
+    do the "long interval" stuff the very first time, so you want to
+    submit it with the /AFTER qualifier for the time and/or date you
+    want it to start.  For example, suppose today is Thursday October 11
+    and you have set the short interval as one day, the long one as
+    seven, and want to have the reminder sent to users every monday at
+    1:00 AM.  The command to do this will look like:
+
+        SUBMIT/AFTER="+4-01:00"/NOPRINT MAIL-REMINDER.COM
+
+    One detail you may want to know is that MAIL-REMINDER will resubmit
+    itself on the hour; it checks what time it is when it starts up,
+    sets the minutes to zero and uses this time plus the short interval
+    when re-submitting itself.
+
+
+CHECKING ON PROGRESS
+
+One way of checking on the progress of the facility is to see if it
+sends the reminder messages every long interval (i.e., put yourself on
+the distribution list).  If it keeps cranking them out, all is probably
+well.  If something goes amiss, you should look at the log files.  The
+log file from the batch job will have the same name as the MAIL-REMINDER
+command file and file type .LOG, and a maximum of two copies are kept.
+You should look at the last log file and check for errors.  It helps to
+be literate in VAX DCL when doing this, or having someone who is look
+over your shoulder.
+
+If you do encounter significant problems, please try to ensure that you
+have done everything in the installation instructions above correctly.
+Then, if you still can't see the cause of the problem, have someone who
+is a VMS/DCL expert at your site look at this document, the
+MAIL-REMINDER.DOC file, and the steps you took to install it.  Finally,
+if all else fails, send an e-mail message to the author with DETAILS,
+and an attempt will be made to diagnose the problem and suggest a
+solution.  This is NOT an offer of support, merely a request to report
+genuine problems to the author so the software can be improved.
+
+ 
+APPENDIX A -- VAX UAF example
+
+The following is a typical VAX UAF settings for the captive account that
+MAIL-REMINDER should be run from.  It is similar to what is used at
+NRAO.  You should get your system manager to review this before setting
+up the captive account.
+
+Username: DBANANAS                 Owner:  AIPS Banana Peeler
+Account:  SOFTWARE                 UIC:    [NNN,MMM] ([SOFTWARE,DBANANAS])
+CLI:      DCL                      Tables:
+Default:  DISK$RES:[DBANANAS]
+LGICMD:
+Login Flags:  Disctly Defcli Captive Diswelcome Disreport Lockpwd
+Primary days:   Mon Tue Wed Thu Fri Sat Sun
+Secondary days:
+No access restrictions
+Expiration:            (none)    Pwdminimum:  0   Login Fails:     0
+Pwdlifetime:           (none)    Pwdchange:             (none)
+Last Login:  7-OCT-1987 09:59 (interactive),
+             9-OCT-1987 01:00 (non-interactive)
+Maxjobs:         0  Fillm:        20  Bytlm:         8192
+Maxacctjobs:     0  Shrfillm:      0  Pbytlm:           0
+Maxdetach:       0  BIOlm:        18  JTquota:       1024
+Prclm:           2  DIOlm:        18  WSdef:          150
+Prio:            4  ASTlm:        24  WSquo:          300
+Queprio:         0  TQElm:        10  WSextent:      1024
+CPU:        (none)  Enqlm:        30  Pgflquo:      10000
+Authorized Privileges:
+  TMPMBX NETMBX
+Default Privileges:
+  TMPMBX NETMBX

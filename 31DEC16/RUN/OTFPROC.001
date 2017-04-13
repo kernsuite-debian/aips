@@ -1,0 +1,356 @@
+$ OTFPROC.001
+$---------------------------------------------------------------
+$! RUN file to set up task parameters for OTF processing.
+$# Run POPS
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1997-1999, 2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+$
+$  AIPS procedure to setup task parameters for OTF processing.
+$  Written by Jeff Mangum (05/94)
+$  Revised significantly by Jeff Mangum (09/94)
+$  Changed default convolution parameters (JGM 01/95)
+$  Changed default convolution parms and added stuff (JGM 09/95)
+$  Split off work into several tasks (JGM 10/95)
+$  Add 8-beam analysis capabilities (JGM 02/96)
+$
+$  OBSSET    ==> Assigns observer initials.
+$  FILESET   ==> Assigns sdd and gsdd files.
+$  OTFREAD   ==> Assigns AIPS file information.
+$  OTFSET    ==> Sets-up pseudo-constant task parameters.
+$  OTFRUN    ==> Runs tasks to process single, dual, and multi-pass maps.
+$
+$  Sequence is...
+$                     RUN OTFPROC
+$                     OTFSET
+$                     OTFRUN
+$
+proc obsset
+*
+*  Set observer initials
+*
+string*4 obsini
+type ' '
+type 'Enter observer initials (in single quotes):'
+read obsini
+type ' '
+print '...your observer initials are ',obsini
+return
+finish
+*
+*
+*
+proc fileset
+*
+*  Set sdd and gsdd file information
+*
+string*4 yn, fnum, ftype
+*
+print ' '
+print 'Enter raw data file number (in single quotes):'
+print '(NOTE...must be a number like 001)'
+read fnum
+print 'Are you processing filterbank or hyspec data?:'
+print '(Enter fb or hc in single quotes)'
+read ftype
+print 'Is this OFF-fixed data?:'
+print '(Enter y or n)'
+read yn
+if(ftype='hc') then
+  datain = 'OBSDAT:SDD_HC.' !! obsini !! '_' !! fnum
+  data2in = 'OBSDAT:GSDD_HC.' !! obsini !! '_' !! fnum
+  if(yn='y') then
+    datain = 'FIXDAT:SDD_HC.' !! obsini !! '_' !! fnum
+  end
+else
+  datain = 'OBSDAT:SDD.' !! obsini !! '_' !! fnum
+  data2in = 'OBSDAT:GSDD.' !! obsini !! '_' !! fnum
+  if(yn='y') then
+    datain = 'FIXDAT:SDD.' !! obsini !! '_' !! fnum
+  end
+end
+print ' '
+print '...your sdd file is ',datain
+print '...your gsdd file is ',data2in
+return
+finish
+*
+*
+*
+proc otfread
+*
+*  Set-up AIPS file information.
+*
+scalar seq, disk
+string*8 name
+*
+print 'Setting OTF procedure parameters'
+*fileset
+print ' '
+print 'Enter starting sequence number to be used for all output files:'
+print '(NOTE...sequence numbers greater than or equal to this value'
+print ' must be unique)'
+read seq
+inseq = seq
+outseq = seq
+print ' '
+print 'Enter a unique name for AIPS output files (in single quotes):'
+print '(some variation on the object name would be a good choice)'
+read name
+innam = name
+outnam = name
+print ' '
+print 'Your default AIPS outname will be ',name
+print ' '
+print 'Enter AIPS disk number to store data:'
+read disk
+indisk=disk
+outdisk=disk
+return
+finish
+*
+*
+*
+proc otfset
+*
+*  Set-up pseudo-fixed task parameters.
+*
+scalar xsize, ysize, ximsi, yimsi, temp1, temp2
+scalar nreg, cell, chan
+*
+obsset
+*otfread
+print ' '
+print 'First set parameters for OTFUV...'
+print '(no user input necessary)'
+print ' '
+bcount=1
+ecount=0
+douvcomp=1
+outclass=''
+detime=0
+chansel=0
+tput otfuv
+*
+print ' '
+print '...Now set parameters for SPFLG...'
+print ' '
+flagver=1
+docalib=-1
+dparm(6)=0.5
+print ' '
+print 'SPFLG average time set to 0.5 seconds...'
+print ' '
+bchan=1
+echan=0
+outclass=''
+tput spflg
+*
+print ' '
+print '...Now set parameters for SDGRD...'
+print ' '
+docalib=-1
+gainuse=0
+flagver=0
+stokes=''
+bchan=1
+echan=0
+outclass=''
+optype='-gls'
+aparm=0
+print ' '
+print 'Enter horizontal dimension of map (in arcseconds):'
+read xsize
+print ' '
+print 'Enter vertical dimension of map (in arcseconds):'
+read ysize
+print ' '
+print 'Enter row spacing in arcsec:'
+read cell
+print 'Your cell size will be ',cell,' arcseconds'
+print ' '
+print 'Enter final horizontal and vertical image sizes:'
+print '(these can be any multiple of 2)'
+temp1=xsize/cell
+temp2=ysize/cell
+print 'Given your cellsize of ',cell,' arcseconds'
+print 'and image size of ',xsize,' X ',ysize
+print 'I would chose something larger than ',temp1,' X ',temp2
+print 'NOTE: If these are less than 32, choose 32'
+read ximsi
+read yimsi
+imsize=ximsi yimsi
+cellsize=cell
+shift=0
+uvwtfn=''
+uvbox=0
+reweight=0,-0.01
+xtype=16
+ytype=16
+xparm=0
+yparm=0
+tput sdgrd
+*
+print ' '
+print '...Setting parameters for TRANS now...'
+print '(no user input necessary)'
+print ' '
+outclass=''
+blc=0
+trc=0
+transcod='312'
+tput trans
+*
+print ' '
+print '...Now set parameters for PRTSD...'
+print ' '
+print 'Enter central channel in map:'
+read chan
+channel=chan
+bif=0
+docalib=-1
+flagver=0
+bcount=1
+ncount=0
+docrt=1
+xinc=0
+outprint=''
+docell=-1
+tput prtsd
+*
+print ' '
+print '...Now set parameters for IMLIN...'
+print ' '
+datain=''
+outclass=''
+blc=0
+trc=0
+yinc=1
+zinc=1
+dooutput=-1
+ncount=1
+print 'Enter number of baseline regions:'
+read nreg
+nboxes=nreg
+print 'Enter pairs of begin and end channels for baseline regions:'
+print '(enter one at a time)'
+nreg=2*nreg
+box=0
+for j=1:nreg
+  read box(j,1)
+end
+tput imlin
+*
+print 'All done setting OTF reduction parameters'
+return
+finish
+*
+*
+*
+proc otfrun
+*
+*  Procedure to process maps (single polarization,
+*  dual polarization, and multiple files).
+*
+scalar i, j, k, l, nsdd, npol, seqstep, seq0
+string*4 yn
+*
+tget otfuv
+otfread
+print ' '
+print 'How many sdd files are you going to read?'
+read nsdd
+for i=1 to nsdd
+  fileset
+  print ' '
+  print 'How many polarizations are you going to load from this file?'
+  read npol
+  print 'Are you going to concatenate all polarizations into one file (y/n)?:'
+  read yn
+  if(yn='y') then
+    seqstep=0
+    doconcat=1
+  else
+    seqstep=1
+    doconcat=-1
+  end
+  seq0=seq
+  if(npol=8) then
+    for j=11 to 18
+      outn=inna;outcl='otfuv';outse=seq
+      print ' '
+      print '...loading IF number ' !! char(j)
+      print ' '
+      bif=j
+      go;wait
+      seq=seq+seqstep
+    end
+  else
+    for j=1 to npol
+      outn=inna;outcl='otfuv';outse=seq
+      print ' '
+      print 'Enter polarization number to load:'
+      read bif
+      go;wait
+      seq=seq+seqstep
+    end
+  end
+end
+seq=seq-seqstep
+*outcl='';doconcat=-1;tput otfuv
+*
+for l=seq0 to seq
+  print '...now running SDGRD on sequence ' !! char(l) !! ' ...'
+  tget sdgrd;inna=name;outna=name;ind=disk;outd=disk
+  incl='otfuv';inseq=l;outseq=l;go;wait
+  echan=1;reweight=3,0;outcl'weight';go;wait
+  echan=0;reweight=0,-0.01;outcl'';tput sdgrd
+*
+  print '...now running TRANS on sequence ' !! char(l) !! ' ...'
+  tget trans;inna=name;outna=name;ind=disk;outd=disk
+  incl='sdgrd';outcl='trans';inseq=l;outseq=l;go;wait
+*
+  print '...now running IMLIN on sequence ' !! char(l) !! ' ...'
+  tget imlin;inna=name;outna=name;ind=disk;outd=disk
+  incl='trans';outcl='imlin';inseq=l;outseq=l;go;wait
+*
+  print '...now running TRANS on sequence ' !! char(l) !! ' ...'
+  tget trans;inna=name;outna=name;ind=disk;outd=disk
+  incl='imlin';outcl='base';transco='231'
+  inseq=l;outseq=l;go;wait;outcl='';transco='312';tput trans
+*
+end
+print ' '
+print 'All done processing map(s)'
+print 'Your baselined cube(s) is (are) ',outna,'.BASE;',seq0,'-',seq
+return
+finish
+*
+*
+*

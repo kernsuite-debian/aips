@@ -1,0 +1,250 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: PP [DEBUG] [NODEBUG]
+#           [directory-path/]source1(.FOR, .C or .S)
+#           [[directory-path/]source2(.FOR, .C or .S) ...]
+# The DEBUG or NODEBUG must precede any modules, and must be uppercase
+#----------------------------------------------------------------------
+# Preprocessor for AIPS source code.  This code is exported in the same
+# form that it is found on the master AIPS machine (baboon) in
+# Charlottesville (i.e., the *.FOR, *C and *.S files).  PP transforms
+# this code into a form suitable for the local compilers.  The output
+# file name for each preprocessed input file in the argument list is
+# echoed to stdout on completion, and if all goes well, PP returns an
+# exit status of 0.  Errors are also echoed to stdout, and PP returns an
+# exit status of 1 should one or more occur.  In addition, PP reports
+# its non-error actions on stderr, so that stdout is reserved for the
+# value return.  There are better ways...
+#
+# For Fortran (*.FOR modules), the text is transformed using the
+# program PP.EXE (derived from PP.FOR in $SYSLOCAL) and stored in a file
+# with extension ".f" as required by most UNIX Fortran compilers.  C and
+# assembler modules are simply copied to *.c and *.s, respectively.
+# Some architectures require postpending an underscore to the C
+# filenames, and this may be done here in architecture-specific versions
+# of this script if *absolutely* necessary.  In practice there's usually
+# a command line option that you can set in $SYSLOCAL/CCOPTS.SH instead.
+#
+# Arguments to PP take the form of a list of files or a single file,
+# with or without extension.  If no extension is given, it searches for
+# (in turn) <file>.FOR, <file>.C, or <file>.S.  If none of these are
+# found, it simply reports the error and continues processing until its
+# argument list is exhausted.  Preprocessed files are written to the
+# same directory as the un-preprocessed form.
+#
+# Generic Unix version
+#-----------------------------------------------------------------------
+#                                       old (PWD) or new (AIPWD)?
+if [ -f $SYSLOCAL/AIPWD ] ; then
+   LPWD=AIPWD
+else
+   LPWD=PWD
+fi
+#                                       Any arguments?
+if [ "$*" = "" ] ; then
+   echo "No arguments given, nothing to preprocess"                1>&2
+   echo "Usage: PP [DEBUG] [NODEBUG]                        \\"    1>&2
+   echo "          [directory-path/]source1(.FOR, .C or .S) \\"    1>&2
+   echo "          [[directory-path/]source2(.FOR, .C or .S) ...]" 1>&2
+   exit 1
+fi
+#                                       Get standard system INCLUDE
+#                                       file search path.
+. $SYSLOCAL/INCS.SH
+#                                       Parse arguments.  Indirection
+#                                       (PPINFIL/i) needed on Linux.
+export PPINFIL
+DEBUG="no"; export DEBUG
+for i
+do
+#                                       Extract extension but watch for
+#                                       directories with dots in them.
+#                                       old: s/\([^.]*.\)\(.*\)/\2/p
+   PPINFIL=$i
+   EXT=`echo $PPINFIL | sed -n -e 's/\(.*\.\)\(.*\)/\2/p'`
+#                                       Remove extension.
+   case "$PPINFIL" in
+      DEBUG)
+	 if [ "$DEBUGGER" = "" ] ; then
+            echo "PP        : Enter name of debugger (e.g. dbx): " 1>&2
+            read DEBUGGER
+            if [ -f $DEBUGGER ] ; then
+               DEBUG=yes
+            else
+               found=no
+               for i in `echo $PATH | sed -e 's/:/ /g'` ; do
+                  if [ -f $i/$DEBUGGER ] ; then
+                     DEBUGGER=$i/$DEBUGGER; found=yes; DEBUG=yes; break
+                  fi
+               done
+               if [ $found = no ] ; then
+                  echo "$DEBUGGER not found here or in your PATH" 1>&2
+                  DEBUG=no
+               fi
+            fi
+         else
+            DEBUG=yes
+         fi
+         continue
+         ;;
+      NODEBUG)
+         DEBUG=no
+         continue
+         ;;
+
+      $APLCONTR*)
+         NOEXT=`echo $PPINFIL | sed -e 's/\(.*\)\(\..*\)/\1/'`
+      ;;
+      $AIPS_VERSION*)
+         NOEXT="$PREP/`echo $PPINFIL | sed -e 's#.*/##' | \
+                sed -e 's/\..*//'`"
+      ;;
+      *)
+         case `$LPWD` in
+            $AIPS_VERSION*)
+               NOEXT="$PREP/`echo $PPINFIL | sed -e 's#.*/##' | \
+                      sed -e 's/\..*//'`"
+            ;;
+	    *)
+#                                       was s/\([^.]*\)\(.*\)/\1/
+               NOEXT=`echo $PPINFIL | sed -e 's/\(.*\)\(\..*\)/\1/'`
+            ;;
+         esac
+      ;;
+   esac
+#                                       Take action based on $EXT.
+   case $EXT in
+
+      FOR)
+#                                       Fortran source.
+         if test ! -s $PPINFIL
+         then
+            echo "PP        : File       $PPINFIL" 1>&2
+            echo "PP        : not found or zero size!" 1>&2
+            exit 1
+         else
+            PPOUTFIL=$NOEXT.f
+            export PPOUTFIL
+            echo "PP        : Preprocess $PPINFIL"  1>&2
+            echo "PP        : into       $PPOUTFIL" 1>&2
+            trap "rm -f $PPOUTFIL; exit 1" 1 2 3 15
+#                                       Remove any extant files.
+            rm -f $PPOUTFIL
+#                                       Check for user defined INCS.
+            case $INCS in
+
+               '')
+#                                       Use installation dependent
+#                                       INCLUDE file search path.
+                  INCS=$STDINCS
+                  export INCS
+               ;;
+
+               $STDINCS)
+#                                       No problem.
+               ;;
+
+               *)
+#                                       Use INCS as defined by user.
+                  echo "PP        : *WARNING*  Using programmer" \
+                     "defined value for logical INCS =" 1>&2
+                  for INK in $INCS
+                  do
+                     echo "PP        : directory  $INK" 1>&2
+                  done
+               ;;
+
+            esac
+
+            ddd=""; ppp=PP.EXE
+            if [ $DEBUG = yes ] ; then
+               ddd=$DEBUGGER
+               if [ ! -f PP.EXE ] ; then
+                  ppp=$SYSLOCAL/PP.EXE
+                  echo "PP        : No local PP.EXE found here" 1>&2
+                  echo "PP        : will use SYSLOCAL version" 1>&2
+               fi
+            fi
+            if $ddd $ppp 1>&2
+            then
+               echo $PPOUTFIL
+            else
+               rm -f $PPOUTFIL
+               exit 1
+            fi
+         fi
+      ;;
+
+      C)
+#                                       C source.
+         if test ! -s $PPINFIL
+         then
+            echo "PP        : File       $PPINFIL" 1>&2
+            echo "PP        : not found or zero size!" 1>&2
+            exit 1
+         else
+            PPOUTFIL=$NOEXT.c
+            echo "PP        : Preprocess $PPINFIL"  1>&2
+            echo "PP        : into       $PPOUTFIL" 1>&2
+            trap "rm -f $PPOUTFIL; exit 1" 1 2 3 15
+            rm -f $PPOUTFIL
+            cp $PPINFIL $PPOUTFIL
+            echo $PPOUTFIL
+         fi
+      ;;
+
+      S)
+#                                       Assembler source.
+         if test ! -s $PPINFIL
+         then
+            echo "PP        : File       $PPINFIL" 1>&2
+            echo "PP        : not found or zeo size!" 1>&2
+            exit 1
+         else
+            PPOUTFIL=$NOEXT.s
+            echo "PP        : Preprocess $PPINFIL"  1>&2
+            echo "PP        : into       $PPOUTFIL" 1>&2
+            trap "rm -f $PPOUTFIL; exit 1" 1 2 3 15
+            rm -f $PPOUTFIL
+            cp $PPINFIL $PPOUTFIL
+            echo $PPOUTFIL
+         fi
+      ;;
+
+      *)
+#                                       User error.
+         echo "Usage: PP" \
+            "[directory-path/]source1(.FOR, .C or .S) \\"    1>&2
+         echo "         " \
+            "[[directory-path/]source2(.FOR, .C or .S) ...]" 1>&2
+         exit 1
+      ;;
+
+   esac
+
+done

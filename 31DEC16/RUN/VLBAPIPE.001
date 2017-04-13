@@ -1,0 +1,862 @@
+$ VLBAPIPE - Lorant Sjouwerman, NRAO - Nov 25 02
+$ Ver 1.0 : released to public in July 2002
+$ Ver 2.1 : released in MNJ in November 2002
+$ Ver 2.2 and further : released to public through MNJ
+$---------------------------------------------------------------
+$0000000011111111112222222222333333333344444444445555555555666666666677777777778
+$2345678901234567890123456789012345678901234567890123456789012345678901234567890
+$===============================================
+$! Applies amplitude and phase calibration procs to VLBA data
+$# RUN POPS VLBI UTILITY CALIBRATION IMAGING
+$---------------------------------------------------------------
+$;  Copyright (C) 2001-2007
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$---------------------------------------------------------------
+$===============================================================
+PROCEDURE P_INIT
+$
+$   Define VLBAUTIL and variables for VLBA pipeline
+$----------------------------------------------
+  docrt 1;dowa true
+  SCALAR    P_DOALL, P_DOTVPL, P_NTAPES, P_DISK, P_SQ, P_NUM, P_VER
+  SCALAR    P_CLINT, P_ANTNUM, P_TECORDAY, P_SOLINT, P_TINT, P_MIN, P_MAX
+  SCALAR    P_DOSTART, P_DOTIMER, P_NUMCAL, P_NUMREF, P_FREQUID, P_DOCOMP
+  SCALAR    P_ERROR, P_DEBUG, P_SUGGEST, P_ROW, P_FACTOR, P_IFS
+  ARRAY     P_IMSIZE(2), P_NSOLINT(10), P_PLCNT(15), P_CLCNT(8)
+  ARRAY     P_CALSCANT(8), P_NCOUNT(10), P_BADDISKS(10), P_NO_SLFCL(30)
+  STRING*2  P_REFANT, P_EXT
+  STRING*4  P_TYP, P_MODE, P_INTERPOL
+  STRING*6  P_CL, P_CLASS
+  STRING*8  P_TASK
+  STRING*12 P_EXPNA, P_NA
+  STRING*16 P_CALSOURC(30), P_ATARGETS(30)
+  STRING*48 P_TECORFLE
+
+$ from input dialog:
+  P_DOALL    = DOALL     ;P_DOTVPL   = DOTV    ;P_NTAPES   = NCOUNT
+  P_NCOUNT   = APARM     ;P_EXPNA    = OUTNAME ;P_DISK     = OUTDISK
+  P_CLINT    = CLINT     ;P_ANTNUM   = REFANT  ;P_REFANT   = SORT
+  P_CALSCANT = TIMERANG  ;P_TECORFLE = INFILE  ;P_TECORDAY = NFILES
+  P_INTERPOL = INTERPOL  ;P_CALSOURC = CALSOUR ;P_MODE     = OPTYPE
+  P_FACTOR   = FACTOR    ;P_ATARGETS = SOURCES ;P_BADDISKS = BADDISK
+  P_SOLINT   = SOLINT    ;P_NSOLINT  = BPARM   ;P_IMSIZE   = IMSIZE
+  P_DOCOMP   = DOUVCOMP
+$---
+  P_DOTIMER  = 0         ;P_ERROR    = 0       ;P_SUGGEST  = 1
+$--- and set to defaults
+  tput vlbapipe;vnum 35;vput vlbapipe;task'vlbapipe';default
+  VBA_NFQI=0;VBA_SX=0;VBA_9050=0 $ must be 0 in VLBAUTIL, used in P_GETFQNUM
+RETURN;finish
+$===============================================
+PROCEDURE P_RESTART
+  clrstat;inext'pl';j = maxtab(inext);if (j>0) then;invers -1;extdest;end
+  ine'bp';j = maxtab(inext);if (j>0) then;invers -1;extdest;end
+  ine'fg';j = maxtab(inext);if (j>1) then;for i=2:j;invers i;extdest;end;end
+  ine'cl';j = maxtab(inext);if (j>1) then;for i=2:j;invers i;extdest;end;end
+  ine'sn';j = maxtab(inext);if (j>0) then;invers -1;extdest;end
+  clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_RESET
+  p_restart
+RETURN;finish
+$===============================================
+PROCEDURE P_ZAPALL
+  chkname;if (error<1) then;indisk p_disk;for j=1 to (1-1*error);zap;end;end
+RETURN;finish
+$===============================================
+PROCEDURE P_ALLPLOT(P_MIN)
+  if(p_min=0)then;p_min=1;end;p_max=maxtab('PL');j=p_max-p_min+1
+  type char(j)!!' PLOT FILES TO SHOW ON TV:'!!char(p_min)!!' TO:'!!char(p_max)
+  if (j > 0) then; tvinit; for i=p_min:p_max;plver i
+    type 'plot #'!!char(i-p_min+1)!!'/'!!char(j)!!'   -- TYPE A ZERO TO STOP'
+    grchan=0;grclear;runwait('tvpl');p_num=1;read p_num
+    if (p_num=0) then;i=p_max+1;end;end
+  else;type 'NOTHING TO PLOT - DONE';end
+RETURN;finish
+$===============================================
+PROCEDURE P_SETPRINT
+  printer 999;type '';type 'BLINDLY PRINTING ALL OUTPUT IS HIGHLY DISCOURAGED!'
+  type 'FOR VLBAPIPE AND VIEWING WITH P_ALLPLOT(1) AFTERWARDS TYPE ZERO'
+  type 'SELECT PRINTER (PREVIEWER OR A ZERO IS RECOMMENDED, STOP=-1)';read j
+  if (j=-1) then;p_error=1;else;if (j=0) then;p_dotvpl=0;else;printer j;end;end
+RETURN;finish
+$===============================================
+PROCEDURE P_ALLPRINT
+  p_setprint
+  j = maxtab('PL');type 'TOTAL NUMBER OF PLOT FILES SENT TO PRINTER :'!!char(j)
+  if (j > 0) then
+    plver 1;invers j;lpen 1;dparm 0;outfile'';copies 1;runwait('lwpla')
+  else;type 'NOTHING TO PLOT - DONE';end
+RETURN;finish
+$===============================================
+PROCEDURE P_INFO (P_TASK)
+  if (p_debug > 0) then
+    task p_task;type '*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*'
+    inp;type '*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*+*'; j = 1
+    type 'TYPE RETURN TO CONTINUE, ZERO TO STOP';read j
+    if (j = 0) then;type 'OK, STOPPING AT' p_task;p_error = 99;end
+  end;type p_task!!' RUNNING ..'
+RETURN;finish
+$===============================================
+PROCEDURE P_GETSTOK
+$ NOTE: sets stokes (default/undetermined -> stokes = '')
+  keyvalue 0;keystrng '';j = 0
+  while ( (j < 8) & (substr(keystrng,1,6) <> 'STOKES') )
+    j = j + 1;keyword 'ctype'!!char(j);gethead
+    if (substr(keystrng,1,6) = 'STOKES') then
+      keyword 'crval'!!char(j);gethead
+      if (keyvalue(1) = -1) then;stokes = 'RR'
+      else if (keyvalue(1) = -2) then;stokes = 'LL'
+      else if (keyvalue(1) =  1) then;stokes = 'I'
+      else;stokes = ' ';end;end;end;clrtemp
+    end
+  end
+RETURN;finish
+$===============================================
+PROCEDURE P_SEFD (P_EXT, P_TYP, P_TINT)
+$ Scales the flux/noise parameters (~V2*SEFD) for P_EXT = BaseLine or IMage
+$ NOTE: sets FLUX for UVMLN, and STOKES, NITER and FLUX for IMAGR
+  niter = sqrt(fldsize(1,1)*fldsize(2,1)) $ sensible MAX iterations, I presume
+  p_getstok;keyvalue 0;keystrng '';j = 0
+  while (j < 8) $ find proper axes
+    j = j + 1;keyword 'ctype'!!char(j);gethead
+    if (substr(keystrng,1,4) = 'FREQ') then
+      keyword 'crval'!!char(j);gethead;p_max = keyvalue(1) $ obs frequency
+      keyword 'cdelt'!!char(j);gethead;p_min = keyvalue(1) $ channel bandwidth
+      keyword 'naxis'!!char(j);gethead;p_num = keyvalue(1) $ number of channels
+    end
+    if (substr(keystrng,1,2) = 'IF') then
+      keyword 'naxis'!!char(j);gethead;p_ifs = keyvalue(1) $ number of IFs
+    end;clrtemp
+  end
+$ * * * * find freq -> sefd
+$ * * * * find mode (typ) -> TBW (assume 2bit) and get #vis for ext=im - not bl
+
+RETURN;finish
+$===============================================
+PROCEDURE P_SNPLOT (P_NA, P_CL, P_SQ, P_EXT, P_VER, P_TYP, P_MIN, P_MAX, P_NUM)
+  task'snplt';default;inname p_na;inclass p_cl;inseq p_sq;indisk p_disk
+  inext p_ext;invers p_ver;pixrange p_min,p_max;nplots p_num;optype p_typ
+  dotv p_dotvpl
+  if (p_typ = 'DDLY') then;p_getstok;end $ only one (first) stokes needed
+$  p_info('snplt')
+  if (p_error = 0) then
+    if (p_dotvpl > 0) then; dotv 1;runwait('snplt') $ plot on tv
+      type 'PLOTTING FINISHED, PRESS RETURN TO CONTINUE THE PROCEDURE';read
+    else;dotv -1;plver = p_ver;runwait('snplt')
+      if (p_dotvpl < 0) then;invers = p_ver;runwait('lwpla');invers 0;end
+  end;dotv p_dotvpl;end;timerang p_calscant;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_CRPLOT (P_EXT, P_TYP)
+  inext p_ext;optype p_typ;timerang 0;sources '';nplots 8; $p_info('vlbacrpl')
+  if (p_error = 0) then
+    if (p_dotvpl > 0) then; dotv 1;go vlbacrpl $ plot on tv
+      type 'PLOTTING DONE, PRESS RETURN TO CONTINUE WITH THE PROCEDURE';read
+    else;dotv -1;plver = maxtab('PL');go vlbacrpl
+      if (p_dotvpl < 0) then $ divert to printer)
+        invers = maxtab('PL');runwait('lwpla');invers 0
+  end;end;dotv p_dotvpl;end;timerang p_calscant;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_GETFQNUM
+$ NOTE: resets VBA_NFQI, uses settings VBA_SX and/or VBA_9050 from VLBAUTIL
+  inext'fq';invers 1;keyword = 'num row';getthead;VBA_NFQI=keyvalue(1);clrtemp
+  if (VBA_SX > 0) then;VBA_NFQI = VBA_NFQI + 1;end $ add one for S/X band
+  if (VBA_9050 > 0) then;VBA_NFQI = VBA_NFQI + 1;end $ add one for 90/50 band
+RETURN;finish
+$===============================================
+PROCEDURE P_GETSUROW
+$ NOTE: proc sets p_row
+  inext'su';invers 0;keyword'num row';getthead;p_row = keyvalue(1);clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_EXIT
+$ Restore values
+  vnum 35;vget vlbapipe;dowait -1;vnum 0;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_GETUVF
+$
+$   Determine UV file class to work on
+$   NOTE: proc sets P_CLASS
+$----------------------------------------------
+  inname p_expna;inseq 1;indisk p_disk;intype 'uv';inclass 'fxpol';chkname
+  if (error = 0) then;p_class inclass $ dual polarization, one frequency
+  else;inclass 'fpol'!!char(p_frequid);chkname;clrtemp
+    if (error = 0) then $ dual pols and multi freq with new outclass;del old
+      p_class inclass;inclass 'fq-'!!char(p_frequid);p_zapall;recat
+    else;inclass 'fq-'!!char(p_frequid);chkname;clrtemp
+      if (error = 0) then;p_class inclass $ polarizations okay, multiple freqs
+      else;p_class 'uvdata';end;end $ polarizations okay, single frequency
+  end;inclass p_class;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_PRECHECK
+$
+$   Prepare and check inputs for VLBA pipeline
+$   NOTE: proc sets p_dotimer and p_dostart
+$----------------------------------------------
+  if (p_dotvpl < 0) then; type 'YOU SELECTED DOTV=-1'; p_setprint; end
+$ check intape ? maybe search for file to use?
+  if (p_doall < 0) then $ start at (negative) frequency ID
+    p_dostart = mod(-1 * p_doall, 1000);clrtemp
+    if (p_error = 0) then
+      type 'SKIPPING LOAD, ASSUMING INNAME IS CORRECT'
+      if (p_doall < -1000) then
+        type 'ONLY DOING FREQUENCY ID #'!!char(p_dostart)
+      else;type 'STARTING WITH FREQUENCY ID #'!!char(p_dostart);end
+    end
+  else;p_dostart = 1;end $ also for p_doall = 0, start at first freq-ID
+$ check number of tapes and corresponding aparm in case of load
+  if (p_doall > 0)  then
+    if (p_ntapes = 0) then;type 'NO TAPES ?? - TRY AGAIN';p_error = 1
+    else
+      i = 0;clrtemp
+      while (i < p_ntapes) $ check if all tapes have number of files specified
+        i = i + 1
+        if ( p_ncount(i) < 1 ) then
+          type 'NUMBER OF FILES ON TAPE #'!!char(i)!!' TOO LOW - TRY AGAIN'
+          p_error = 2
+      end;end;clrtemp
+      for i = (i + 1) to 10 $ check if rest aparm is zero - typo/more tapes ??
+        if ( p_ncount(i) > 0 ) then
+          type 'MORE FILES EXPECTED ON A NON-DECLARED TAPE  - TRY AGAIN AND'
+          type 'SPECIFY LARGER NCOUNT OR RESET NON-USED APARM('!!char(i)!!')'
+          p_error = 3
+  end;end;end;end;clrtemp
+  if (p_doall > 0) then
+    if (p_docomp=0) then;type 'LOADING UNCOMPRESSED, SPLITTING COMPRESSED DATA'
+    else; if (p_docomp=-1) then; type 'NOT COMPRESSING DATA AT ANY STAGE'
+    else; if (p_docomp=1) then;  type 'COMPRESSING DATA FROM NOW ON'
+    else; type 'VALUE OF DOUVCOMP NOT SUPPORTED - STOP!'; p_error=5;end;end;end
+  else
+    if (p_docomp>=0) then;type 'SPLITTING RESULTS IN COMPRESSED DATA'
+    else; if (p_docomp=-1) then; type 'SPLITTING DATA IN CURRENT COMPRESSION'
+    else; type 'VALUE OF DOUVCOMP NOT SUPPORTED - STOP!'; p_error=5;end;end
+  end
+$ check outname and tell it changes to header value
+  if (substr(p_expna,1,1) = ' ') then
+    type 'SPECIFY AN UNIQUE OUTNAME, E.G. YOUR EXPERIMENT NAME + SEGMENT'
+    p_error = 4;clrtemp
+  end
+$ check if outfile already exists - p_restart or bomb?? (latter)
+$ check outdisk ?
+$ spectral line data or continuum data to be expected?
+  if (p_mode = 'LINE') then; p_mode = 'SPEC'; end
+  if (p_mode = 'SPEC') then $ apparently spectral line
+    type 'DOING SPECTRAL LINE PROCEDURE: NO P-CAL OR FREQUENCY AVERAGING'
+  else
+    if (p_mode = 'CONT') then $ apparently continuum
+      type 'DOING CONTINUUM PROCEDURE: WITH P-CAL AND FREQUENCY AVERAGING'
+    else
+      if (p_mode = 'PSEU') then $ pseudo continuum
+        type 'DOING PSEUDO CONTINUUM PROCEDURE: ';clrtemp
+        type '                 WITH P-CAL BUT -NO- FREQUENCY AVERAGING'
+      else
+        type 'OBSERVATION MODE NOT KNOWN - FILL IN "OPTYPE" PROPERLY';p_error 1
+  end;end;end;clrtemp
+$ check reasonable clint later ?
+$ check refant and corresponding sort, check if refant in array later
+  if ( p_antnum < 0 ) then; type 'REFANT < 0 UNVALID ! - STOPPING'; p_error 11;
+  else; if ( p_antnum = 0 ) then;
+    if (p_refant<>'BR') then;if (p_refant<>'FD') then;if (p_refant<>'HN') then;
+    if (p_refant<>'KP') then;if (p_refant<>'LA') then;if (p_refant<>'MK') then;
+    if (p_refant<>'NL') then;if (p_refant<>'OV') then;if (p_refant<>'PT') then;
+    if (p_refant<>'SC') then;type 'NON-VLBA REFERENCE ANTENNA .. ARE YOU SURE?'
+  end;end;end;end;end;end;end;end;end;end;end;end;clrtemp
+$ check infile and number of infiles later (see if they exist here?)
+  if (p_tecorday > 0) then $ run tecor, check infile exits
+    if (substr(p_tecorfle,1,1) = ' ') then $ no file specified
+      type 'SPECIFY A TECOR FILE; MAKE SURE IT IS ANONYMOUS-FTP-ED FROM:'
+      type 'CDDISA.GSFC.NASA.GOV/GPS/PRODUCTS/IONEX/<YEAR>/<DAY-OF-YEAR>'
+      p_error = 8
+    else
+* check here if it exists.. can I?
+    end
+  else;type 'TECOR NOT RUN AS REQUESTED BUT RECOMMENDED FOR FREQ <= 15GHZ';end
+
+$ check timerange and corresp scantime, check if in data and in calsour later
+  i = 1
+  while (i < 8) $ if timer(2) or above non-zero, timer is specified (not scan)
+    i = i + 1;if (p_calscant(i) > 0) then;p_dotimer = 1;end
+  end;clrtemp
+  if ( (p_dotimer > 0) & (p_error = 0) ) then
+    type 'USING SPECIFIED TIMERANGE FOR VLBAPCOR OR VLBAMPCL'
+    i = p_calscant(5) - p_calscant(1)
+    i = p_calscant(6) - p_calscant(2) + 24 * i
+    i = p_calscant(7) - p_calscant(3) + 60 * i
+    if ( (p_calscant(8) - p_calscant(4) + 60 * i) < 1 ) then
+      type 'BUT NOW ENDING TIME PRECEEDS STARTING TIME - TRY AGAIN'
+      p_error = 6
+    end
+  else
+    if (p_calscant(1) = 0) then
+      type 'NO CALIBRATOR SCAN NUMBER OR SCAN TIME SPECFIED - TRY AGAIN'
+      p_error = 7
+    else;type 'USING SPECIFIED SCAN NUMBER INSTEAD OF TIMERANGE';end
+  end;clrtemp
+$ check later if in data
+  p_numcal = 0;i = 0;clrtemp
+  while (i < 30) $ count number of sources in calsour, do self-cal ?
+    i = i + 1
+    if (substr(p_calsourc(i),1,1) <> ' ') then
+      p_numcal = p_numcal + 1
+      if (substr(p_calsourc(i),1,1) = '-') then
+        j = length(p_calsourc(i))
+        p_calsourc(i) = substr(p_calsourc(i),2,j)
+        if (substr(p_calsourc(i),1,1) = '*') then
+          type 'SORRY HAVE TO EXIT: NO SELF CAL ALLOWED FOR CALSOUR = *'
+          p_error = 12
+        end;p_no_slfcl(i) = 0
+      else;p_no_slfcl(i) = 1;end
+  end;end;clrtemp;p_numref = 0;i = 0;clrtemp
+  while (i < 30) $ count number of sources targeted (incl its Ph-Ref.)
+    i=i+1;if (substr(p_atargets(i),1,1)<>' ') then;p_numref=p_numref+1;end
+  end
+  if (p_numref = 0) then $ use calsour only (only strong sources, no Ph-Ref)
+    type 'NO PHASE-REF SCHEME SPECIFIED, ASSUMING ALL SOURCES ARE STRONG'
+    if (p_numcal = 0) then $ no sources specified !
+$      type 'BUT NO CALIBRATOR SOURCES SPECIFIED ! TRY AGAIN'
+      type 'AT LEAST ONE CALSOURCE NEEDED - FOR P-CAL/BANDPASS CALIBRATION'
+      p_error = 8
+    else
+      if (substr(p_calsourc(2),1,1)='*') then
+        type 'WILL FRINGE FIT ALL SOURCES THAT ARE FOUND IN THE SU-TABLE'
+        p_no_slfcl = 1
+      else
+        type 'WILL FRINGE FIT ALL SOURCES IN CALSOUR, I.E. :'!!char(p_numcal)
+  end;end;end;clrtemp
+$ if sources, check if p_numref even (pairs), borrow p_num for loop
+$ check later if in data, but here check if odd numbers are in calsource
+  if (substr(p_atargets(1),1,1) <> ' ') then
+    if (mod(p_numref,2) = 1) then $ odd number of sources
+      type 'ODD NUMBER OF SOURCES - SPECIFY PHAS-REF *PAIRS* !!'
+      p_error = 8
+    else $ check if odd numbered are in calsour, evens not in calsour
+      for i = 1 to p_numref by 2
+        j = length(p_atargets(i));p_num = 1
+        while ( (j < 17) & (substr(p_calsourc(p_num),1,1) <> ' ') )
+          if (substr(p_calsourc(p_num),1,j)=substr(p_atargets(i),1,j)) then
+            j = 17 $ found! stop the while loop
+          else;p_num = p_num + 1;end $ not found .. next
+        end
+        if (j <> 17) then $ source not found but should be there
+   type 'CALSOUR DOES NOT, BUT SHOULD, INCLUDE PH-REF. SOURCE :'!!p_atargets(i)
+          p_error 9
+      end;end;clrtemp
+      for i = 2 to p_numref by 2
+        j = length(p_atargets(i));p_num = 1
+        while ( (j < 17) & (substr(p_calsourc(p_num),1,1) <> ' ') )
+          if (substr(p_calsourc(p_num),1,j)=substr(p_atargets(i),1,j)) then
+            j = 17 $ found! stop the while loop
+          else;p_num = p_num + 1;end $ not found .. next
+        end
+        if (j = 17) then $ source found but should not be there
+   type 'CALSOUR DOES, BUT SHOULD NOT, INCLUDE PH-REF. SOURCE :'!!p_atargets(i)
+          p_error 9
+      end;end
+      p_numref = p_numref / 2 $ # of pairs;can do because p_numref even
+    end
+    if ( (p_numref = 1) & (p_atargets(2) = '*') ) then
+      type 'PHASE-REFERENCING ALL NON-CALIBRATORS TO :'!!p_atargets(1)
+  end;end;clrtemp
+$ check solint/bparm and interpol
+  if (p_solint > 0) then
+    for j=1:10;if (p_nsolint(j)>0) then;p_error=40;end;clrtemp
+    if (p_error=40) then;type'USE SOLINT OR BPARM, NOT BOTH - STOPPING'
+    else; type'WILL USE SAME SOLINT FOR ALL FREQUENCY-IDS';j=11;end;end
+  else;if (p_solint=0) then;type'SOLINT ZERO NOT SUPPORTED';p_error=41;else
+    if (p_solint=-1) then;type'USING IN BPARM SPECIFIED SOLINT PER FREQ-ID'
+    if (p_nsolint(1)<=0) then;type'BUT THEN ALSO SUPPLY BPARMS';p_error=42;else
+    if (p_nsolint(2)<=0) then;type'FOR ONE FREQ-ID USE SOLINT';p_error=43;end
+  end;end;end;end;clrtemp
+$ check
+    if (p_interpol<>'2PT') then;if (p_interpol<>'SIMP') then;
+    if (p_interpol<>'AMBG') then;if (p_interpol<>'CUBE') then;
+      type 'CALIBRATION INTERPOLATION METHOD NOT RECOGNIZED - HELP!';p_error=50
+    end;end;end;end;clrtemp
+
+$ check map sizes for factor and imsize
+  if (p_factor < 1) then;p_factor = 1
+    type 'WILL NOT DO CALSOUR IMAGES SMALLER THAN 128 SQUARE; 128 IT IS'
+  else;if (p_factor > 64) then;p_factor = 64
+      type 'CALSOUR IMAGE REQUEST TOO BIG, WILL USE THE MAXIMUM OF 8192 SQUARE'
+  end;end;clrtemp
+  if (substr(p_atargets(1),1,1) <> ' ') then
+    if ( (p_imsize(1) < 512) ! (p_imsize(2) < 512) ) then;p_imsize = 512
+      type 'WILL NOT DO SOURCES IMAGES SMALLER THAN 512 SQUARE; 512 IT IS'
+    else
+      if ( (p_imsize(1) > 8192) ! (p_imsize(2) > 8192) )  then;p_imsize = 8192
+        type 'SOURCE IMAGE REQUEST TOO BIG, WILL USE THE MAXIMUM OF 8192 SQUARE'
+  end;end;end;clrtemp
+$ include subarray , change into vlbafix ??
+*  if (p_debug > 0) then;type 'P_PRECHECK ERROR = '!!char(p_error);end
+RETURN;finish
+$===============================================
+PROCEDURE P_LOAD
+$
+$   Load data and split freq-id's to prepare for VLBA pipeline
+$   NOTE: proc sets VBA_NFQI
+$----------------------------------------------
+  if (p_doall > 0) then $ start loading data
+    intape p_doall;nfiles 0;outname p_expna;outdisk p_disk;clint p_clint
+    if (p_docomp = 0) then;douvcomp=-1;else;douvcomp=p_docomp;end
+    for i = 1 to p_ntapes
+      type 'MOUNT TAPE #'!!char(i)!!' NOW OR ENTER A NON-ZERO VALUE TO STOP'
+      type 'TO MOUNT THE TAPE, ENTER ZERO *AFTER* TAPE DRIVE HAS SETTLED'
+      read j;ncount p_ncount(i);clrtemp
+      if (j <> 0) then;type 'OK, STOPPING ON YOUR REQUEST';p_exit;p_error 99
+      else
+        if (i = p_ntapes) then
+          type 'UNLESS DOTV > 0, YOU CAN GO HOME NOW; REST WILL BE AUTOMATIC'
+          type 'PROVIDED THAT ALL INPUTS EXIST AND ARE VALID SO I WONT BREAK'
+        end;p_info('vlbaload')
+        if (p_error = 0) then;mount;go vlbaload;dismount;end;recat;clrtemp
+  end;end;if (p_error = 0) then;type 'DONE WITH LOADING THE DATA';end;end
+  if (p_error = 0) then;p_getuvf;p_restart;baddisk p_baddisks
+    if (p_antnum = 0) then; p_antnum = antnum(p_refant)
+      type 'USING REFERENCE ANTENNA #'!!char(p_antnum)!!'='!!p_refant; end
+    if ( (p_doall>=0) & (p_dostart=1) ) then;p_info('vlbamcal') $ fresh file
+$ also do new index here?
+      if (p_error = 0) then;go vlbamcal;clint p_clint
+$ CAN DO FLAGGING IF DOCAL -1 IN UVFLG - NOT YET
+$      if (p_error = 0) then;go vlbamcal;task'uvflg';flagver 1;opcode'flag'
+$        reason'FLAG WEIGHTS < 0.7';aparm 0 0 .7 0;go uvflg;clint p_clint
+$ QUACK HERE
+        p_info('vlbafix');if (p_error = 0) then;go vlbafix;end;end
+    else;p_getfqnum;end $ make sure VBA_NFQI is (re-)defined with restart
+  end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_INSTCAL
+$
+$   Amplitude and instrumental phase calibration per freq-id
+$   NOTE: proc sets VBA_PAIR
+$----------------------------------------------
+  if (p_error = 0) then;p_getuvf $ find uvfile to work on
+    freqid 1;subarray 1 $ after vlbafix splitted into single freq/suba
+    p_info('vlbacala')
+    if (p_error = 0) then
+      go vlbacala;i = maxtab('sn');j = maxtab('cl');p_plcnt(1) = maxtab('pl')
+      p_snplot(inname, inclass, 1, 'cl', j-2, 'amp', .8, 1.1, 8) $ #1
+      p_plcnt(2) = maxtab('pl'); clrtemp
+      p_snplot(inname, inclass, 1, 'sn', i-1, 'amp', .7, 1.1, 8) $ #1
+      p_plcnt(3) = maxtab('pl'); clrtemp
+*      p_snplot(inname, inclass, 1, 'cl', j-1, 'amp', .7, 1.1, 8) $ #2
+      p_plcnt(4) = maxtab('pl'); clrtemp
+      p_snplot(inname, inclass, 1, 'sn', i, 'amp', 0, 0, 8) $ #2
+      p_plcnt(5) = maxtab('pl'); clrtemp
+*      p_snplot(inname, inclass, 1, 'cl', j, 'amp', 0, 0, 8) $ #3
+      p_plcnt(6) = maxtab('pl'); clrtemp
+$      outseq p_frequid;outclass '';runwait('tasav')
+      p_clcnt(1) = j-2;p_clcnt(2) = j-1;p_clcnt(3) = j;p_info('vlbapang')
+      if (p_error = 0) then;go vlbapang;j = maxtab('cl');p_clcnt(4) = j
+*        p_snplot(inname, inclass, 1, 'cl', j, 'amp', 0, 0, 8) $ #4
+*        p_snplot(inname, inclass, 1, 'cl', j, 'phas', -180, 180, 8) $ #4
+        p_plcnt(7) = maxtab('pl'); clrtemp
+        if (p_dotimer = 0) then $ chose to supply scan number, not timerange
+          timerang = scantime(p_calscant(1));else;timerang = p_calscant;end
+        calsour p_calsour(1),'';gainuse 0;docal 2;doban -1;opcode''
+$if (maxtab('bp') > 0) then;bpver 0;doban 1;end
+        inext'fq';invers 1;keyword = 'no_if';getthead;clrtemp
+        if (keyvalue(1) > 1) then $ if only 1 IF then no need to align IFs ..
+          refant=p_antnum;j = maxtab('pc') $ check for pc table
+          if ( (p_mode = 'SPEC') & (j > 0) ) then
+            type 'WEIRD: FOUND A PC TABLE IN MODE SPEC - WILL NOT USE IT ANYWAY'
+          end
+          if ( (p_mode <> 'SPEC') & (j > 0) ) then $ use pulse-cal tones
+            p_info('vlbapcor');if (p_error = 0) then;go vlbapcor;end
+          else $ spectral-line or pc table missing;do manual pcal
+            p_info('vlbampcl');if (p_error = 0) then;go vlbampcl;end
+          end;i = maxtab('sn');j = maxtab('cl');p_clcnt(5) = j;clrtemp
+        if (p_error = 0) then
+          p_snplot(inname, inclass, 1, 'sn', i, 'phas', 0, 0, 8) $ #3
+          p_snplot(inname, inclass, 1, 'sn', i, 'dela', 0, 0, 8) $ #3
+          p_plcnt(8) = maxtab('pl'); clrtemp
+*          p_snplot(inname, inclass, 1, 'cl', j, 'amp', 0, 0, 8) $ #5
+*          p_snplot(inname, inclass, 1, 'cl', j, 'phas', -180, 180, 8) $ #5
+*          p_snplot(inname, inclass, 1, 'cl', j, 'dela', 0, 0, 8) $ #5
+          p_plcnt(9) = maxtab('pl'); clrtemp
+  end;end;end;end;end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_EXTRAS
+$
+$   Do some extras: TECOR, BPASS, UVMLN, BPASS
+$----------------------------------------------
+  if (p_tecorday > 0) then $ run tecor
+    task 'tecor';infile p_tecorfle;nfiles p_tecorday;j=maxtab('cl');gainver j
+    j = j + 1;gainuse j;apar 1 0;clroname;outd p_disk;p_info('tecor')
+    if (p_error = 0) then
+      runwait('tecor'); p_clcnt(6) = j
+      type 'CL #'!!char(j)!!' ADDS TOTAL ELECTRON CONTENT CORRECTIONS'
+      p_snplot(inname, inclass, 1, 'cl', j, 'ddly', 0, 0, 10) $ #6
+      p_plcnt(10) = maxtab('pl'); clrtemp
+*      p_snplot(inname, inclass, 1, 'cl', j, 'phas', -180, 180, 8) $ #6
+      p_plcnt(11) = maxtab('pl'); clrtemp
+    end
+  else
+$COPY over THE next CLTABLE ??
+  end;clrtemp
+  task'tacop';inext'fg';invers 0;outvers 0;ncount 1;keyword'';keyval 0
+  outclass'';outdisk indisk;if (maxtab('fg') > 0) then;runwait('tacop');end
+  task 'clip';docal 2;aparm 100, 0;timer 0;p_info('clip')
+  if (p_error = 0) then
+    type 'CLIPPING HIGH AMPLITUDE VALUES (OVER 100 JY)';runwait('clip')
+  end;clrtemp
+  task 'bpass';calsour p_calsourc(1),'';solint -1;bpver 1;flux 0;timerang 0
+  antenna 0;bchan 1;echan 0;bpassprm 1 0 1 0 0 0 0 1 1 1 0;stokes''
+  gainuse=maxtab('cl');refant=p_antnum;p_info('bpass');clrtemp
+  if (p_error = 0) then
+    vput bpass;runwait('bpass');task 'uvmln';docal 2;doban 1;bpver 1;flagver 0
+    flux .01 $ -- is this safe?? -- **** Here P_SEFD to determine flux
+    p_info('uvmln')
+    if (p_error = 0) then
+      type 'RUNNING UVMLN TO FLAG OUTLYERS WITH FLUX LEVEL 0.01'
+      runwait('uvmln');vget 'bpass';bpver 2;type 'DETERMINING SCALAR BANDPASS'
+      runwait('bpass');task'possm';bpver 0;apa 0 1 .5 1.3,-20 20 0 2 1 0
+      nplots 6;solint 0;dotv p_dotvpl;gainuse=maxtab('cl');runwait('possm')
+      p_plcnt(12) = maxtab('pl'); clrtemp
+  end;end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_FRING
+$----------------------------------------------
+$ First do all clcals on calsources, then the pairs
+  if (substr(p_calsourc(2),1,1)='*') then
+    calsour '';sources '';p_getsurow;p_numcal = p_row $ do all sources
+  else
+    calsour p_calsourc;sources p_calsourc $ includes phase-refs, not targets
+  end
+*  search = 0 $ better make sure solutions exist
+  search = antnum('PT'),antnum('LA'),antnum('KP'),antnum('FD'),antnum('OV')
+  search(6)~antnum('NL'),antnum('BR'),antnum('NH'),antnum('SC'),antnum('MK')
+  bchan 0;interpol p_interpol;aparm(6) 1;aparm(9) 1;baddisk p_baddisks;clrtemp
+  if (p_solint = -1) then;solint = p_nsolint(p_frequid)
+  else;solint = p_solint;end;dparm(8) 0;refant=p_antnum;p_info('vlbafrng')
+  if (p_error = 0) then
+    go vlbafrng;gainuse=maxtab('cl');vput clcal $ -- for phase-ref
+    if ((p_numref>0)&(p_atargets(2)<>'*')) then $ sources not empty, nor all
+      for i = 1 to p_numref $ vlbafrng did all cals, now do the pairs
+        j = length(p_atargets(2*i));p_getsurow;keystrng''
+        while ((p_row>0)&(substr(p_atargets(2*i),1,j)<>substr(keystrng,1,j)))
+          inext'su';pixxy p_row 2 0;tabget
+          if (substr(p_atargets(2*i),1,j) = substr(keystrng,1,j)) then $ found
+            p_row = -1;p_error = 0
+          else;p_row = p_row - 1;p_error = 31;end
+        end;clrtemp
+        if (p_error = 0) then $ source found;check for reference
+         j = length(p_atargets(2*i-1));p_getsurow;keystrng''
+         while ((p_row>0)&(substr(p_atargets(2*i-1),1,j)<>substr(keystrng,1,j)))
+            inext'su';pixxy p_row 2 0;tabget
+            if (substr(p_atargets(2*i-1),1,j)=substr(keystrng,1,j)) then $found
+              p_row = -1;p_error = 0
+            else;p_row = p_row - 1;p_error = 32;end
+         end;clrtemp
+         if (p_error = 32) then
+            type 'TARGET IN UV DATA FILE, BUT REFERENCE NOT - CANNOT DO THIS !!'
+         end
+        else
+          type 'COULD NOT FIND TARGET IN UV DATA FILE - NOTHING TO REFERENCE'
+          $ keep p_error non-zero to avoid next clcal
+        end;clrtemp
+        if (p_error = 0) then $ pair observed in this freq-ID
+          vget clcal;interpol p_interpol;sources p_atargets(2*i), ''
+          calsour p_atargets(2*i-1), '';p_info('clcal')
+          if (p_error = 0) then;runwait('clcal');vput clcal
+            type '**'!!calsour(1)!!' USED TO PHASE-REFERENCE :'!!source(1)!!'**'
+          end
+        else
+          type 'THUS :' p_atargets(2*i-1) p_atargets(2*i)
+          type '  AS PHASE REFERENCE PAIR SKIPPED - NOT AS PAIR IN UV DATA SET'
+          $ reset p_error to finish loop and program
+          p_error = 0
+      end;end;clrtemp
+    else
+      if (p_atargets(2) = '*') then
+        vget clcal;interpol p_interpol;calsour p_atargets(1), ''
+        for i=1:p_numcal;sources(i)='-'!!p_calsourc(i);end $ not the cal's
+        p_info('clcal')
+        if (p_error = 0) then
+          runwait('clcal')
+          type '** ALL NON-CALIBRATORS PHASE-REFERENCED TO :'!!calsour(1)!!'**'
+    end;end;end;clrtemp;i = maxtab('sn');j = maxtab('cl'); p_clcnt(7) = j
+    if (p_error = 0) then
+      p_snplot(inname, inclass, 1, 'sn', i, 'phas', -180, 180, 8) $ #4
+      p_snplot(inname, inclass, 1, 'sn', i, 'dela', 0, 0, 8) $ #4
+      p_snplot(inname, inclass, 1, 'sn', i, 'rate', 0, 0, 8) $ #4
+      p_plcnt(13) = maxtab('pl'); clrtemp
+      p_snplot(inname, inclass, 1, 'sn', i, 'snr', 0, 0, 8) $ #4
+      p_plcnt(14) = maxtab('pl'); clrtemp
+      p_snplot(inname, inclass, 1, 'cl', j, 'amp', 0, 0, 8) $ #7
+      p_snplot(inname, inclass, 1, 'cl', j, 'phas', -180, 180, 8) $ #7
+      p_snplot(inname, inclass, 1, 'cl', j, 'dela', 0, 0, 8) $ #7
+      p_snplot(inname, inclass, 1, 'cl', j, 'rate', 0, 0, 8) $ #7
+      p_plcnt(15) = maxtab('pl'); clrtemp
+  end;end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_SPLIT
+$
+$   Split data for this frequency ID
+$----------------------------------------------
+  task 'split';outdisk indisk;sources'';doban 1;bpver=maxtab('bp');gainuse 0
+  if (p_docomp = 0) then;douvcomp=1;else;douvcomp=p_docomp;end
+  timerang 0;outseq p_frequid;outclass substr(p_expna,1,6);keyword'naxis3'
+  gethead;bchan 1;echan keyvalue(1);nchav 0
+  if (p_mode <> 'CONT') then $ pseudo cont or spectral line, no freq averaging
+    aparm 0;type char(echan)!!' CHANNELS KEPT UNAVERAGED IN SINGLE SOURCE DATA'
+  else $ continuum, grab all together
+    aparm 3 0;type char(echan)!!' CHANNELS AVERAGED IN SINGLE SOURCE DATA'
+  end;aparm(4)=1;p_info('split')
+  if (p_error=0) then;runwait('split');end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_SETCELL (P_TYP)
+$ NOTE: sets cellsize, bchan, echan and nchav for imagr
+  keyword'crval3';gethead;cellsize 2.25e6/keyv(1);bchan 1;echan 1;nchav 1
+  if (p_typ <> 'CONT') then $ spec cube or otf-avg channels
+    keyword'naxis3';gethead;echan = keyvalue(1);
+    if (p_typ = 'PSEU') then;nchav = keyvalue(1);else $ skip few channels
+    if (p_typ = 'SPEC') then;bchan = ceil(echan/10);echan = floor(echan*9/10)
+      if (bchan = 1) then;bchan = 2;end;else $ ie first channel usually empty
+    type 'CANNOT DETERMINE IMAGE PARAMETERS';p_error = 15;end;end
+  end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_SCMAP(J)
+  task'imagr';imsize 128;nit 5000;flux 5e-4;sources'';timerang 0;docal -1
+  gainuse 0;outdisk 2;uvwtfn'na';imagrp(1) 25;imagrp(10) 1;doband -1;invers 0
+  dotv p_dotvpl;inseq p_frequid;outn'';outseq p_frequid;outdisk p_disk
+  fldsize p_factor*128 p_factor*128 0;minpatch fldsize(1,1);intype'uv'
+  for i = j to p_numcal
+    if (substr(p_calsourc(2),1,1)='*') then
+      p_getuvf;inext'su';pixxy i 2 0;tabget;inname keystrng;inseq p_frequid
+    else;inname p_calsourc(i);end
+    inclass substr(p_expna,1,6);clrtemp;chkname
+    if (error < 1) then $ always continuum image of strong sources (if > 10 vis)
+      p_setcell('PSEU');timerang 0;keyword'gcount';gethead
+      if ( (keyvalue(1) > 10) & (p_error = 0) ) then
+        type 'CALIBRATOR :'!!inname!!' BEING IMAGED NOW';runwait('imagr')
+        if (substr(p_calsourc(2),1,1)<>'*') then
+          if (p_no_slfcl(i) = 0) then
+            task'scmap';out2disk p_disk;nmaps 4;aparm 3 0;solmode'';docal -1
+            if (p_solint = -1) then;solint = p_nsolint(p_frequid)
+            else;solint = p_solint;end;runwait('scmap')
+            p_snplot(inname, inclass, inseq, 'sn', 0, 'phas', -20, 20, 8)
+            inc'SWTCHD';chkname
+            if (error < 1) then
+              p_snplot(inname, inclass, inseq, 'sn', 0, 'phas', -20, 20, 8)
+              p_snplot(inname, inclass, inseq, 'sn', 0, 'amp', .5, 2, 8)
+              pixrang 0
+  end;end;end;end;clrtemp;end;end;clrtemp
+  for i = 1 to p_numcal
+    if (substr(p_calsourc(2),1,1)<>'*') then
+      inname p_calsourc(i);inc'SCMAP';p_zapall $$    inc'SWTCHD';p_zapall
+      inclass'IBM001';inseq 0;indisk p_disk;intype'ma';p_zapall
+      inclass'RBM001';p_zapall;inclass'LBM001';p_zapall
+    else
+      inname p_expna;inclass 'UVDATA';inseq 0;ine'su'
+      pixxy i 2 0;tabget;inname keystrng
+      inclass'IBM001';inseq 0;intype'ma';indisk p_disk;p_zapall
+      inclass'RBM001';p_zapall;inclass'LBM001';p_zapall
+  end;intype'uv';end;clrtemp;recat;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_IMAGR
+  imsize 512;fldsize p_imsize(1) p_imsize(2) 0;outc'' $ now do targets only
+  if (p_numref > 0) then
+    if (substr(p_atargets(2),1,1)='*') then
+      inname p_expna;inclass 'UVDATA';p_getsurow;p_numref=p_row-p_numcal;p_sq=1
+    end;clrtemp
+    for i = 1 to p_numref
+      if (substr(p_atargets(2),1,1)='*') then
+        j = 0;inname p_expna;inclass 'UVDATA';inseq 1;inext'su'
+        while ((p_sq<=p_row)&(j<>17))
+          pixxy p_sq 2 0;tabget;p_num = 1;j = length(keystrng) $ max 12
+          while ( (j<17) & (p_num<=p_numcal) )
+            if (substr(p_calsourc(p_num),1,j)=substr(keystrng,1,j)) then
+              j = 17;p_sq = p_sq + 1 $ found, stop comparing, take next
+            else p_num = p_num + 1;end
+        end;if (j <> 17) then;inname keystrng;j = 17;p_sq = p_sq + 1;end;end
+      else;inname p_atargets(2*i);end
+      inseq p_frequid;outseq p_frequid;inclass substr(p_expna,1,6);chkname
+      if (error < 1) then
+        p_setcell(p_mode);timerang 0;keyword'gcount';gethead
+        if ( (keyvalue(1) > 10) & (p_error = 0) ) then
+          type 'TARGET :'!!inname!!' BEING IMAGED NOW';runwait('imagr')
+    end;end;end;clrtemp
+    for i = 1 to p_numref
+      inname p_atargets(2*i);inclass'IBM001';inseq 0;indisk outdisk;intype'ma'
+      p_zapall;inclass'RBM001';p_zapall;inclass'LBM001';p_zapall
+  end;clrtemp;recat;end;clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE P_REPORT
+$
+$   Report on tables and plots made
+$----------------------------------------------
+  type ' ';type 'SUMMARY OF THE CL-TABLES PRODUCED FOR THIS FREQUENCY-ID:';type ' '
+  if (p_clcnt(1) < p_clcnt(2)) then
+    type 'CL-'!!char(p_clcnt(1))!!' : ANTENNAS AND TIMES PRESENT'
+  end;if (p_clcnt(2) < p_clcnt(3)) then
+    type 'CL-'!!char(p_clcnt(2))!!' : SAMPLER CORRECTIONS ADDED'
+  end;if (p_clcnt(3) < p_clcnt(4)) then
+    type 'CL-'!!char(p_clcnt(3))!!' : GAIN CORRECTIONS ADDED'
+  end;if (p_clcnt(4) < p_clcnt(5)) then
+    type 'CL-'!!char(p_clcnt(4))!!' : PARALLACTIC ANGLE CORRECTION ADDED'
+  end;if (p_clcnt(5) < p_clcnt(6)) then
+    type 'CL-'!!char(p_clcnt(5))!!' : (MANUAL?) P-CAL ADDED'
+  end;if (p_clcnt(6) < p_clcnt(7)) then
+    type 'CL-'!!char(p_clcnt(6))!!' : IONOSPHERIC CORRECTION ADDED'
+  end;if (p_clcnt(7) <> 0) then
+    type 'CL-'!!char(p_clcnt(7))!!' : TOTAL CALIBRATION TABLE'
+  end;clrtemp; type ' '
+  if (p_dotvpl > -1) then $ report about plots made
+    for i=14:2 by -1;if (p_plcnt(i)=0) then;p_plcnt(i)=p_plcnt(i+1);end;end
+    type 'THESE PLOTS HAVE BEEN PRODUCED FOR THIS FREQUENCY-ID:'; type ' '
+    if (p_plcnt(1) < p_plcnt(2)) then
+type char(p_plcnt(1)+1)!!'-'!!char(p_plcnt(2))!!'   ANTENNAS AND TIMES PRESENT'
+    end;if (p_plcnt(2) < p_plcnt(3)) then
+type char(p_plcnt(2)+1)!!'-'!!char(p_plcnt(3))!!'  SAMPLER CORRECTIONS IN SN'
+    end;if (p_plcnt(3) < p_plcnt(4)) then
+type char(p_plcnt(3)+1)!!'-'!!char(p_plcnt(4))!!' SAMPLER CORR. ADDED TO CL'
+    end;if (p_plcnt(4) < p_plcnt(5)) then
+type char(p_plcnt(4)+1)!!'-'!!char(p_plcnt(5))!!' GAIN CORRECTIONS IN SN'
+    end;if (p_plcnt(5) < p_plcnt(6)) then
+type char(p_plcnt(5)+1)!!'-'!!char(p_plcnt(6))!!' GAIN CORR. ADDED TO CL'
+    end;if (p_plcnt(6) < p_plcnt(7)) then
+type char(p_plcnt(6)+1)!!'-'!!char(p_plcnt(7))!!' PARALLACTIC ANGLE ADDED TO CL'
+    end;if (VBA_NFQI > 1) then;if (p_plcnt(7) < p_plcnt(8)) then
+type char(p_plcnt(7)+1)!!'-'!!char(p_plcnt(8))!!' (MANUAL?) P-CAL IN SN'
+    end;if (p_plcnt(8) < p_plcnt(9)) then
+type char(p_plcnt(8)+1)!!'-'!!char(p_plcnt(9))!!' (MANUAL?) P-CAL ADDED TO CL'
+    end;end;if (p_plcnt(9) < p_plcnt(10)) then
+type char(p_plcnt(9)+1)!!'-'!!char(p_plcnt(10))!!' IONOSPHERIC DELAY CORRECTION'
+    end;if (p_plcnt(10) < p_plcnt(11)) then
+type char(p_plcnt(10)+1)!!'-'!!char(p_plcnt(11))!!' IONOSPHERE ADDED TO CL'
+    end;if (p_plcnt(11) < p_plcnt(12)) then
+type char(p_plcnt(11)+1)!!'-'!!char(p_plcnt(12))!!' BANDPASS CORRECTIONS'
+    end;if (p_plcnt(12) < p_plcnt(13)) then
+type char(p_plcnt(12)+1)!!'-'!!char(p_plcnt(13))!!' FRINGE-FIT SOLUTIONS IN SN'
+    end;if (p_plcnt(13) < p_plcnt(14)) then
+type char(p_plcnt(13)+1)!!'-'!!char(p_plcnt(14))!!' SNR OF FRINGED SOLUTIONS'
+    end;if (p_plcnt(14) < p_plcnt(15)) then
+type char(p_plcnt(14)+1)!!'-'!!char(p_plcnt(15))!!' TOTAL CALIBRATION TABLE'
+    end;clrtemp; type ' '
+  end
+RETURN;finish
+$===============================================
+PROCEDURE VLBAPIPE
+$
+$   Do whole VLBA pipeline
+$----------------------------------------------
+*  inputs vlbapipe
+  type '============================================================='
+  p_init;clrtemp;p_precheck;clrtemp;p_suggest = p_doall
+  if (p_error = 0) then;p_load;clrtemp;end
+  if (p_error = 0) then;p_suggest = 0;clrtemp;end
+*  if (p_error = 0) then;p_postchck;clrtemp;end
+  type '-------------------------'
+  for p_frequid = p_dostart to VBA_NFQI $ for each of the frequency ID's:
+    if (p_error = 0) then
+      inname p_expna;type 'NOW DOING FREQUENCY ID #'!!char(p_frequid)
+      for i=1 to 15; P_PLCNT(i) = 0; end; for i=1 to 8; P_CLCNT(i) = 0; end
+      p_suggest = -1 * p_frequid
+    end;clrtemp
+    if (p_error = 0) then;p_instcal;clrtemp;end
+    if (p_error = 0) then;p_extras;clrtemp;end
+    if (p_error = 0) then;p_fring;clrtemp;end
+$ new bandpass table and plots here
+    if (p_error = 0) then;p_split;clrtemp;end
+    if (p_error = 0) then;p_scmap(1);clrtemp;end
+    if (p_error = 0) then;p_imagr;clrtemp;end
+    if (p_error = 0) then;p_report;clrtemp
+      type 'DONE WITH FREQUENCY ID #'!!char(p_frequid)
+      type '-------------------------'
+      p_suggest = -1 * p_frequid - 1
+    end;clrtemp
+    if (p_doall < -1000) then;p_frequid=VBA_NFQI+99;end $ only do this freqid
+  end;p_exit;clrtemp
+  if (p_error = 0) then
+    type '';type 'USE P_ALLPLOT(X) TO PLOT FROM PL-VERSION X ON TV';type ''
+    type 'PROCEDURE DONE, THANK YOU FOR CHOOSING AIPS FOR YOUR BUSINESS'
+  else
+    type 'SOME ERROR OCCURRED - PLEASE REVIEW YOUR INPUTS AND TRY AGAIN'
+$    type 'SUGGESTED STARTING POINT (CAREFUL!) DOALL = '!!char(p_suggest)
+  end;clrtemp
+  type '=============================================================';clrtemp
+RETURN;finish
+$===============================================
+PROCEDURE PIPE
+  vlbapipe
+RETURN;finish
+$===============================================
+procedure setoutfile
+  outfile='mya:'!!inname!!'.'!!inclass!!'.'!!char(inseq);i=1
+  while ( i < length(outfile) )
+    if (substr(outfile,i,i) = ' ') then; substr(outfile,i,i) = '_';end;i=i+1
+  end
+  typ outfile
+finish
+PROCEDURE BACKPIPE
+  type 'DID YOU LOAD AND MOUNT A FRESH TAPE ? (Y)'
+  read
+  inn p_expna;ins 0;ind p_disk;inc'uvdata';p_getfqnum;doinvers -1
+  inclass 'fpol'!!char(p_frequid);inseq 1;intype'uv';chkname
+  if (error = 1) then $ fxpol did not run after frequency split
+    inc'fq-1';chkname
+    if (error = 1) then
+      inc'uvdata';nfiles = 1;chkname
+      if (error = 1) then
+        type 'NO MULTI-SOURCE DATA FILE FOUND - CHECK YOUR INPUTS!'
+        p_error = 100
+      end
+    else
+      nfiles = VBA_NFQI;doinvers 1
+    end
+  else
+$ keep 'fxpol' as inclass
+    nfiles = (-1 * error + 1)
+  end
+$ got nfiles of files and inclass fixed apart from fq-1
+  doall -1;outta 3;doeot -1;dostok -1;donewtab 1;format 0;blocking 10
+  for j = 1 to nfiles
+    if (doinvers 1) then
+      inc 'fq-'!!char(j)
+    end
+    setoutfile;
+  end
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$ eigenlijn meteen voor split en na imaging op disk doen! en per freqid
+$ ook flag na split?
+$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+$$$$$    for j = 1 to (-1 * error + 1);;end
+RETURN;finish
+
+$===============================================
+P_DEBUG    = 0 $ can set to true and back in the interactive AIPS window

@@ -1,0 +1,227 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+% most of this setup stuff was borrowed from Eric's revision of memo 27.
+\documentstyle [twoside]{article}
+\input psfig
+% aips memo number.
+\newcommand{\memnum}{83}
+\newcommand{\memtit}{Dual Libraries and Binaries in AIPS}
+% little dance to make the memo box ride up a little, giving more
+% space and a better overall appearance.
+\title{
+%   \hphantom{Hello World} \\
+   \vskip -35pt
+   \fbox{AIPS Memo \memnum} \\
+   \vskip 28pt
+   \memtit \\}
+\author{Patrick P.~Murphy}
+%
+% misc. definitions.  Not all of these are used.
+\newcommand{\AIPS}{{$\cal AIPS\/$}}
+\newcommand{\POPS}{{$\cal POPS\/$}}
+\newcommand{\eg}{{\it e.g.},}
+\newcommand{\ie}{{\it i.e.},}
+\newcommand{\daemon}{d\ae mon}
+\newcommand{\AIPTOO}{\hbox{$\cal AIPS$\hskip-.16667em\raise0.166em\hbox{+}
+        \hskip-.7em\raise0.166em\hbox{+}\/}}
+%
+\parskip 4mm
+\linewidth 6.5in
+\textwidth 6.5in                     % text width excluding margin
+\textheight 8.81 in
+\marginparsep 0in
+\oddsidemargin .25in                 % EWG from -.25
+\evensidemargin -.25in\topmargin -.5in
+\headsep 0.25in
+\headheight 0.25in
+\parindent 0in
+\newcommand{\normalstyle}{\baselineskip 4mm \parskip 2mm \normalsize}
+\newcommand{\tablestyle}{\baselineskip 2mm \parskip 1mm \small }
+%
+%
+\begin{document}
+
+\pagestyle{myheadings}
+\thispagestyle{empty}
+\newcommand{\Rheading}{\AIPS\ Memo \memnum \hfill \memtit \hfill Page~~}
+\newcommand{\Lheading}{~~Page \hfill \memtit \hfill \AIPS\ Memo \memnum}
+\markboth{\Lheading}{\Rheading}
+%
+%
+
+\vskip -.5cm
+\pretolerance 10000
+\listparindent 0cm
+\labelsep 0cm
+%
+%
+\vskip -30pt
+\maketitle
+\vskip -30pt
+\normalstyle
+
+\begin{abstract}
+
+     One of the most frustrating aspects of working with \AIPS\ on a
+daily basis is dealing with the debug and/or optimization level built
+into the many libraries.  There is inherently a conflict between the
+desire for high performance and the need to access symbolic debugging
+information, at least on many compilers.  This is true on current
+versions of SunOS where one cannot use debug and optimize qualifiers
+together on compile or link commands.  To address this problem, a scheme
+similar to one first proposed by Mark Calabretta (\cite{kn:mur1},
+\cite{kn:mur2}) has been implemented for the Sun-4 architecture in the
+{\tt 15JUL93} (formerly {\tt 15APR93}) test version of \AIPS\ at both
+Charlottesville and AOC sites within NRAO.  The rest of this memo
+describes in some detail the mechanisms used in this system.
+
+\end{abstract}
+
+\section{Introduction}
+
+The basis of the system is to have two separate areas for object and/or
+shareable libraries: one that will hold the debug-capable, non-optimized
+versions of the object modules, the other for the optimized version with
+no symbolic debug information included.  While the {\tt \$LOAD} area is
+still the repository for binaries (executables) compiled with the
+non-debug libraries, the intent is for the debug libraries to be used
+when creating local versions of tasks for debugging purposes, usually in
+one's home area or a subdirectory thereof.  Several of the Unix shell
+scripts have to be modified to accomodate this change.  The entire
+system is enabled or disabled based on the presence or absence of a
+single file: {\tt \$SYSLOCAL/DOTWOBIN}.
+
+The new area is pointed to by an environment variable (``logical'') {\tt
+LIBRDBG}.  These are defined in the generic portion of the {\tt
+AIPSASSN} files as a directory parallel to the {\tt LIBR} area, \ie,
+{\tt \$AIPS\_VERSION/\$ARCH/LIBRDBG}.  If the {\tt COMRPL} script
+described below fails to find this area and the {\tt \$SYSLOCAL/DOTWOBIN}
+file is present, the directory will be created if possible.
+
+In the sections that follow, the behaviour described is for the most
+part that relating to files that reside {\it in the main \AIPS\
+directory tree\/}.  Local files, \eg, those residing in a user's private
+directory, will still compile and link in the same way they always have.
+Throughout this document, the term ``local'' will be used to refer to
+such private files, and ``system'' to refer to files in the
+{\tt\$AIPS\_VERSION} directory tree.  The only significant changes users
+developing such ``local'' code really need to be aware of is the
+presence of a debug set of libraries, and the new command line option on
+{\tt LIBS} (see below).
+
+\section{COMRPL -- New Behaviour}
+
+The normal behaviour of {\tt COMRPL} is to (a) compile a source code
+module into an object file, and (b) optionally move it to a holding area
+for eventual insertion into a library.  Part (b) is not done for
+``local'' code.  The revised {\tt COMRPL} procedure will compile any
+``system'' module twice as follows.
+
+First, any optimize/debug directives from the command line are removed,
+and any {\tt PURGE} directive is overridden (the preprocessed source
+code will be needed for a second compilation).  Thus, for these
+``system'' files, the debug/optimize settings are determined solely by
+the {\tt FCLEVEL.SH} and {\tt OPTIMIZE.LIS} files for Fortran modules,
+and by {\tt CCOPTS.SH} for C language modules.
+
+The first compilation done will produce an optimized, non-debug object
+file.  There is an inherent assumption here that the settings in the
+various files mentioned in the previous paragraph will produce just
+this.
+
+This second compilation takes the basic options (again, exclusive of
+command line directives) and overrides them with {\tt DEBUG}, {\tt
+NOOPT}, and {\tt NOPURGE}.  Then both this object file and the first one
+are moved to their respective directories under the {\tt LIBR} and {\tt
+LIBRDBG} areas.  The procedures will give verbose details on how the
+object files are kept separate, but knowledge of these details is not
+necessary for an understanding of the logical behaviour of the script.
+
+\section{LIBS -- New Command-line Option}
+
+The use of the {\tt LIBS} shell script is solely to generate options
+files for ``local'' compilations and links.  In the revised setup
+described here, it is necessary to be able to specify whether the debug
+or non-debug versions of the libraries are used.  This is accomplished
+now via, \eg: {\tt LIBS \$AIPPGM DEBUG} or maybe {\tt LIBS \$APGNOT -d}.
+Either form of the option is case insensitive.  If any form of this is
+detected, the procedure will generate a list with the {\tt LIBRDBG} set
+of libraries.  Otherwise the default action will be to use the {\tt
+LIBR} libraries.
+
+\section{COMLNK -- New Behaviour}
+
+This revised procedure is similar in operation to {\tt COMRPL}.  Its
+behaviour depends on whether or not the {\tt DEBUG} option is specified
+in the command line.  If it is not, the behaviour of {\tt COMLNK} is
+unchanged.
+
+However, if {\tt DEBUG} is specified, the program in question will be
+compiled and linked against the debug libraries.  While the binary will
+be placed in the {\tt\$LOAD} area for ``system'' compilations/links
+regardless of the {\tt DEBUG} setting, the intention is for the debug
+mode to be used for ``local'' use.  The original version of the scripts
+(and of this document) used a separate {\tt\$LOADDBG} area for
+``system'' debug binaries, but this use was abandoned prior to the
+public release of the scripts.
+
+\section{Impact on Shared Libraries}
+
+The use of shared libraries in the Sun (and now HP) versions of \AIPS\ %
+has been controlled for some time by the presence or absence of the file
+{\tt \$SYSLOCAL/USESHARED}.  This has not changed with the modifications
+described above, except that shared libraries will only be used for the
+optimized, non-debug case.  They are then generated in addition to the
+regular static libraries.
+
+The location and naming of these shared libraries has, however, changed.
+The static libraries will remain in the various subdirectories in the
+{\tt LIBR} area, but now the shared libraries will be stored directly in
+{\tt LIBR} and are named after the area in question.  Thus, what was
+formerly {\tt\$LIBR/APLSUB/SUBLIB.so} will now be found in {\tt
+\$LIBR/APLSUB.so}.  The rationale for this change is to permit the easy
+movement of the location of the {\tt AIPS\_ROOT} area without
+necessitating a rebuild of a shareable library \AIPS\ installation.  It
+may also facilitate a binary distribution of \AIPS.  Both of these are
+possible by adding the {\tt LIBR} directory to the SunOS environment
+variable {\tt LD\_LIBRARY\_PATH}.
+
+\begin{thebibliography}{9}
+
+\bibitem{kn:mur1} ``Disk usage, build time, and execution time for
+	\AIPS\ in SunOS under a variety of compilation modes'',
+	Mark Calabretta, Australia Telescope National Facility,
+	1991/Oct/04, on the \AIPTOO\ Tools and \AIPS\ Bananas E-mail
+	exploders.
+
+\bibitem{kn:mur2} ``Verification'', Mark Calabretta, Australia
+	Telescope National Facility, 1991/Oct/04, on the \AIPTOO\
+	Tools E-mail exploder.  See also the follow-up messages.
+
+\end{thebibliography}
+
+\end{document}

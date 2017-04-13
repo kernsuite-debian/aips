@@ -1,0 +1,156 @@
+; VBGLU
+;---------------------------------------------------------------
+;! Glues together data from multiple passes thru the VLBA corr.
+;# Task UV SPECTRAL VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 2006-2007, 2014
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+VBGLU     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+VBGLU     Task which glues uv frequency blocks back together
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+IN2NAME                            Second UV file name (name)
+IN2CLASS                           Second UV file name (class)
+IN2SEQ            0.0     9999.0   Second UV file name (seq. #)
+IN2DISK           0.0        9.0   Second UV file disk unit #
+IN3NAME                            Third UV file name (name)
+IN3CLASS                           Third UV file name (class)
+IN3SEQ            0.0     9999.0   Third UV file name (seq. #)
+IN3DISK           0.0        9.0   Third UV file disk unit #
+IN4NAME                            Fourth UV file name (name)
+IN4CLASS                           Fourth UV file name (class)
+IN4SEQ            0.0     9999.0   Fourth UV file name (seq. #)
+IN4DISK           0.0        9.0   Fourth UV file disk unit #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ           -1.0     9999.0   Output UV file name (seq. #)
+OUTDISK           0.0        9.0   Output UV file disk unit #.
+FQCENTER                           >= 0 -> center frequency axis
+----------------------------------------------------------------
+VBGLU
+Task:  This task is designed to deal with VLBA data that have been
+       correlated in multiple passes. Multiple passes in the VLBA
+       sense do not have the historical connotation associated with
+       older VLBI correlators. For the VLBA, all baselines are
+       correlated simultaneously but only 8 IFs can be correlated at
+       any one time. So the data have to be glued together in the
+       spectral domain. Up to 4 input files can be handled
+       simultaneously - this will deal with the worst case scenario
+       (MkIII Mode A).  The task has been rewritten so no data are
+       lost even when not all files have data from the same times.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  IN2NAME....Second file name.
+  IN2CLASS...Second file class
+  IN2SEQ.....Second file sequence number.
+  IN2DISK....Second file sequence number.
+  IN3NAME....Third file name.
+  IN3CLASS...Third file class
+  IN3SEQ.....Third file sequence number.
+  IN3DISK....Third file sequence number.
+  IN4NAME....Fourth file name.
+  IN4CLASS...Fourth file class
+  IN4SEQ.....Fourth file sequence number.
+  IN4DISK....Fourth file sequence number.
+  OUTNAME....Output UV file name (name).     Standard defaults.
+  OUTCLASS...Output UV file name (class).    Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).   0 => highest unique
+  OUTDISK....Disk drive # of output UV file. 0 => highest with
+             space for the file.
+  FQCENTER...>  0 => Change frequency axis reference pixel to
+                     Nchan / 2 + 1
+             else => do not change reference pixel
+----------------------------------------------------------------
+VBGLU Glues VLBA data together IF by IF.
+DOCUMENTOR: P.J.Diamond & Amy Mioduszewski
+
+                          PURPOSE
+
+NOTE: VBGLU will only work on single FREQID datasets.
+
+VBGLU Glues together data that were correlated in multiple passes on
+the VLBA correlator, multiple pass is not used in its historical
+sense of different baselines/pass but in the sense of different
+IFs/pass. This is necessary because the VLBA correlator can only deal
+with 8 IFs at a time, but when MkIII Mode A,B or C are correlated the
+data have to be split up in frequency space.
+
+VBGLU reads the file headers and FQ tables and constructs a composite
+header/FQ table.  It reads all input files constructing a time-ordered
+list of output records.  When times and baselines match the output
+data will contain the input data from all input files.  For times when
+the files do not match, some output IFs will be marked as flagged
+while the other output IFs will contain the appropriate data.  No data
+will be lost in this way, although some records may not contain data
+for all IFs.  The task is more efficient if the data are in strict
+time-baseline order, but any order can be processed.
+
+Several assumptions are implicit in this process:
+   (1) The source/antenna numbers are identical - use task MATCH to
+       fix this if needed.
+   (2) There are the same number of spectral channels per IF
+   (3) There is a sigle FREQID
+
+VBGLU then copies those tables that have no IF dependency. It then
+takes the tables that do have arrays that depend on IF and performs an
+analogous operation to that done on the uv-data. The tables from the
+first file are taken to be the master representations and the others
+are merged with them. The tables that are bonded in this way are:
+     AT  IM  CL  SN  MC  TY  PC  BP  BL  SU  GC  CQ
+If there is a significant mismatch between the tables a warning
+message is issued.
+
+CT Table
+--------
+
+One table that is treated differently than those above is the CT table.
+The CT table is the CALC table and contains the earth orientation
+parameters (EOPs) that were used by the correlator.  It is possible that
+the EOPs used were not the most accurate because it takes a week or two
+after the observation date to get the most accurate EOPs (see VLBA
+Test Memo 69).  Inaccurate EOPs can substantially negatively effect
+phase referencing experiments.  Therefor it is recommended that they are
+corrected with CLCOR (OPCODE=EOPS; see EXPLAIN CLCOR).  CLCOR uses the CT
+table to calculate the difference between the old EOPs and the new EOPS.
+Therefor, it is VITAL that the CT table be correct.  The CT table has
+no IF dependence but it is possible in the two correlation that the
+EOPs were different.  So VBGLU compares the CT tables and if they are
+identical and if they are not it refuses to copy them and issues a
+message.
+
+If VBGLU refuses to copy the CT table to the output file and you want
+to fix the EOPs for your experiment you can follow these steps, BEFORE
+running VBGLU:
+
+1) run CLCOR (OPCODE='EOPS') on both files.
+2) run SPLAT to apply those corrections (because VBGLU only copies the
+   first CL table).
+3) run VBGLU on the SPLATed files

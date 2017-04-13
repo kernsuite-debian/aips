@@ -1,0 +1,99 @@
+* Defines procedure to make complex polarized beam and dirty image
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1999, 2005
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+proc cxpoln
+* save input and output names
+vnumber 35; vput cxpoln
+if (outname=' ') then
+   outname = 'CXPOL output
+   print 'using outname ', outname; end
+if (outseq <= 0) then
+   outseq = 99;
+   print 'using outseq ', outseq; end
+if (outdisk <= 0) then
+   outdisk = 1
+   print 'using outdisk 1'; end
+tput cxpoln
+default mx
+default uvpol
+tget cxpoln
+in3name=inname; in3c = inclass; in3d=ind; in3s=ins
+out2name=outname; out2d=outd; out2s=outs; dowa true
+* Make Dirty complex image
+task='uvpol'; inn=in3n; inc=in3c; ind=in3d; ins=in3s
+   outn='cxpoln temp'; outc='image'; outs=666; outd=out2d;
+   opco='weig';
+   go
+task='mx'; inn=outn; inc=outc; ins=outs; ind=outd
+   in2n='cxpoln mx'; in2c'temp'; in2d out2d; in2s 666
+   outn=out2n; outs=out2s; outd=out2d;
+   nfield=1; fldsiz=0; niter=0; bcomp=0; channel=0
+   stokes='q';go
+   stokes='u'; in2s=in2s+1; go
+* destroy unwanted files
+   inty='uv'; zap;
+   inn = in2n; inc=in2c; ins=in2s-1; ind=in2d; zap
+   ins=in2s; zap
+   inn=outn; ins=outs; ind=outd; inty='ma'
+   inclass='qbm001'; zap; inclass='ubm001'; zap
+* Make complex beam
+task='uvpol'; inn=in3n; inc=in3c; ind=in3d; ins=in3s
+   outn='cxpoln temp'; outc='beam'; outs=666; outd=out2d;
+   opco='data';
+   go
+task='mx'; inn=outn; inc=outc; ins=outs; ind=outd
+   in2n='cxpoln mx'; in2c'temp'; in2d out2d; in2s 666
+   outn=out2n; outs=out2s+1; outd=out2d;
+   nfield=1; fldsiz=0; niter=0; bcomp=0; channel=0
+   rash=0; decsh=0;
+   stokes='q';go
+   stokes='u'; in2s=in2s+1;go
+* destroy unwanted files
+   inty='uv'; zap;
+   inn = in2n; inc=in2c; ins=in2s-1; ind=in2d; zap
+   ins=in2s; zap
+   inn=outn; ins=outs; ind=outd; inty='ma'
+   inclass='qbm001'; zap;
+   inclass='ubm001'; zap
+* rename complex beam images
+inc='qim001'; outn inn; outc 'qbm001'; outs out2s; rename
+inc='uim001'; outc 'ubm001'; rename
+dowa false
+*  Normalize images using center of complex beam
+inc 'qbm001'; ins=out2s; pixxy = 1
+keyw='CRPIX1'; geth; pixxy(1) = keyval(1)
+keyw='CRPIX2'; geth; pixxy(2) = keyval(1)
+qimval; x = pixval;
+inc='ubm001'; qimval; y = pixval
+offset = 0; factor = 1.0 / sqrt (x*x+y*y)
+type 'normalization factor =', factor
+inc='qim001'; rescale
+inc='uim001'; rescale
+inc='qbm001'; rescale
+inc='ubm001'; rescale
+vget cxpoln
+return; finish

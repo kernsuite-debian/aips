@@ -1,0 +1,50 @@
+@@
+
+
+I.  The 'plot spooler' for the VERSATEC printer/plotter
+
+   The plotting system described below was used at NRAO before we
+acquired version C of the VERSATEC driver.  The programs and
+command procedures described here will be read from tape to disk
+during the installation procedure.  This system can be made to work,
+however, it is much simpler to acquire the latest version of the
+driver from VERSATEC.  They will sell it to you cheap.
+
+   Text is written to the VERSATEC though the VAX spooler.  This
+spooler can not handle writing to the VERSATEC in plot mode.  Plots
+must be written directly to the printer by using QIO instructions.
+To solve the problem of queueing both plots and text to the same
+printer a subsystem called the 'plot spooler' was set up.  The central
+program in the system is a command procedure called PLOT that runs
+as a batch job.  This procedure waits until a file name is written
+to its mailbox by program ZDOPRT.  When a file name is received
+PLOT attempts to stop the print queue, stop the printer device queue,
+set the device to NOSPOOL then allocate the device.  If a job is
+still printing PLOT will not be able to allocate the printer.  PLOT
+keeps trying until it succeeds.  Since the print queue is stopped no
+other job from the VAX spooler will be able to start printing.
+This allows PLOT to allocate the device as soon as the current print
+job finishes.  The file name passed through the mailbox is assigned
+to the logical name PLOTFILE.  PLOT then runs program ZVERPL which
+plots PLOTFILE on the VERSATEC.  After completion of ZVERPL, PLOT
+deletes PLOTFILE, deallocates the printer, and restarts the queues.
+Print jobs submitted while the queues were stopped are queued
+normally.  Any messages written to the mailbox are also automatically
+queued by the system.  Thus the total system functions as a spooler
+in which plot jobs have first priority.  The mailbox is created at boot
+time.  This is done by having the system manager start up procedure
+run program [AIPS.new.LOAD]VLAMBX.
+
+   The batch job PLOT is submitted at boot time.  The following
+commands are found in our system manager startup procedure:
+
+$ START /QUEUE VLAPLOT          !start VLA plot queue
+$ SUBMIT/QUEUE=VLAPLOT MXA0:[AIPS]PLOT
+$ RUN DB00:[AIPS.new.LOAD]VLAMBX    !create mail box for vla plotter
+
+   The bit map file written by PRTPL and read by ZVERPL is of the
+following format:  The first word in the first 512 byte block contains
+the number of plot lines in the bit map file.  ZVERPL expects each line
+to contain 2112 bits (132 words).  The first (top) line starts at the 
+first word in the 2nd 512 byte block.  Succeeding lines follow one
+after another crossing block boundaries.

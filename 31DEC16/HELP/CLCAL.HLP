@@ -1,0 +1,380 @@
+; CLCAL
+;---------------------------------------------------------------
+;! merges and smooths SN tables, applies them to CL tables
+;# Task Calibration
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1997-1998, 2002-2006, 2013
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+CLCAL     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+CLCAL     Task to manage SN and CL calibration tables
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+SOURCES                            Source list to calibrate
+SOUCODE                            Source "Cal codes"
+CALSOUR                            Cal sources for calibration
+QUAL            -10.0              Source qualifier -1=>all
+CALCODE                            Calibrator code '    '=>all
+TIMERANG                           Time range to calibrate
+SUBARRAY     -32000.0     1000.0   Subarray, 0=>all,
+ANTENNAS                           Antennas selected, 0=> all
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select.
+OPCODE                             Operation 'MERG','CALI',
+                                   'CALP'; ' ' => 'CALP' ****
+INTERPOL                           Interpolation function,
+                                   choices are: '2PT','SIMP',
+                                   'AMBG','CUBE','SELF','POLY',
+                                   'SELN'; see HELP for details
+CUTOFF                             Interpolation limit in
+                                   time (min); 0=> no limit.
+SAMPTYPE                           Smoothing function
+BPARM                              Smoothing parameters
+ICUT              0.0              Cutoff for functional forms
+DOBLANK                            Blanked value interpolation
+DOBTWEEN        -1.0         1.0   > 0 -> smooth all sources
+                                   together; else separate them
+SMOTYPE                            Data to smooth
+SNVER                              Input SN table, 0=>all.
+INVERS                             Upper SN table vers in a
+                                   range.  0=>SNVER
+GAINVER                            Input Cal table 0=>high
+GAINUSE                            Output CAL table 0=>high+1
+REFANT                             Reference antenna 0=>pick.
+BADDISK           0.0     9999.0   Disks to avoid for scratch
+----------------------------------------------------------------
+CLCAL
+Task:  Applies solutions from a set of SN tables to selected entries
+       in one CL table and writes them into another CL table. The
+       input CL table should be the one applied to the data when
+       determining the solutions and the output CL table is the one to
+       apply when calibrating the data. Other operations on SN tables
+       are also performed.
+          For OPCODE='MERG', the SN tables will be merged and
+       re-referenced to a common reference antenna.  The result may
+       then be smoothed.  This OPCODE may be used with single-source
+       as well as multi-source files.
+          For OPCODE='CALI' selected SN tables are merged into a
+       temporary SN table, smoothed if requested, applied to a specified
+       CL table and written to the specified output CL table.  This is
+       for multi-source files only.  CL entries for sources not
+       included by SOURCES are dropped from the output CL table.  This
+       enables multiple executions of CLCAL, writing to the same CL
+       table, to build that table back up to one containing all
+       sources.  However, if that table is appled to the data set
+       while not yet complete, the omitted sources will be flagged on
+       output.
+          OPCODE='CALP' is identical to 'CALI' except that uncalibrated
+       data (CL entries for sources not in SOURCES) are passed through
+       instead of being dropped.  This is now (2013-Feb-18) the
+       default; previously the more dangerous 'CALI' was the default.
+
+       Considerable care should be exercised in using this task with
+       OPCODE 'CALI'.  If GAINUSE is not pre-existing, then the output
+       file will contain data only for the specified range of adverbs
+       (e.g. time-range, source list, etc).  The data from the SN
+       table(s) will be interpolated and extrapolated as needed to
+       cover this range.  They are then applied to the input CL values
+       to produce the output CL values.
+       If GAINUSE pre-exists, then the CL values for the range of
+       adverbs is replaced by the data from the input CL tables times
+       the data from the SN tables and the rest of the pre-existing CL
+       table is unchanged.
+
+       Note that setting GAINUSE=0 (or OPCODE 'CALP' with GAINUSE >
+       the number of input versions), creates and fills a new CL table
+       that then is "pre-existing" in the above sense.
+
+       Normally, 'CALI' is run with GAINVER and GAINUSE set to
+       specific values (> 0) and kept at those values, while the other
+       adverbs are used to fill in all sources and times in the
+       (fixed) output CL table over multiple executions of CLCAL.
+       'CALP' is usually run with GAINUSE=GAINVER=0 even when multiple
+       executions of CLCAL are needed to fill in the CL table
+       properly.  This leads to a number of "extra" CL tables, but
+       guarantees that the initial CL information (opacity, antenna
+       gains, etc) is not lost.
+
+       See the EXPLAIN CLCAL for additional information.
+
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  SOURCES....List of sources whose CL table entries are to be
+             updated.  '*' or blank = all; a "-" before a source
+             name means all except ANY source named.
+  SOUCODE....Sources may be selected on the basis of the
+             calibrator code given in the SU table.
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+                  anything else = calibrator code to select.
+             NB: The SOUCODE test is applied in addition to the
+             other tests, i.e. SOURCES and QUAL, in the
+             selection of sources to process.
+  CALSOUR....List of calibrators to use for updating the CL
+             table.  '*' or blank = all; a "-" before a
+             calibrator name means all except ANY calibrator
+             named.
+  QUAL.......Only sources with a source qualifier number in the
+             SU table matching QUAL will be used if QUAL is not
+             -1.  QUAL affects the selection of both the list of
+             sources and the list of calibrators.
+  CALCODE....Calibrators may be selected on the basis of the
+             calibrator code given in the SU table.
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+                  anything else = calibrator code to select.
+             NB: The CALCODE test is applied in addition to the
+             other tests, i.e. CALSOUR and QUAL, in the
+             selection of sources to process.
+             CALCODE affects only the selection of calibrators.
+  TIMERANG...Time range of the data to be calibrated. In order:
+             Start day, hour, min. sec,
+             end day, hour, min. sec. Days relative to ref.
+             date.
+  SUBARRAY...Subarray number to calibrate. 0=>all.
+             VLBI users may have a situation in which all AIPS subarrays
+             actually contain the same antennas.  CLCAL may be used to
+             combines the separate SN gain tables, writing a single
+             output table for "subarray 0".  Later calibration routines
+             will understand that this applies to all subarrays.
+             Set SUBARRAY = -32000 to request this operation; it will be
+             reset to 0 if the antennas files are not identical.
+  ANTENNAS...A list of the antennas to be processed.  If any number is
+             negative then all antennas listed  are NOT to be included.
+             All 0 => use all.  Note: when processing subsets of
+             antennas separately it is very important always to use the
+             same reference antenna (REFANT).
+  SELBAND....Bandwidth of data to be selected. If more than one IF is
+             present SELBAND is the width of the first IF required.
+             Units = kHz. For data which contain multiple
+             bandwidths/frequencies the task will insist that some form
+             of selection be made by frequency or bandwidth.
+  SELFREQ....Frequency of data to be selected. If more than one IF is
+             present SELFREQ is the frequency of the first IF required.
+             Units = MHz.
+  FREQID.....Frequency identifier to select (you may determine which is
+             applicable from the OPTYPE='SCAN' listing produced by
+             LISTR). If either SELBAND or SELFREQ are set, their values
+             override that of FREQID.  However, setting SELBAND and
+             SELFREQ may result in an ambiguity.  In that case, the task
+             will request that you use FREQID.  NOTE: CLCAL should be
+             run once per FREQID.
+  OPCODE.....The desired operation:     (default is now CALP)
+             'MERG' requests that all selected SN tables be merged and
+             the phase-like parameters (phase, delay and rate)
+             re-referenced to a common reference antenna.  The merged SN
+             table will be smoothed if SAMPTYPE is not blank.  The
+             output will be a new SN table one higher than the
+             previous maximum.  Note that this concatenates the SN
+             tables, it DOES NOT multiply, divide, or replace entries.
+             It is intended to be used for SN tables with solutions
+             for different time ranges or sources rather than
+             incremental calibration of the same source(s).  If the
+             tables have the significantly different solutions for
+             the same (similar) time then you probably don't want to
+             MERG them.
+
+             'CALI' requests that the merge operation be done if
+             necessary and the solutions be (optionally) smoothed and
+             the selected CL table entries be updated from the
+             smoothed SN table.
+
+             'CALP' is identical to 'CALI' except that uncalibrated
+             data is passed through instead of being discarded.
+
+  INTERPOL...The type of interpolation to be applied to the SN table
+             when computing the CL table entries (CALI, CALP only)
+             All methods will extrapolate solutions if necessary.  All
+             of them limit the degree of extrapolation to no more than
+             1/2 of the time difference between the two calibrations
+             being extrapolated after which the nearest calibration is
+             used.  WARNING: The CUBE method cannot be limited in this
+             way and should not be used when extrapolation is
+             required.
+             '2PT ' = linear vector interpolation - the default
+             'SELF' = do 2PT but only using SN entries from the same
+                      source.  (New mode starting 20 April 2004.)
+             'SELN' = Use only SN solution from same source which
+                      is closest in time.  (This mode was called SELF
+                      before 20 April.)
+             'SIMP' = Simple linear phase connection between SN phase
+                      entries, assumes phase difference less than 180
+                      degrees.
+             'AMBG' = Linear phase connection using rates to resolve
+                      phase ambiguities.
+             'CUBE' = As AMBG but fit third order polynomial to phases
+                      and rates.
+             'POLY' = Fit a polynomial to the SN rates and delays.
+                      Use the integral of the rate polynomial for the
+                      phases.  (CUTOFF sets the degree.)
+  CUTOFF.....Interpolation limit in time (minutes). This specifies the
+             maximum time interval over which SN records will be
+             interpolated to calibrate a given CL record.  0 ->
+             infinite
+             INTERPOL='POLY' does not use this limit.  Instead CUTOFF
+             sets the degree of the polynomial <= 10.
+  SAMPTYPE...The type of smoothing: ' ' => none
+                'BOX ' = boxcar smoothing
+                'MWF ' = Median window filter
+                'GAUS' = Gaussian
+                'EXP ' = Exponential
+                'LINE' = Linear (1 - abs(t-t0)/sigma)
+                '2PT ' = Two-point
+                '2PTH' = Two-point + "Hanning"
+  BPARM......Parameters for smoothing function.
+             Function support full width in hours.
+               (1) => support time for amplitudes,
+               (2) => support time for phase,
+               (3) => support time for rates
+               (4) => support time for singleband delay
+               (5) => support time for multiband delay
+             Added parameter (FWHM) for GAUS, EXP, LINE in hours
+               (6) => smoothing FWHM time for amplitudes,
+               (7) => smoothing FWHM time for phase,
+               (8) => smoothing FWHM time for rates
+               (9) => smoothing FWHM time for singleband delay
+              (10) => smoothing FWHM time for multiband delay
+             In all cases, the substitution for blanked and good
+             solutions is governed by DOBLANK (see below)
+  ICUT.......Cutoff for GAUS, EXP, LINE.  The sum of the weighting
+             function in the support region must exceed ICUT for the
+             smoothed value to be regarded as valid.  Be careful, a
+             value of 1.5 means that the sample itself must be good
+             and the sum over other good samples in the support range
+             must exceed 0.5.  < 1.e-6 => 1.e-6.
+  DOBLANK....Blanked value interpolation:
+             > 0: replace previously blanked values with smoothed
+                  values, leave previously good values unchanged.
+             = 0: replace previously blanked and previously good
+                  values with smoothed values.
+             < 0: replace previously good values with smoothed values,
+                  leave previously blanked values blanked.
+             Note that DOBLANK >= 0 requires a SMOTYPE that smooths
+             both phase and amplitude, namely BOTH or FULL
+             NOTE: >=0 Forces SMOTYPE = 'FULL' unless BOTH is
+             specified.
+  DOBTWEEN...> 0 => smooth all SN values regardless of source.
+             <= 0 => smooth only SN values from the same source.
+             Well-separated calibrators may have different phases just
+             because of different atmosphere, so one would not want to
+             smooth them together.  This can be achieved via doing one
+             source at a time, but DOBTWEEN allows one to do all
+             sources at once - at least if the choice is a simple one.
+  SMOTYPE....Specified the data to be smoothed. '    '=>'FULL'
+             'AMPL' = amplitude smoothing only,
+             'PHAS' = phase smoothing only,
+             'BOTH' = amplitude and phase
+             'VLBI' = delay and rate,
+             'FULL' = amplitude, phase, delay and rate.
+             SMOTYPE = 'FULL' forced if DOBLANK >= 0
+  SNVER......First SN table to use.  0 -> 1.
+  INVERS.....Last SN table to use.  0 -> SNVER  EXCEPT if both are
+             <= 0 then use all SN tables.  This will concatenate the
+             SN tables and then apply them.  It DOES NOT multiply,
+             divide, or replace the entries in the SN tables.  It is
+             intended to be used for SN tables with solutions for
+             different time ranges or sources rather than incremental
+             calibration of the same source(s).  If the SN tables
+             have different solutions for the same/similar source/time
+             then you probably don't want to do this.
+  GAINVER....Specifies the input version of the (CL) table to which the
+             SN tables will be applied.     0 => highest CL table
+  GAINUSE....Version number of the output CL table. Old entries in the
+             CL table will be replaced.  Note: modifying version 1 is
+             disallowed.  0 => highest + 1 with the full GAINVER table
+             copied to GAINUSE before the process begins.  Note that
+             GAINUSE may be set to highest + 1 instead and advance
+             copying is done only on OPCODE 'CALP'.
+  REFANT.....Reference antenna to use.  All phase-like values in the
+             combined SN table will be referenced to this antenna. 0=>
+             use the one used in the most solutions.
+  BADDISK....A list of disks on which scratch files are not to be
+             placed.  This will not affect the output file.
+----------------------------------------------------------------
+
+The process of CLCAL consists of 3 steps:
+
+   (1) The selected SN tables are merged.  Adverbs which control this
+       step are
+          SNVER - first SN to use
+          INVERS - last SN to use
+          REFANT - re-reference phases to this reference antenna
+       Beginning on 19 May 2005 this merger process became more
+       complete.  Previously, "merged" tables were simply concatenated
+       tables sorted into proper order.  Thus, if one of the
+       contributing SN tables had solutions for a subset of the IFs
+       and polarizations and another SN table had the solutions for
+       the other IFs and polarizations, the two sets of records would
+       both appear in the merged SN table.  Half of the records would
+       have flagged solutions for some of the data and the other half
+       would have flagged solutions for the rest.  This mixture of
+       failed solutions could be corrected by smoothing (with DOBLANK
+       >= 0) but would otherwise complicate (disrupt) step 3 below.
+       Now, if two records have the same time, antenna, etc., the
+       solutions are truely merged with blanked solutions replaced by
+       good values.
+
+   (2) The merged SN table is smoothed in time.  Adverbs that control
+       this process are
+          SAMPTYPE - type of smoothing function ' ' => none
+          BPARM - parameters of smoothing function - support size
+                  (time over which function has value) and function
+                  width
+          ICUT  - function set to 0 when value < ICUT
+          DOBLANK - which SN table entries are replaced by smoothed
+                  values - blanked ones, good ones, or both
+          DOBTWEEN - does smoothing go over all sources or is each
+                  source smoothed individually
+          SMOTYPE - which of amp, phase, etc are smoothed.
+
+   (3) The merged and smoothed SN is applied to the output CL table,
+       except for OPCODE 'MERG'.  This is a confusing step:
+          a) If GAINUSE=0, GAINVER is copied in its entirety to a new
+             CL table.  Otherwise GAINUSE version is used as is
+             (including starting with an empty file).
+          b) Data selection adverbs are used to delete the SELECTED
+             data from GAINUSE leaving any unselected data.  Adverbs
+             are SOURCES, SOUCODE, SUBARRAY, ANTENNAS, SELBAND,
+             SELFREQ, FREQID, TIMERANGE, QUAL
+          C) Data from GAINVER are calibrated by interpolating
+             selected (merged and smoothed) SN entries to the times in
+             the CL GAINVER and then written to the GAINUSE.
+             Relevant adverbs for interpolation are
+                INTERPOL - function used to interpolate SN to CL
+                CUTOFF - max time allowed between an SN entry and the
+                         CL entry to which it might apply
+             And all of the above selection adverbs plus CALSOUR
+             and CALCODE are also used.  OPCODE 'CALP' allows data in
+             GAINUSE which are selected but for which no SN table
+             entry exists to be passed through unchanged.  Otherwise
+             they are omitted.

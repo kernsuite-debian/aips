@@ -1,0 +1,493 @@
+; FINDR
+;---------------------------------------------------------------
+;! Find normal values for a uv data set
+;# TASK CALIBRATION OOP EDITING UV
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2004-2007, 2010-2011
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FINDR     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FINDR    Find normal and extreme amplitudes for uv data set
+INNAME                             Input UV data
+INCLASS                            Input UV data (class)
+INSEQ                              Input UV data (seq. #)
+INDISK                             Input UV data disk drive #
+SOURCES                            Source (pointings) list
+QUAL            -10.0              Source qualifier -1=>all
+CALCODE                            Calibrator code '    '=>all
+TIMERANG                           Time range to process.
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select.
+BIF               0.0      100.0   Lowest IF number 0=>all
+EIF               0.0      100.0   Highest IF number 0=>all
+BCHAN             0.0     2048.0   Lowest channel number 0=>all
+ECHAN             0.0     2048.0   Highest channel number 0=>all
+SUBARRAY          0.0     1000.0   Subarray, 0=>all
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL/SN table to apply
+DOPOL            -1.0       10.0   If >0 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+FLAGVER                            Flag table version
+DOBAND           -1.0       10.0   If >0 apply bandpass cal.
+                                   Method used depends on value
+                                   of DOBAND (see HELP file).
+BPVER                              Bandpass table version
+SMOOTH                             Smoothing function. See
+                                   HELP SMOOTH for details.
+UVRANGE         0.                 Min & max baseline (klambda)
+SOLINT                             Time interval (sec)
+SCANLENG                           Scan length (sec)
+REFANT                             Reference antenna for VDIF
+OPTYPE                             'VDIF', 'VRFI', 'TIME'
+DOROBUST         -1.0        1.0   > 0 -> robust spectral avg
+DOCAT            -1.0        1.0   > 0 => keep the XX file
+DOCRT            -3.0     132.0    > 0 -> use the terminal,
+                                   > 72 => terminal width
+                                   0 -> no printing
+                                   else use the line printer
+OUTPRINT
+                                   Printer disk file to save
+PRTLEV                             > 0 => debug messages
+BADDISK           -1.0      1000.0 Disks to avoid for scratch.
+ARRAY2   @                         Answers from first source:
+         @                         ARRAY2(1-5,1) robust averages
+         @                         ARRAY2(6-10,1) rms of robust
+         @                            averages
+         @                         ARRAY2(11-20,1) fraction of
+         @                            closure error by tenths.
+         @                         ARRAY2(1-5,2) # > 10 sigma
+         @                         ARRAY2(6-10,2) # > 20 sigma
+         @                         ARRAY2(11,2) # orphans
+         @                         ARRAY2(12,2) total # samples
+----------------------------------------------------------------
+FINDR
+Type:  Task
+Use:   This task computes the average weight, visibility amplitude and
+       rms fluctuations in each baseline and correlator over a
+       specified range of spectral channels and time.  It then
+       converts the baseline-based quantities into apparent
+       antenna-based quantities.  Finally, using robust averaging, it
+       determines the "normal" amplitude, weight, and rms and
+       deviations in these quantities.  It returns the normal values
+       and some estimates of the extremes found in the selected subset
+       of the data.
+       The VDIF OPTYPE computes the average weight and complex
+       visibility in each baseline and correlator over a specified
+       range of spectral channels and time.  It then converts the
+       baseline-based quantities into apparent antenna-based
+       quantities.  Then it determines the amplitude of the vector
+       difference between each visibility and the median of the
+       visibilities in a window (in time) surrounding the visibility.
+Adverbs:
+  INNAME.....Input UV data file
+  INCLASS....Input UV data file (class).      Standard defaults.
+  INSEQ......Input UV data file (seq. #).     0 => highest.
+  INDISK.....Input UV data file disk drive #. 0 => any.
+  SOURCES....List of sources (pointings) to be processed.
+             '*' or blank = all; a "-" before a source name means all
+             except ANY source named.
+  QUAL.......Only sources with a source qualifier number in the SU
+             table matching QUAL will be used if QUAL is not -1.
+  CALCODE...."sources" may be selected on the basis of the calibrator
+             code given in the SU table.
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+             NB: The CALCODE test is applied in addition to the other
+             tests, i.e. SOURCES and TIMERANG, in the selection of
+             sources to process.  CALCODE affects only the selection
+             of calibrators.
+  TIMERANG...Time range of the data to be processed. In order: Start
+             day, hour, min. sec, end day, hour, min. sec. Days
+             relative to reference date.
+  SELBAND....Bandwidth of data to be selected. If more than one IF is
+             present SELBAND is the width of the first IF required.
+             Units = kHz. For data which contain multiple
+             bandwidths/frequencies the task will insist that some
+             form of selection be made by frequency or bandwidth.
+  SELFREQ....Frequency of data to be selected. If more than one IF is
+             present SELFREQ is the frequency of the first IF
+             required. Units = MHz.
+  FREQID.....Frequency identifier to select (you may determine which
+             is applicable from the OPTYPE='SCAN' listing produced by
+             LISTR). If either SELBAND or SELFREQ are set, their
+             values overide that of FREQID.  However, setting SELBAND
+             and SELFREQ may result in an ambiguity.  In that case,
+             the task will request that you use FREQID.
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  BIF........First IF to select. 0=>all.
+  EIF........Highest IF to select. 0=>all higher than BIF
+  BCHAN......First channel to select. 0=>all.
+  ECHAN......Highest channel to select.  The spectral channels are
+             used as separate samples of the visibility to provide
+             better statistics in determining the rms.
+  SUBARRAY...Subarray number to consider. 0=>1.
+  GAINUSE....CL table version number to apply.  0=> highest.
+  DOPOL......If > 0.5 then correct data for instrumental polarization
+             as represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  BLVER......Version number of the baseline based calibration (BL)
+             table to appply. <0 => apply no BL table,  0 => highest.
+  FLAGVER....Specifies the version of the flagging table to be
+             applied.  0 => highest numbered table.  <0 => no flagging
+             to be applied.  A new FG table is created to hold the new
+             flags; if FLAGVER >= 0, the FG table used on the data is
+             copied into the output file before the new flags are
+             computed.
+  DOBAND.....If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+  BPVER......Specifies the version of the BP table to be applied
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+  UVRANGE....(Minimum,Maximum) baseline (kilo-lambda) to process.
+  SOLINT.....The interval over which the rms is determined.
+             0 => 60 seconds.
+  SCANLENG...Length of "scan" for VDIF in seconds.  The vector average
+             of the visibilities over the scan is differenced from the
+             individual visibility to make the "vector difference".
+  REFANT.....Reference antenna suggestion for VDIF.
+  OPTYPE.....Choice of methods for examining the data:
+             'TIME' -> (default)
+                       It computes the baseline amplitudes and rmses
+                       in each SOLINT and converts them to antenna-
+                       based values.  A robust method is used and
+                       closure failure statistics maintained.  It then
+                       saves them for later.  When all data have been
+                       read, the antenna-based results are analyzed,
+                       source by source, antenna by antenna.
+                       Regression is used to compute the mean antenna
+                       amplitude and mean rms and the rmses in these
+                       parameters.  Outliers are then counted and
+                       reported.  Statistics on the failure statistics
+                       are also reported.
+             'VDIF' -> It computes the baseline reals, imaginaries,
+                       and weights in each SOLINT and converts then to
+                       antenna-based values.  A robust method is used
+                       and closure failure statistics maintained.  It
+                       saves them for later.  When all data have been
+                       read, the antenna-based results are analyzed
+                       source by source, correlator by correlator.
+                       First the visbility at each time is differenced
+                       with the average of the visibilities
+                       surrounding it.  The weights, amplitudes, and
+                       amplitudes of the differences are then averaged
+                       and reported.  Outliers are counted and
+                       reported.  Statistics on the failure statistics
+                       are also reported.
+             'VRFI' -> It computes the baseline reals, imaginaries,
+                       and weights in each SOLINT and saves as many as
+                       it can for later.  When the source changes, the
+                       buffer is full, or all data have been read, the
+                       baseline-based results are analyzed correlator
+                       by correlator.  First the visbility at each
+                       time is differenced with the average of the
+                       visibilities surrounding it.  The weights,
+                       amplitudes, and amplitudes of the differences
+                       are then averaged and reported.  Outliers are
+                       counted and reported.
+  DOROBUST...> 0 => Do robust averaging of the spectral channels in
+                    each time and baseline.  Normal averaging is done
+                    over time.
+             <= 0 => Normal averaging (all samples included) is done
+                     over all channels as well as time.
+  DOCAT......> 0 => keep the XX extension file generated by the TIME
+             OPTYPE.  Otherwise delete it on exit.
+  DOCRT......Zero means write the flag table without comment.
+             False (< 0) use the line printer if OUTPRINT = ' ' else
+                   write named OUTPRINT file only.  When OUTPRINT is
+                   not blank, DOCRT=-2 suppresses the page-feed
+                   character on page headers and DOCRT=-3 suppresses
+                   page headers and most other header information.
+             True  (> 0) use the terminal interactively.  The task will
+                   use the actual terminal width as a display limit
+                   unless 72 < DOCRT < width.  In that case, the display
+                   limit will be DOCRT characters.
+  OUTPRINT...Disk file name in which to save the line printer output.
+             ' ' => use scratch and print immediately for interactive
+             jobs - batch jobs use OUTPRINT = 'PRTFIL:BATCHjjj.nnn'
+             (jjj= job #, nnn = user #).  When OUTPRINT is not blank,
+             multiple outputs are concatenated, and the file is not
+             actually printed.
+  PRTLEV.... Set > 0 to get various messages:
+             1  Print the robust averages over time for each antenna,
+                IF, and polarization and print the number of samples
+                that would be self flagged and the number that would
+                be flagged using the global averages.
+             2. Also print the antenna-based amplitudes, rms's, and
+                weights for each antenna, IF, polarization, and time.
+                (You could keep the XX table and use PRTAB but this
+                may be easier and neater.)
+             3. Also print failure information from the routine that
+                converts baseline-based data to antenna-based.
+             4. Also print the antenna-based solutions from the
+                solver.  This is for desperate programmers mainly.
+  BADDISK....This array contains the numbers of disks on which it is
+             desired that scratch files not be located.
+Output adverbs:
+  ARRAY2.....(We will probably rename this someday but for now we use
+             this already known scratch adverb).  Using the first
+             source (or the average of all sources with GAIN)
+             From the robust average of robust antenna averages
+             ( 1,1)  Vector-averaged amplitude or gain
+             ( 2,1)  Vector-averaged data rms or amplitude of the
+                     vector difference on VDIF/VRFI
+             ( 3,1)  Scalar-averaged amplitude or gain
+             ( 4,1)  Scalar-averaged data rms
+             ( 5,1)  Weight
+             ( 6,1)  RMS in Vector-averaged amplitude or gain
+             ( 7,1)  RMS in Vector-averaged data rms or amplitude of
+                     the vector difference on VDIF/VRFI
+             ( 8,1)  RMS in Scalar-averaged amplitude or gain
+             ( 9,1)  RMS in Scalar-averaged data rms
+             (10,1)  RMS in Weight
+             (11,1)  Fraction of data with closure failure fraction
+                     > 0, < 0.1
+             (12,1)  Fraction of data with closure failure fraction
+                     >= 0.1, < 0.2
+             ...
+             (20,1)  Fraction of data with closure failure fraction
+                     >= 0.9, <= 1.0
+             Number of antenna time averages that differ from the
+             overall average (ARRAY2(I,1)) in parameter I (I=1-5)
+             by more than N times the RMS (ARRAY2(5+I,1)) in that
+             parameter:
+             ( 1,2)  N = 10 * RMS in Vector-averaged amplitude/gain
+             ( 2,2)  N = 10 * RMS in Vector-averaged data rms/Vdif
+             ( 3,2)  N = 10 * RMS in Scalar-averaged amplitude/gain
+             ( 4,2)  N = 10 * RMS in Scalar-averaged data rms
+             ( 5,2)  N = 10 * RMS in Weight
+             ( 6,2)  N = 20 * RMS in Vector-averaged amplitude/gain
+             ( 7,2)  N = 20 * RMS in Vector-averaged data rms/Vdif
+             ( 8,2)  N = 20 * RMS in Scalar-averaged amplitude/gain
+             ( 9,2)  N = 20 * RMS in Scalar-averaged data rms
+             (10,2)  N = 20 * RMS in Weight
+             (11,2)  Number of one-sample "averages" for which there
+                     is no rms = number of orphans
+             (12,2)  Total number of time averages * Number IFs *
+                     Number polarizations
+             ARRAY2(3,1), (4,1), (8,1), (9,1) (3,2), (4,2), (8,2),
+             (9,2), and (11,2) are zero on VDIF and VRFI.
+----------------------------------------------------------------
+Explanation of the methods used
+
+
+FINDR starts by averaging the calibrated and flagged data over a
+period of SOLINT seconds.  Data with a time difference <= SOLINT are
+included.  Thus, a SOLINT of 60 with records every 10 seconds will
+include 7 records; to get only 6 set SOLINT to something > 50 and < 60
+such as 55.  The data from each included antenna pair, IF, and
+polarization are kept separate, but the spectral channels from BCHAN
+through ECHAN are averaged together.
+
+For OPTYPEs other than VDIF and VRFI:  During the averaging, the
+apparent rms and average weight are found including all data (no
+outlier rejection).  The rms and amplitude are averaged by both vector
+and scalar means.
+
+For OPTYPEs VDIF and VRFI: The averaging is done to determine the
+"individual" records to be compared with the "scan" averages of such
+records in a region of time centered on the individual records.
+Typically, with decent signal-to-noise, one will set SOLINT for VDIF
+to less than the time between records.  The "scan" averaging is done
+over the scan interval using parameter SCANLENG and is done by finding
+the median real and imaginary parts which should be less sensitive to
+outliers.
+
+Failures in antenna-based solutions are marked as such and regarded as
+data that would be flagged by FLAGR.
+
+===============
+OPTYPE 'TIME'     The default.
+
+The task converts the average amplitudes, rms's, and weights of the
+antenna pairs into antenna-based values using the assumption that
+
+Amp(A1,A2,I,P) = SQRT (Amp(A1,I,P) * Amp(A2,I,P))
+Sig(A1,A2,I,P) = SQRT (Sig(A1,I,P) * Sig(A2,I,P))
+Wt(A1,A2,I,P)  = SQRT (Wt(A1,I,P)  * Wt(A2,I,P))
+
+It uses robust methods (outliers ignored) to compute the antenna-based
+values and then counts the fraction [Fr(A,I,P)] of baselines for each
+antenna that are more than 3 times the rms away from the final
+solution.
+
+The values of Amp(A,I,P), Sig(A,I,P), Wt(A,I,P) and Fr(A,I,P) are then
+written to an XX table (which may be saved by setting DOCAT > 0).
+When all of the data have been read and averaged and the antenna-based
+results written to the XX table, these results are read back into
+memory.
+
+One source at a time, the task determines the robust average of each
+of the five parameters (vector amplitude, vector rms, scalar
+amplitude, scalar rms, weight) and the robust rms's in each of these
+robust averages for each antenna, IF, and polarization.  By "robust"
+average, we mean an average determined by repeated passes through the
+data with the averaging process discarding outlier points.  The robust
+average of these robust averages is then determined and printed in the
+message window and returned in ARRAY2(I,1).
+
+For each source and one antenna, IF, and polarization at a time, the
+task loops over time counting the "questionable" data.  A sample is
+questionable if
+
+ABS(Par(A,I,P,t)-AvPar(A,I,P)) > N * AvParrms(A,I,P))
+
+where Par(A,I,P,t) is the parameter value of antenna A at IF I,
+polarization P, averaged at time t; AvPar(A,I,P) is the robust average
+over time of that antenna, IF, and polarization, AvParrms(A,I,P) is
+the uncertainty in that average over time.  Two values of N are used -
+5 and 10 and the numbers of questionable samples are reported (if
+PRTLEV >= 1).
+
+The process is then repeated to compare the SOLINT-average samples in
+each parameter with the global (over all antennas, IFs, polarizations)
+averages.  For each source and one antenna, IF, and polarization at a
+time, the task loops over time counting the "questionable" data.  A
+sample is questionable if
+
+ABS(Par(A,I,P,t)-GlobalAvPar) > N * GlobalAvParrms(A,I,P))
+
+where Par(A,I,P,t) is the parameter value of antenna A at IF I,
+polarization P, averaged at time t; GlobalAvPar is the robust average
+over antenna, IF, and polarization of the robust averages over time;
+and GlobalAvParrms is the uncertainty in that average over A, I, and
+P.   The values of N used are 10 and 20 and the numbers of
+questionable samples are reported (if PRTLEV >= 1) and are returned in
+ARRAY2(1-10,2).
+
+The task also computes the fraction of failure fractions having value
+exactly 0 and 1 and in bins of width 0.1.  These are reported and the
+binned values returned in ARRAY2(11,1) through ARRAY2(20,1).
+
+===============
+OPTYPE 'VDIF'
+
+The task converts the average weights and complex visibilities of the
+antenna pairs into antenna-based values using the assumption that
+
+Amp(A1,A2,I,P) = SQRT (Amp(A1,I,P) * Amp(A2,I,P))
+Phs(A1,A2,I,P) = Phs(A1,I,P) - Phs(A2,I,P)
+Wt(A1,A2,I,P)  = SQRT (Wt(A1,I,P)  * Wt(A2,I,P))
+
+It uses robust methods (outliers ignored) to compute the antenna-based
+values and then counts the fraction [Fr(A,I,P)] of baselines for each
+antenna that are more than 2.5 times the rms away from the final
+solution.
+
+The values of Amp(A,I,P), Phs(A,I,P) (as real and imaginary),
+Wt(A,I,P), Fr(A,I,P), and reference antennas (I,P) are then written to
+an XX table (which may be saved by setting DOCAT > 0).  When all of
+the data have been read and averaged and the antenna-based results
+written to the XX table, these results are read back into memory.  If
+needed, the data are put on a consistent reference antenna basis.
+
+One source at a time, the task then loops over each antenna, IF, and
+polarization converting the time sequence of reals and imaginaries
+into time sequences of amplitudes and amplitudes of the "vector
+difference" between the current antenna visibility and the vector
+average of antenna visibilities within SCANLENG/2 of the current
+time.  Note that, in this case, the averages are generated by finding
+the median value of the reals and the median value of the imaginaries.
+This should be somewhat less succeptible to outliers than straight
+averaging and better than robust averaging as well for the small
+number of samples which will be normal.
+
+Once source at a time, the task determines the robust averages and
+rmses of the amplitudes, amplitudes of the vector differences, and the
+weights over all antennas, IFs, and polarizations and reports them.
+It then reports the number of samples more than 10 and 20 times this
+rms from the mean for each antenna, IF, and polarization.  The
+averages, rmses, and total number of deviant points are returned to
+AIPS in ARRAY2 for the first source.
+
+The task also computes the fraction of failure fractions having value
+exactly 0 and 1 and in bins of width 0.1.  These are reported and the
+binned values returned in ARRAY2(11,1) through ARRAY2(20,1).
+
+
+===============
+OPTYPE 'VRFI'
+
+The task accumulates SOLINT averages in memory until the source
+changes, the data ends, or the number of times that it can hold is
+exhausted.  For each time, the task then loops over each antenna pair,
+IF, and polarization finding the amplitude of the "vector difference"
+between the current visibility and the vector average of visibilities
+for that antenna pair within SCANLENG/2 of the current time.  Note
+that, in this case, the averages are generated by finding the median
+value of the reals and the median value of the imaginaries.   This
+should be somewhat less succeptible to outliers than straight
+averaging and better than robust averaging as well for the small
+number of samples which will be normal.
+
+The task determines the robust averages and rmses of the visibility
+amplitudes, the amplitudes of the vector differences, and the weights
+and reports them.  It also counts the samples that are more than 10
+and 20 times the rms away from the robust averages and reports them.
+
+The task then loops for another source or buffer load as appropriate.
+The averages of the averages and rmses and the sums of the number of
+deviations are returned to AIPS in ARRAY2.

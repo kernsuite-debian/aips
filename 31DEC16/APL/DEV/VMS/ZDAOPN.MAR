@@ -1,0 +1,165 @@
+      .TITLE  ZDAOPN (FCB, PNAME, MAP, EXCL, IERR)
+;-----------------------------------------------------------------------
+;! open the specified disk file
+;# Z2 IO-basic
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   Opens a disk file for map (double buffered) or non-map (single
+;   buffered) I/O and shared or exclusive use.  Used for MSGWRT so
+;   cannot itself call MSGWRT.
+;   Inputs:
+;      PNAME   H*48   Physical file name (H for Macro, C, ...')
+;      MAP     I      I/O type: 0 => non-map (single buffered)
+;                               1 => map (double buffered)
+;      EXCL    I      Usage mode indicator: 0 => shared
+;                                           1 => exclusive
+;   Output:
+;      FCB     I(*)   File control block for disk file involved
+;      IERR    I      Error return code: 0 => no error
+;                        2 => file not found
+;                        3 => volume/logical not found
+;                        4 => exclusive use requested but not ok
+;                        6 => other open error
+;------------------------------------------------------------------
+        $FIBDEF
+        $IODEF
+        $RMSDEF
+;                               Define argument list offsets.
+FCB=4
+PNAME=8
+MAP=12
+EXCL=16
+IERR=20
+;                               ;Define file control block offsets
+CHA1=0                          ;Channel for buffer 1.
+CHA2=84                         ;Channel, buffer 2.
+ERR1=8                          ;long-word error
+EFLG1=20                        ;Event flag number.
+IOSB1=24                        ;IOSB field for QIO.
+;
+FNALEN=48                       ;Set max file name length
+;------------------------------------------------------------------
+        .PSECT  DATA,LONG
+DFAB:   $FAB                    ;DUMMY FAB
+FABLN=.-DFAB                    ;LENGTH OF FAB
+FILENM: .BLKL   12              ;Storage for filename.
+;------------------------------------------------------------------
+        .PSECT  CODE,NOWRT
+        .ENTRY  ZDAOPN,^M<R2,R3,R4,R5,R6,R7,R8,R9,R10>
+;
+        CLRL    @IERR(AP)               ;IERR=0
+;                                       Calculate length of PNAME
+        MOVL    PNAME(AP),R1            ;R1 -> PNAME
+        LOCC    #^A/ /,#FNALEN,(R1)     ;Find blank
+        BEQL    NBLNK                   ;No blank , set maximum.
+        SUBL3   R0,#FNALEN,R8           ;R8=length of PNAME
+        BRW     SET                     ;Go finish set up
+NBLNK:  MOVL    #FNALEN,R8      ;Full string. Use default length.
+;
+SET:    MOVC3   #FNALEN,@PNAME(AP),FILENM       ;Fill in name.
+        TSTL    @EXCL(AP)
+        BNEQ    EXCLUS          ;Branch if exclusive use requested.
+;
+; Open an existing file. Exclusive use not requested.
+;
+        $FAB_STORE      FAB=DFAB,-
+                        FAC=<GET,BIO,PUT,TRN>,-
+                        FNA=FILENM,-
+                        FNS=R8,-
+                        SHR=<PUT,GET,UPD,UPI>,-
+                        FOP=<UFO,NAM>
+        $OPEN   FAB=DFAB
+        BLBC    R0,10$
+        BRW     ASCHAN          ;OK, deliver channel assignment.
+10$:    BRW     OPENER
+;
+; Open an existing file. Exclusive use  requested.
+;
+EXCLUS:
+        $FAB_STORE      FAB=DFAB,-
+                        FAC=<GET,BIO,PUT,TRN>,-
+                        FNA=FILENM,-
+                        FNS=R8,-
+                        SHR=<NIL>,-
+                        FOP=<UFO,NAM>
+        $OPEN   FAB=DFAB
+        BLBC    R0,10$
+        BRW     ASCHAN          ;OK, deliver channel assignment.
+10$:    BRW     OPENER
+;                               ;Deliver channel assignment from
+;                               ;RMS to FCB and local storage.
+;
+ASCHAN:
+        MOVL    FCB(AP),R1             ;R1 -> FCB
+        MOVW    FAB$L_STV+DFAB,CHA1(R1) ;Store cha. in FCB.
+        CLRL    ERR1(R1)
+        TSTL    @MAP(AP)                ;Is it a map(double buffered)?
+        BEQL    10$                     ;Branch if not.
+        MOVW    FAB$L_STV+DFAB,CHA2(R1) ;Store cha. in FCB.
+10$:    BRW     RETURN
+;
+;                               ;Process OPEN errors here.
+OPENER:
+        MOVL    FCB(AP),R1      ;store full error in FCB
+        MOVL    R0,ERR1(R1)
+;
+        CMPL    R0,#RMS$_ACT    ;File activity precludes it?
+        BNEQ    01$
+        MOVL    #4,@IERR(AP)    ;Return IERR=4
+        BRW     RETURN
+01$:    CMPL    R0,#RMS$_DEV    ;Inappropriate device.
+        BNEQ    02$
+        MOVL    #3,@IERR(AP)    ;Return IERR=3
+        BRW     RETURN
+02$:    CMPL    R0,#RMS$_DNF    ;Directory not found.
+        BNEQ    03$
+        MOVL    #2,@IERR(AP)    ;Return IERR=2
+        BRW     RETURN
+03$:    CMPL    R0,#RMS$_DNR    ;Device not ready.
+        BNEQ    04$
+        MOVL    #3,@IERR(AP)    ;Return IERR=3
+        BRW     RETURN
+04$:    CMPL    R0,#RMS$_FLK    ;File locked. Not available.
+        BNEQ    05$
+        MOVL    #4,@IERR(AP)    ;Return IERR=4
+        BRW     RETURN
+05$:    CMPL    R0,#RMS$_FNF    ;File not found.
+        BNEQ    06$
+        MOVL    #2,@IERR(AP)    ;Return IERR=2
+        BRW     RETURN
+06$:    CMPL    R0,#RMS$_WLK    ;Device write locked.
+        BNEQ    07$
+        MOVL    #4,@IERR(AP)    ;Return IERR=4
+        BRW     RETURN
+07$:
+        MOVL    #6,@IERR(AP)    ;Unknown error.
+        BRW     RETURN
+;                                       Status in R0
+RETURN:
+        RET
+        .END

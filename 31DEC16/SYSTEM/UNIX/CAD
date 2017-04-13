@@ -1,0 +1,229 @@
+#!/usr/local/bin/perl
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1997, 2001
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Check an AIPS user's catalog for integrity
+# Usage: CAD user# disk
+
+$scode = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+sub ehex {
+                                        # Convert user to ehex
+    $eeuser = "";
+    $r = 0;
+    $l = 0;
+    $luser = shift (@_);
+
+    while ($luser > 0) {
+	$r = $luser % 36;
+	$luser = int ($luser / 36);
+	if ( $r > 0 ) {
+	    $eeuser = substr($scode,$r-1,1) . $eeuser;
+	} else {
+	    $eeuser = "0" . $eeuser;
+	}
+    }
+    $l = length($eeuser);
+    if ($l < 3) {
+	$eeuser = ( "0" x (3-$l) ) . $eeuser;
+    }
+    $eeuser;
+}
+sub rehex {
+    $eeuser = shift(@_);
+    $l = length($eeuser);
+    $m = 0;
+    $n;
+    $outnum = 0;
+    if ($l <= 0) {
+	$outnum = 0;
+    } else {
+	while ($m < $l) {
+            $c = substr($eeuser,$m,1);
+            $m++;
+	    if ($c !~ /0/) {
+		$n = 1 + index($scode, $c);
+	    } else {
+		$n = 0;
+	    }
+	    $outnum *= 36;
+	    $outnum += $n;
+	}
+    }
+    $outnum;
+}
+
+
+$usage = "Usage: CAD aips-user-id data-area\n";
+$verbose = 0;
+
+if ($#ARGV != 1) {
+    printf $usage;
+    exit(1);
+}
+                                        # check UserID
+$user = $ARGV[0];
+
+if ($user !~ /^\d+$/) {
+    printf "Error: first argument must be a number\n";
+    printf $usage;
+    exit(1);
+}
+if ($user < 0 || $user > 46655) {
+    printf "Error: AIPS Userid has to be 0-46655 (for format 'D')\n";
+    printf $usage;
+    exit(1);
+}
+                                        # also check data area
+$adisk = $ARGV[1];
+
+if (! -d $adisk) {
+    printf "Error: data area must be a valid directory\n";
+    printf $usage;
+    exit(1);
+}
+if (!chdir($adisk)) {
+    printf "Error: cannot enter directory $adisk\n";
+    exit(1);
+}
+if (! -f "$adisk/SPACE") {
+    printf "Error: $adisk not a valid AIPS data area (no SPACE file)\n";
+    exit(1);
+}
+$catno = 1;
+$eusr = &ehex($user);
+
+print "About to check user $user ($eusr) on disk $adisk...\n";
+
+$tot = 0;
+@files = `ls -1 ??D??????.${eusr}*`;
+
+#while (<??D??????.$eusr*>) { # didn't work under all situations
+foreach $foo (@files) {
+    next if ($foo =~ /^(TS|MS|SG)/);
+    $slot = substr($foo, 3, 3);
+    $slots{$slot}++; $tot++;
+}
+
+@dumb = keys(%slots);              # Can't we do this easier?
+print "Found $tot file(s), $#dumb slot(s)\n";
+
+                                        # now we have a list of slots
+$nprobs = 0;
+foreach $slot (sort keys %slots) {
+    next if ( $slot =~ /000/);
+    $rslot = &rehex($slot);
+    $cbfile = "CBD" . $slot . "001." . $eusr . ";";
+    $zapit = 0;
+    print "Slot $rslot ($slot) " if $verbose;
+    if ( -f $cbfile ) {
+	$mafile = "MAD" . $slot . "001" . "." . $eusr . ";";
+	$uvfile = "UVD" . $slot . "001" . "." . $eusr . ";";
+	$scfile = "SCD" . $slot . "001" . "." . $eusr . ";";
+	if ( -f $mafile ) {
+	    if ( ! -s $mafile ) {
+		print "Slot $rslot ($slot) " if !$verbose;
+		print "has a ZERO-LENGTH map file $mafile!\n";
+		$zapit = 1;
+		$nprobs++;
+	    } else {
+		print "contains an Image (map)\n" if $verbose;
+	    }
+	} elsif ( -f $uvfile ) {
+	    if ( ! -s $uvfile ) {
+		print "Slot $rslot ($slot) " if !$verbose;
+		print "has a ZERO-LENGTH UV file $uvfile!\n";
+		$zapit = 1;
+		$nprobs++;
+	    } else {
+		print "contains a UV database\n" if $verbose;
+	    }
+	} elsif ( -f $scfile ) {
+	    if ( ! -s $scfile ) {
+		print "Slot $rslot ($slot) " if !$verbose;
+		print "has a ZERO-LENGTH scratch file $scfile!\n";
+		$zapit = 1;
+		$nprobs++;
+	    } else {
+		print "Slot $rslot ($slot) " if !$verbose;
+		print "contains a scratch file\n" if $verbose;
+	    }
+	} else {
+	    print "Slot $rslot ($slot) " if !$verbose;
+	    print "has NO DATA [$mafile/$uvfile/$scfile] and is ORHPANED!\n";
+	    $zapit = 1;
+	    $nprobs++;
+	}
+    } else {
+	print "Slot $rslot ($slot) " if !$verbose;
+	print "is MISSING a CB (catalog block) file\n";	
+	$nprobs++; $zapit = 1;
+    }
+    if ($zapit) {
+	$wildcard = "??D" . $slot . "*." . $eusr . "*";
+	open(WILD, "ls -1 $wildcard |");
+	while (<WILD>) {
+	    $versn = substr($_, 6, 3);
+	    $type = substr($_, 0, 2);
+	    if ($type =~ /AN/) {
+		print "  - has Antennas file version $versn\n";
+	    } elsif ($type =~ /CB/) {
+		print "  - has Catalog Block file version $versn\n";
+		if ($versn != "001") {
+		    print "  -- ILLEGAL VERSION NUMBER!\n";
+		}
+	    } elsif ($type =~ /CC/) {
+		print "  - has Clean Components file version $versn\n";
+	    } elsif ($type =~ /HI/) {
+		print "  - has History file version $versn\n";
+	    } elsif ($type =~ /MA/) {
+		print "  - has Map (image) data file version $versn\n";
+	    } elsif ($type =~ /UV/) {
+		print "  - has UV database file version $versn\n";
+	    } elsif ($type =~ /SC/) {
+		print "  - has Scratch file version $versn\n";
+	    } elsif ($type =~ /PL/) {
+		print "  - has Plot file version $versn\n";
+	    } elsif ($type =~ /SL/) {
+		print "  - has Slice file version $versn\n";
+	    } elsif ($type =~ /ST/) {
+		print "  - has STARS file version $versn\n";
+	    } else {
+		print "  - has $type file version $versn\n";
+	    }
+	}
+	close(WILD);
+	print "    (fix: rm $wildcard)\n";
+	print "    (followed by RUN RECAT from Unix)\n";
+    }
+}
+if ($nprobs > 0) {
+    print "Found a total of $nprobs problem";
+    print "s" if ($nprobs != 1);
+    print " in catalog on $adisk for user $user\n";
+} else {
+    print "No obvious problems found on $adisk for $user\n";
+}

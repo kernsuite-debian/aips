@@ -1,0 +1,185 @@
+^PY^-
+^IOP^IL0600^IS404^IC1000^IJ00700^IT00700^PN^-
+
+
+G. F77 BUGS WE HAVE KNOWN
+
+   In the process of implementing AIPS under various UNIX systems
+we have encountered numerous Fortran compiler bugs.  Some of these
+have been system specific but others have popped up in more than
+one system.  This is because most vendors at least start off with
+the 'portable' f77 compiler.  This means that whatever genetic
+defects are present in the portable version show up in UNIX systems
+throughout the UNIX community.  Unfortunately, when asked if the
+bugs ever get reported to the source of this portable compiler, the
+vendors say no!.  This means that each UNIX shop is doomed to
+rediscover these portable bugs.  NRAO has had the limited experience
+of Bell UNIX compilers.  We cannot speak for Berkeley Fortran or
+any other UNIX source (or third party compilers).  We have
+accumulated a subset (incomplete though it may be) of bugs that are
+potentially portable and stored them in the directory $UNIX/BUGS.
+Files with names of the form BUGn are shell scripts that demonstrate
+the corresponding BUGn.F bug and can be used as a limited validation
+suite for your Fortran compiler.  You will have to contact your
+vendor for fixes.  The following is a list of these bugs including
+brief descriptions.  A few either do not pertain to AIPS code or
+we have taken steps to circumvent the problem they cause.  These
+should be noted as such.
+
+   BUG#     DESCRIPTION & COMMENTS
+   ====     =======================================================
+
+   BUG1 :   REAL*n type declarations yield syntax errors.
+            Declarations of this type go against the ANSI standard
+            where REAL and DOUBLE PRECISION are the only acceptable
+            types for floating point real variables.  AIPS
+            preprocessor ($UNIX/PP) sed script $UNIX/DCL.SED
+            transforms these declarations to ANSI standard.
+
+   BUG2 :   Expressions used as arguments to subroutines and
+            involving only I*2 variables should yield (and pass to
+            the receiving I*2 subroutine variable) an I*2 result
+            and usually do except in the case where the subroutine
+            call is inside a loop and one of the I*2 variables in
+            the expression also happens to be the loop index (in
+            which case the expression yields an I*4 result
+            instead).  The Masscomp compiler won't even swallow
+            this code, which I suppose is better than producing
+            a module that fails to execute as expected.
+
+   BUG3 :   -u option fails with "compiler error: out of memory"
+            before reporting all "undefined" (undeclared)
+            variables.  This means you often must make several
+            passes with the -u option to detect all cases.  This
+            would be a useful tool but something we can live
+            without.
+
+   BUG7 :   -I2 option does not apply to integer constants.
+
+   BUG9 :   The compiler interprets text patterns of the form:
+
+            INTEGER*n Dm...
+            INTEGER*n Em...
+            REAL*n Dm...
+            REAL*n Em...
+
+            as non-integer type lengths, i.e., 'nDm' a as double
+            precision length attribute, and 'nEm' as a floating
+            point length attribute.  All AIPS code has been adjusted
+            so that declaration statements never have a variable name
+            occurring first in a list that begins with "D2" or "E2".
+
+   BUG10:   Internal READ always generates a none zero IOSTAT
+            error.
+
+   BUG12:   INQUIRE "EXIST" parameter returns a logical value that
+            behaves illogically.  Can't even compile now due to
+            BUG18.  Under Masscomp UNIX, this part of a larger problem
+            where all numeric and LOGICAL I/O parameters must be
+            4-byte items (2.1A compiler).
+
+   BUG13:   Formatted write to disk strips the first character
+            (as carraige control?).
+
+   BUG14:   If an internal file variable is declared in COMMON, an
+            internal write to the respective file corrupts other
+            common storage variables.
+
+   BUG15:   "Impossible conversion" compiler error.  By process of
+            elimination the problem code was isolated to an
+            assignment statement involving a non-trivial
+            expression.  When this statement is broken up into
+            two statements, the compiler error disappears.
+
+   BUG16:   FORMAT'ed READ's require that the FORMAT specifications
+            be satisfied completely.  This was not the case under
+            2.1 and may be related to the fix of BUG13.  What seems
+            to happen is that the new-line character is no longer
+            interpreted as the end of record.  Instead, the READ
+            continues into the next record until the format is
+            satisfied.  This makes free format prompted READ's
+            very difficult.  Under 2.1 (or prior to the BUG13 fix,
+            whichever is more accurate), the following Fortran
+            code:
+
+            INTEGER*2 BUFF(40)
+            READ (5,100) BUFF
+            FORMAT (40A2)
+
+            would behave like the following C code:
+
+            char buff[80];
+            gets(buff);
+
+            (I believe).  The Fortran FORMAT can be satisfied
+            by hitting RETURN 40 times.  It is not clear exactly
+            what used to happen.  That is, when the data
+            transmission terminated upon encountering the new-line
+            character, did it stick a null character in the next
+            byte of BUFF or did it fill the remainder of BUFF with
+            blanks (or nulls) or both?  I never examined the
+            contents of the buffer from my Fortran prompted READ's
+            since they worked as I expected.  Also, ANSI X3.9-1978
+            seems to imply what happens now is proper (see 12.9.5.
+            2.1) "On input, the input list and format specification
+            must not require more characters from a record than the
+            record contains."  I infer from this statement that an
+            error condition should be raised.  It seems, however,
+            that other Fortrans have permitted this at least in the
+            case of terminal input (VAX/VMS, 4.1 BSD, 4.2 BSD, and
+            the Masscomp UNIX implementation that I know of).
+
+   BUG17:   Code with a specific declaration & data initialization
+            order fouls up the initial value assignments when
+            executed (whether you use the -I2 compiler option or
+            not).  Perturbing the order of the statements makes
+            the problem go away.
+
+   BUG18:   The auxillary input/output statements INQUIRE, OPEN &
+            and CLOSE which have parameters that take type INTEGER
+            & LOGICAL values will not compile with the -I2 option.
+
+   BUG19:   Using -I2 option causes compilation to fail with:
+
+            "BUG19.F:311: compiler error: frexpr: impossible tag 0"
+
+            Statement 311 is a simple labelled CONTINUE.
+            Commenting out statement 310 makes the error disappear.
+
+   BUG20:   Using -I2 option causes compilation to fail with:
+
+            "internal compiler error: bad type in maptype: 15
+
+   BUG21:   The BUG16 fix was very close, however, READs from the
+            terminal and from a disk file are different under a
+            special case.  A formatted READ terminal READ of 'null'
+            requires hitting RETURN twice whereas you can READ a
+            disk file containing a single new-line character using
+            the same formatted READ.  The disk READ behaves as
+            desired, the terminal READ does not.  If you type
+            something in addition to RETURN, the terminal READ
+            behaves identically to a READ from a DISK file
+            containing the same 'something'.
+
+   BUG22:   Format scanner does not handle upper case format codes.
+
+   BUG23:   Compiler may be having trouble distinguishing between
+            subscripted complex variables and calls to complex
+            functions.
+
+   BUG24:   Under certain circumstances, the compiler erroneously
+            eqivalences two variables.
+
+   BUG25:   Character string arguments are sometimes not passed to
+            subroutines successfully.  IBM's VS Fortran passes
+            string arguments without any problems.
+
+   BUG26:   Calls to Fortran intrinsic functions CMPLX and DCMPLX
+            generate a segmentation violation.
+
+   BUG27:   Using INTEGER variables as the increment factor in DO loops
+            doubles the increment desired.
+
+   BUG28:   PARAMETER statements containing floating point e/E or
+            d/D format constants yield syntax errors on compilation.
+            This is never found in AIPS code.

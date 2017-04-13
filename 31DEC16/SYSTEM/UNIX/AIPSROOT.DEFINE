@@ -1,0 +1,130 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Set AIPS_ROOT environment variable in necessary AIPS scripts
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 2001, 2010
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: AIPSROOT.DEFINE [directory]
+#
+#  This script MUST be executed from the AIPS_ROOT directory!!!
+#  Also, if you are using the automounter and the temporary mount point
+#  it uses is anything other than /tmp_mnt, change the definition of
+#  aipsroot on the first line below.  The proc must be executable.
+#
+#-----------------------------------------------------------------------
+#
+aipsroot=`pwd | sed 's:^/tmp_mnt::'`
+#
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "$1"
+  else
+    echo "$1\c"
+  fi
+}
+#                                       If no arg, ask for one
+if [ "$1" = "" ] ; then
+   echo "The current directory is $aipsroot"
+   ni1 " -- is this what you want to be AIPS_ROOT?  (y/n) "
+   read yn
+   if [ "$yn" != "y" -a "$yn" != "Y" ] ; then
+      ni1 "All right, what IS the right directory for AIPS_ROOT? "
+      read aipsroot
+   fi
+else
+   aipsroot=$1
+fi
+if [ -d $aipsroot ] ; then
+   cd $aipsroot
+else
+   "Sorry, $aipsroot is not a directory."
+   exit 2
+fi
+#                                       List of files that define AIPS_ROOT
+#
+sh_files="AIPSPATH.SH HOSTS.SH LOGIN.SH START_AIPS START_TVSERVERS"
+sh_files="$sh_files START_TPSERVERS TVALT AIPS.BOOT START_QMNGR"
+csh_files="AIPSPATH.CSH HOSTS.CSH LOGIN.CSH"
+#                                       Make sure we can do it...
+ok=yes
+for file in $sh_files $csh_files ; do
+   if [ ! -f $file ] ; then
+      echo "$file is missing from this area"
+      ok=no
+   else
+      if [ ! -w $file ] ; then
+         chmod u+w $file 2>/dev/null
+      fi
+      if [ ! -w $file ] ; then
+         echo "I do not have write permission on at least one file"
+         echo "($file).  Please check file permissions on these files:"
+	 echo " "
+	 ls -l $sh_files $csh_files
+	 echo " "
+	 exit 2
+      fi
+   fi
+done
+if [ $ok = no ] ; then
+   echo "One or more files is/are missing from the AIPS_ROOT area."
+   ni1 "Are you SURE that you want to proceed?  (y/n, default n): "
+   read yn
+   case $yn in
+      y*|Y*) ;;
+      *) echo "Abandoning operation NOW."; exit 2;;
+   esac
+fi
+#
+#                                       For each of these shell scripts
+for sh in $sh_files ; do
+#                                       change AIPS_ROOT= string
+  if [ -f $sh ] ; then
+    cat $sh | sed "/AIPS_ROOT=/s#=.*#=$aipsroot#" >$sh.tmp && \
+      rm -f $sh && \
+        mv $sh.tmp $sh && \
+          chmod +x $sh
+  else
+    echo "Error: cannot find $sh in AIPS_ROOT ($aipsroot)"
+    echo "       something is not right.  Giving up now."
+    exit 2
+  fi
+done
+#
+#                                       Now for the c-shell scripts
+for csh in $csh_files ; do
+#                                       change setenv AIPS_ROOT string
+  if [ -f $csh ] ; then
+    cat $csh | sed "/setenv AIPS_ROOT /s#ROOT.*#ROOT $aipsroot#" >$csh.tmp && \
+      rm -f $csh && \
+        mv $csh.tmp $csh && \
+          chmod +x $csh
+  else
+    echo "Error: cannot find $csh in AIPS_ROOT ($aipsroot)"
+    echo "       something is not right.  Giving up now."
+    exit 2
+  fi
+done

@@ -1,0 +1,362 @@
+; APCAL
+;---------------------------------------------------------------
+;! Apply TY and GC tables to generate an SN table
+;# Task Calibration VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-2000, 2003-2004, 2006, 2008, 2011, 2013-2014
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+APCAL     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+APCAL     Task to generate an amplitude calibration SN table
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+
+ANTENNAS                           Antennas to calibrate
+SUBARRAY          0.0     9999.0   Subarray 0 -> all
+STOKES                             Stokes type ('R','L',' ')
+BIF               0.0     4096.0   Start IF number
+EIF                                End IF number
+FREQID                             Freq. ID to calibrate
+SOURCES                            Sources to calibrate
+TIMERANG                           Time range to calibrate
+
+TYVER                              TY table version number.
+GCVER                              GC table version number.
+SNVER                              Output SN table version.
+                                     0 -> highest unique
+OPCODE                             Opacity correction opcode:
+                                   '    ' -> no opacity corr.
+                                   'GRID','GRDR','OPAC','OPCR',
+                                     'LESQ' -> fit for opacity
+APARM                              Calibration parameters:
+                                   (1) -> B factor (def. 1.0)
+                                   Opacity parameters:
+                                   (2) -> ZA limit (deg)
+                                   (3) >=0  use spillover
+                                            correction
+                                   (4) > 0  use all FQ in
+                                            opac. soln.
+                                   (5) Limit to sec(z) plotted
+                                   (6) > 0 => normalize Tsys
+                                       by average Tsys
+                                   (7) Use IF AP(7) for
+                                       normalization instead
+SOLINT                             Solution interval (min)
+                                      0 -> use all data
+INVERS                             WX table version number.
+                                      0 -> use text file
+CALIN                              Text file with weather info.
+                                      Must be ' ' if using WX
+                                      table (INVERS).
+TRECVR                               Receiver temperatures (K);
+                                      in (R,L) pairs.
+TAU0                               Zenith opacities (per ant.)
+DOFIT                              Fit type (per ant.)
+                                     -1 -> no opacity correction
+                                      0 -> apply TRECVR only
+                                      1 -> solve for Trec using
+                                           fitting method spec.
+                                           in OPCODE; then apply
+PRTLEV                             Print level
+DOTV                               TV selection (<0 -> PL file)
+LTYPE                              Plot labeling
+GRCHAN          0.0                TV Graphics channel to use
+----------------------------------------------------------------
+APCAL
+Task:  This task takes as input a system temperature (TY) table and a
+       gain curve GC table, as produced by ANTAB or loaded by FITLD,
+       and generates a solution (SN) table containing amplitude gain
+       calibration information.  A correction can be made for
+       atmospheric opacity as well. The data can be used to solve for
+       the opacity or a pre-defined receiver temperature can be
+       provided.
+       NOTE: run MERGECAL before running this task using calibration
+             transfer data loaded using FITLD. If you do not APCAL may
+             fail producing an intelligible error message.
+       Plots are made showing system temperature versus zenith angle
+       and apparent zenith opacity as a function of time.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 -> highest.
+  INDISK.....Disk drive # of input UV file.  0 -> any.
+  ANTENNAS...Antenna numbers to calibrate. A prefix of a minus sign
+             on any one or more of the antennas in the list, means
+             that all antennas in the list are not calibrated and all
+             antennas not in the list are calibrated.
+  SUBARRAY...Subarray number to calibrate (0 -> all, 1 at a time but
+             all to the same SN table)
+  STOKES.....Stokes type to calibrate ('R' -> RCP, 'L' -> LCP,
+             ' ' -> both RCP and LCP)
+  BIF........Start IF number to calibrate
+  EIF........End IF number to calibrate
+  FREQID.....Freq. ID to calibrate (-1 -> all)
+  SOURCES....Sources to calibrate. A prefix of a minus sign indicates
+             that all sources except the given source are to be
+             calibrated.
+  TIMERANG...Time range to calibrate, in format: start_day,
+             start_hour, start_min, start_sec, end_day, end_hour,
+             end_min, end_sec, where the day numbers are relative to
+             the reference date in the catalog header.
+  TYVER......System temperature TY table version number to use
+             (0 -> highest)
+  GCVER......Gain table GC table version number to use
+             (0 -> highest)
+  SNVER......Output solution SN table version number
+             (0 -> new table with highest unique version
+             number; else overwrite the specified SN table)
+  OPCODE.....Opacity correction opcode:
+               '    ' -> no opacity solution or correction.
+               'GRID' -> If DOFIT(ant) > 0 then perform an
+                         opacity solution using a simple
+                         grid search from zero to twice the
+                         specified receiver temperature (TRECVR)
+                         and zenith opacity (TAU0).  If TRECVR
+                         and/or TAU0 are not set then reasonable
+                         defaults will be used.
+               'GRDR' -> If DOFIT(ant) > 0 same as 'GRID'
+                         except it adds a search down-weighting
+                         system temperature outliers.  This takes
+                         about 10 times longer than 'GRID'.
+               'OPAC' -> If DOFIT(ant) > 0 then perform an
+                         opacity solution using a simplex
+                         minimization taking the values of
+                         receiver temperature (TRECVR) and
+                         zenith opacity (TAU0) as starting
+                         points.  If TRECVR and/or TAU0 are
+                         not set then reasonable defaults
+                         will be used.
+               'OPCR' -> If DOFIT(ant) > 0 same as 'OPAC'
+                         except it adds a search down-weighting
+                         system temperature outliers.  This takes
+                         about 20 times longer than 'OPAC'.
+               'LESQ' -> If DOFIT(ant) > 0 then perform an
+                         opacity solution using a least
+                         squares method.  LESQ does not
+                         use TRECVR or TAU0.
+             If DOFIT <= 0 then the receiver temperatures
+             specified in TRECVR are used WITHOUT ALTERATION.
+             If OPCODE is set, for best results set either
+             CALIN or INVERS for the weather data.  Otherwise
+             a peak ground temperature of 20 degrees Celsius
+             will be used.
+  APARM......Calibration parameters:
+                  (1) B factor (def. 1.0)
+              Opacity parameters (use only if OPCODE <> ' ', and
+              DOFIT >1):
+                  (2) Zenith angle limit (deg) (def. 75).  This
+                      sets the range of Zenith angles that are
+                      used in the fits.  Therefor a relatively large
+                      number (like 75, the default) is desirable.
+                  (3) >=0  then use nominal spillover correction
+                      = 2  the use the 7mm correction for all
+                           frequencies (as done before October 2014)
+                      < 0  then no spillover correction
+                  (4) > 0 then use all FQ in opacity solution
+                           opac. soln. (NOT RECOMMENDED)
+                      <=0 then solve for each FQ ID separately
+                  (5) Plot sec(z) no higher than APARM(5);
+                      < = 0 => very large
+             (6) > 0 => Modify the recorded Tsys(IF,t) on the
+                   assumption that the Tcal's are not qquite correct.
+                   For each antenna, this operation does
+                     alpha(IF) = average over time of
+                        Tsys(IF,t) / average over IF of Tsys(IF,t)
+                   We then use as Tsys(IF,t) = TsysIn(IF,t)/alpha(IF)
+             (7) If APARM(6) > 0, use APARM(7) as the IF to define the
+                 correct Tsys(t) rather than the average over all IFs.
+                 APARM(7) < 1 or > Nif or Tsys(APARM(7),t) blanked
+                 causes the average to be used.
+  SOLINT.....Solution interval for opacity solution (min)
+               0 -> use all data
+  INVERS.....WX table version number, to be used instead of
+             CALIN.  CALIN MUST BE BLANK, OR ELSE INVERS
+             IS IGNORED AND INVERS MUST NOT BE ZERO.
+  CALIN......Text file with weather information (in format
+               'LOGICAL:FILE.NAME').  Leave blank if using the
+               WX table.
+  TRECVR.....Receiver temperatures (K) for each antenna in (R, L)
+             pairs (i.e.,. Ant 1 RCP, Ant 1 LCP, Ant 2 RCP, Ant 2
+             LCP,..).  If all 0 and OPCODE is set to 'OPAC', 'OPCR',
+             'GRID', or 'GRDR' ('LESQ' does not use this input)
+             then receiver temperatures are estimated from the TY
+             table.  For most cases this default works well.
+             If DOFIT <= 0 then the receiver temperature is
+             used with NO FITTING.
+  TAU0.......Zenith opacities (per antenna; no polarization
+             dependence).  If all 0 and OPCODE is set to 'OPAC',
+             'OPCR', 'GRID', or 'GRDR'  ('LESQ' does not use this
+             input) then the zenith opacity is estimated depending
+             on the observing frequency.
+  DOFIT......Opacity correction type (per ant.; no polarization
+             dependence).  If ANTENNAS is set to include the list of
+             antennas (none < 0), then DOFIT refers only to those set
+             in ANTENNAS, i.e., DOFIT(i) refers  to the antennas
+             number in ANTENNAS(i).  Otherwise DOFIT(i) refers to
+             antennna i.
+               -1 -> do not do opacity correction
+                0 & OPCODE <> ' ' -> APPLY TRECVR ONLY
+                1 & OPCODE <> ' ' -> solve for receiver temp.
+                   using method specified in OPCODE; then apply
+  PRTLEV.....Print level (1 -> echo weather file as read)
+  DOTV.......TV device selection (1 -> TV; <0 -> PL file)
+  LTYPE......Labelling type, see HELP LTYPE for details:
+             1 = border, 2 = no ticks, 3 or 7 = standard, 4 or 8 =
+             relative to ref. pixel, 5 or 9 = relative to subimage
+             (BLC, TRC) center, 6 or 10 = pixels.  7-10 all labels
+             other than tick numbers and axis type are omitted.
+             Less than 0 is the same except that the plot file
+             version number and create time are omitted.
+             Add n * 100 to alter the metric scaling.
+  GRCHAN.....Graphics channel to use: 0 -> more than one.
+----------------------------------------------------------------
+APCAL: Task to generate an amplitude calibration solution (SN) table.
+Documenter: A. J. Kemball, Amy Mioduszewski
+Related programs: ANTAB, CLCAL, FITLD, SNPLT, SNSMO, PRTAB, VLOG
+
+                         PURPOSE
+
+APCAL reads the system/antenna temperatures in the TY table and
+the gain information in the GC table and generates an amplitude
+calibration solution (SN) table. A correction for opacity can
+optionally be made.  The opacity is the attenuation caused by the
+atmosphere.  The solution table can subsequently be smoothed or
+edited using SNSMO, and is applied using CLCAL. This allows the
+selection of primary flux density calibrators.  At present TY
+and GC tables for VLBA stations are attached to the data. For
+experiments before April 1998 the TY and GC tables can be filled
+by task ANTAB which reads an external calibration text file.
+
+                         OVERVIEW
+
+APCAL takes as input the uv-file for which amplitude calibration
+is to be generated and expects TY and GC tables.  General selection
+adverbs are provided (TIMERANG, SOURCES, BIF, EIF etc.) to select
+those source and time ranges for which amplitude calibration is
+required. In most cases default values are appropriate in which
+case no selection is performed. The version numbers of the input TY
+and GC tables are specified by TYVER and GCVER respectively. The
+output SN table is specified using SNVER.
+
+APCAL can operate in two distinct modes:
+
+i) No opacity correction (OPCODE = '    '):
+
+   In this mode APCAL will generate amplitude calibration without a
+   correction for atmospheric opacity. All adverbs below OPCODE
+   excluding APARM(1), which specifies the b-factor, can be ignored
+   in this case.
+
+ii) Opacity correction (OPCODE = 'GRID', 'GRDR',  'OPAC', 'OPCR'
+       or 'LESQ')
+
+   In this mode APCAL will generate amplitude calibration including
+   a correction for atmospheric opacity. A local solution for opacity
+   can be solved for (DOFIT = 1) or nominal receiver temperatures can
+   be entered in TRECVR and used directly (DOFIT >= 1).  Three
+   algorithms are presently implemented for the local solution
+   for opacity ('GRID', 'OPAC' or 'LESQ').  With "robust" versions of
+   'GRID' and 'OPAC' available as 'GRDR' and 'OPCR'.  The robust
+   fits down-weight system temperature outliers, but take significantly
+   longer than their non-robust versions.
+
+
+                   SOURCE FLUX DENSITIES
+
+APCAL will look in the source (SU) table for source flux densities
+only if they are required to generate the amplitude calibration gain
+factors. This is the case when calibrating antennas for which Ta/Tsys
+or Ta values have been entered (e.g.,. VLA) or, more generally, if an
+opacity solution is being performed. The source flux densities are
+entered in the SU table using task SETJY. An error will be reported by
+APCAL if source flux densities are required but cannot be found in the
+source table. For weak sources which are not going to be used as
+primary flux density calibrators when applying the amplitude
+calibration using CLCAL (as selected by adverb CALSOUR), unit flux
+density should be entered. Separate frequency Id's must be calibrated
+separately as the source table can store flux densities for only one
+FREQID at a time.
+
+                         WEATHER TABLE
+
+This information is only required if the opacity solution is being
+performed.
+
+The ground weather data is provided as an WX table attached to the VLBA
+data as of April 1998.  Use this table by setting INVERS to the table
+number and setting CALIN=''.  IGNORE BELOW IF YOU ARE USING AND
+ATTACHED WX TABLE.
+
+          WEATHER INFORMATION FROM AN EXTERNAL TEXT FILE
+
+The ground weather data also available in the general VLBA calibration
+text file but needs minor editing before it can be used by APCAL.  Use
+VLOG to get it in the correct format (recommended) or edit the file as
+follows:
+
+  i) Write the weather data section to a separate file.
+ ii) Replace all asterisks (*) in column 1 by a comment marker (!)
+iii) Comment out all data lines containing an asterisk after the
+     temperature data by inserting a comment marker (!) in col. 1.
+ iv) Add the keywords: "WEATHER station_name /" at the beginning
+     of each station section. Terminate each station section with
+     a line containing a single backslash "/"
+
+A truncated example file is given below:
+
+
+! For antenna(s):   SC,HN,NL,FD,LA,PT,KP,OV,BR,MK
+! For UT timerange: 1994DEC01/335 at 23:02:00 to 1994DEC02/336 at 11:00:00
+!
+
+ ----- Weather information for SC -----
+! All values are instantaneous readings at the time indicated.
+! A '*' following a value indicates it is not reliable.
+!
+!              Temp   Press  DewPt   Wind Spd/Dir    Rain   Gust
+!UT Day-Time    C      mBar    C      m/s    deg      cm     m/s
+WEATHER SC /
+336-08:02:08   27.5  1012.2   23.5    2.6    95.0    0.00    6.0
+336-08:10:40   27.5  1012.4   23.6    2.0   138.0    0.00    6.3
+336-08:19:12   27.4  1012.6   23.0    2.1    92.0    0.00    4.2
+336-08:27:44   27.5  1012.7   23.2    2.2   103.0    0.00    6.0
+336-08:36:16   27.5  1012.5   23.8    1.6    85.0    0.00    6.0
+336-08:44:48   27.5  1012.4   23.9    1.9    70.0    0.00    5.3
+336-08:53:20   27.4  1012.7   23.9    1.4    92.0    0.00    5.3
+! 336-09:01:52   27.3* 1012.4   23.7*   3.3    78.0    0.00    4.9
+! 336-09:10:24   27.3* 1012.6   23.7*   3.3   111.0    0.00    4.6
+336-09:18:56   27.3  1012.9   23.4    1.2   113.0    0.00    5.3
+336-09:27:28   27.4  1012.6   23.6    2.5    88.0    0.00    4.9
+336-09:36:00   27.4  1012.6   23.5    2.4    91.0    0.00    4.9
+336-09:44:32   27.5  1013.0   23.7    2.3   110.0    0.00    5.6
+336-09:53:04   27.5  1013.1   23.4    1.9   105.0    0.00    5.6
+336-10:01:36   27.6  1013.3   23.2    2.1    99.0    0.00    6.3
+336-10:10:08   27.6  1013.3   23.7    2.9   132.0    0.00    5.6
+/
+! ----- Weather information for HN -----
+
+----------------------------------------------------------------------

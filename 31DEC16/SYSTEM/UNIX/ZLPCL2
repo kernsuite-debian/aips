@@ -1,0 +1,282 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2000, 2003, 2006, 2009
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: ZLPCL2 file page_length
+#-----------------------------------------------------------------------
+# This script prints a file on the selected printer.  The first argument
+# is the filename to be printed, the second is the page length from
+# AIPS.  The latter is only used for PostScript or plain text printers.
+#
+# When AIPS opens the "line printer", it creates a temporary file such
+# as /tmp/ZLPCL2.XXXXXX where XXXXXX is a unique extension.  When
+# closed, ZLPCL2.C runs this script via a unix pipe.  The printer output
+# contains Fortran carriage control characters in the first column
+# which are processed by one of the AIPS-supplied filters (F2PS for
+# direct PostScript output and F2TEXT for plain text or QUIC).  As these
+# filters are normally compiled automatically at install time, no
+# customization should be needed in this script for plain text or
+# PostScript printers, other than for the F2PS and F2TEXT options
+# indicated in the comments below.
+#-----------------------------------------------------------------------
+#                                       Filter plain text to postscript
+#                                       Pass the no. of lines to the
+#                                       filter and let it decide the
+#                                       orientation/font based on that.
+#                                       no. lines set via RUN SETPAR.
+size="97"
+[ "$2" != "" ] && size=$2
+#                                       Uncomment for US A size
+psfilter="$SYSLOCAL/F2PS -$size"
+#                                       Uncomment for Euro/Aussie A4...
+# psfilter="$SYSLOCAL/F2PS -A4 -$size"
+#                                       Plain text filter
+filter=$SYSLOCAL/F2TEXT
+#                                       Uncomment for extra form feed at
+#                                       the end of each print job.
+#filter="$SYSLOCAL/F2TEXT -e"
+#                                       Only other customization needed
+#                                       is QUIC setup/termination, and
+#                                       only for QMS/Talaris printers
+#-----------------------------------------------------------------------
+#                                       Clean up on signals 1, 2, 3
+#                                       and 15.
+trap 'rm -f $file.$$ /tmp/ZLPCL2.$$; exit 1' 1 2 3 15
+#                                       initialization
+printed=false
+file=$1
+#                                       Check for sanity
+if [ "$LPDEV" = "" ] ; then
+   echo "No printer (LPDEV) chosen, cannot print anything!"
+   exit 1
+fi
+if [ ! -f $file ] ; then
+   echo "Cannot find $file, so I cannot print anything.  So sorry."
+   exit 1
+fi
+#                                       Get printer information
+printer="$LPNAM"
+printype="$PRTYPE"
+printext="$LPDESC"
+printopt="$LPOPT"
+case $LPNAM in
+   /dev/null|NULL|null|NONE|none)
+   echo "null printer ($LPNAM: $LPDESC)"
+   echo "I hope you really meant this to be deleted!"
+   exit 0
+;;
+esac
+#                                       Print and status commands
+#                                       Is this SYSV or Berkeley?
+printcmd=""
+chcmd=""
+case $ARCH in
+   SUN*|IBM|*LINUX*|LNX64|ALPHA|ULTRIX|*BSD|MAC*)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpr ] ; then
+#                                       -h means no header
+#                                       -s means make a symlink
+#                                       -P is for specifying printer
+            printcmd="lpr -h -s -P"
+            break
+         fi
+      done
+      if [ "$printcmd" = "" ] ; then
+         echo "Cannot find lpr in the search PATH; nothing printed"
+         echo "On architecture $ARCH, $SYSUNIX/ZLPCL2 expects lpr!"
+         echo "(PATH is $PATH)"
+         exit 1
+      fi
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpq ] ; then
+#                                       -P is for specifying printer
+	    chcmd="lpq -P"
+	    break
+         fi
+      done
+      ;;
+   SOL*|SUL|SGI|HP|HP2)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lp ] ; then
+#                                       -d is for specifying printer
+            printcmd="lp -d"
+            break
+         fi
+      done
+      if [ "$printcmd" = "" ] ; then
+         echo "Cannot find lp in the search PATH; nothing printed"
+         echo "On architecture $ARCH, $SYSUNIX/ZLASCL expects lp!"
+         echo "(PATH is $PATH)"
+         exit 1
+      fi
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         if [ -f $i/lpstat ] ; then
+            chcmd="lpstat "
+#                                       Common Unix Printing System
+            if [ "$CUPS_SERVER" != "" ] ; then
+               chcmd="lpstat -p"
+            fi
+            break
+         fi
+      done
+      ;;
+   *)
+      echo "$SYSUNIX/ZLPCL2 does not know"
+      echo "about your architecture ($ARCH); please fix it"
+      ;;
+
+esac
+#                                       Check for oversize print jobs
+bb=""
+if [ "$BIGPRINT" != "" ] ; then
+   if [ \( $BIGPRINT -lt 1 \) -o \
+        \( $BIGPRINT -gt $LPDEVS \) ] ; then
+      echo "The 'big' printer number ($BIGPRINT) is out of range."
+      echo "This should not happen; please notify the AIPS manager."
+      BIGPRINT=$LPDEV
+   fi
+   BIGTHRESH=${BIGTHRESH-1000}
+   nlines=`cat $file | wc -l`
+   if [ $nlines -gt $BIGTHRESH ] ; then
+#                                       See if BIGPRINT is chosen anyway
+      if [ $BIGPRINT -ne $LPDEV ] ; then
+	 echo "Your job is $nlines lines, more than $BIGTHRESH"
+         echo "This is TOO BIG for the $printext!"
+         bb=" >>"
+#                                       Need to get revised parameters
+#                                       for big printer.  In 15jul94+
+#                                       scheme, these won't be defined
+#                                       so we need to set them.
+	 printer="\$LPDEV$BIGPRINT"
+	 printer=`eval echo $printer`
+         if [ "$printer" = "" ] ; then
+            LPDEV=$BIGPRINT; export LPDEV
+            lpfile=$AIPS_ROOT/PRDEVS.SH
+            [ ! -f $lpfile ] && lpfile=$SYSUNIX/PRDEVS.SH
+            . $lpfile
+            printer="\$LPDEV$LPDEV"
+	    printer=`eval echo $printer`
+ 	    printype="\$LPTYPE$LPDEV"
+            printype=`eval echo $printype`
+            printext="\$LPDESC$LPDEV"
+            printext="`eval echo $printext` instead"
+         else
+#                                       Backwards compatibility
+	    printype="\$LPTYPE$BIGPRINT"
+            printype=`eval echo $printype`
+            printext="\$LPDESC$BIGPRINT"
+            printext="`eval echo $printext` instead"
+         fi
+      fi
+   fi
+fi
+#                                       Special stuff for CV
+if [ "$SITE" = NRAOCV -a "$LPDEV" = "$BIGPRINT" ] ; then
+   cvlog=/AIPS/BIGPRINT.LOG
+   if [ -f $cvlog ] ; then
+      echo "$bb `date` $file `cat $file | wc -l`" >>$cvlog 2>/dev/null
+   fi
+fi
+#                                       Postscript printer, need filter
+if [ $printype = PS -o $printype = "PS-CMYK" ] ; then
+   case $printopt in
+      *DUP*) psfilter="$psfilter -d" ;;
+   esac
+   cat $file | $psfilter | $printcmd$printer
+   printed=true
+#                                       QMS/Talaris/QUIC printer.
+#                                       Prepend a QUIC header, postpend
+#                                       trailer, pipe thru F2TEXT filter
+#                                       IGNORES LINES PER PAGE!  One
+#                                       could modify this code to change
+#                                       the QUIC commands but one would
+#                                       need a QUIC printer to test it!
+elif [ $printype = QMS ] ; then
+   tmpfil=$file.$$
+   echo "^PY^-" >$tmpfil
+   echo "^F^ISYNTAX00000^G" >>$tmpfil
+   echo "^IOL^G^IS00010^G^IC0000^G^IL0880^G" >>$tmpfil
+   echo "^IMH0050010500^G^IMV0050008000^G^O^-" >>$tmpfil
+   echo "^PN^-" >>$tmpfil
+   cat $file | $filter >>$tmpfil
+   echo "^PY^-" >>$tmpfil
+   echo "^F^IGE^G^IWE^G^IP0000^G^ISYNTAX00000^G" >>$tmpfil
+   echo "^IOL^G^ISTF00^G^IS00010^G^IC0000^G^IL0880^G" >>$tmpfil
+   echo "^IMH0050010500^G^IMV0050008000^G^O^-" >>$tmpfil
+   echo "^PN^-" >>$tmpfil
+   rm -f $file; mv $tmpfil $file
+   cat $file | $printcmd$printer
+   printed=true
+#                                       Plain text printer.
+elif [ $printype = TEXT ] ; then
+   cat $file | $filter -$2 | $printcmd$printer
+   printed=true
+#                                       Allow tricks like printing to a
+#                                       remote printer, etc. for shell
+#                                       script hackers/wizards.  Note
+#                                       the "-" after the command.
+elif [ \( $printype = PREVIEW \) -o \
+       \( $printype = REMOTE \) ] ; then
+   OLDIFS=$IFS
+   IFS=$IFS:
+   found=no
+   for i in $PATH ; do
+      [ -f $i/$printer ] && found=yes && break
+   done
+   IFS=$OLDIFS
+   if [ $found = no ] ; then
+      echo "Cannot find program $printer in your PATH"
+      echo "so nothing will be printed"
+   else
+      echo "Running program $printer on $file.ps..."
+      cat $file | $psfilter > $file.ps
+      $printer $file.ps
+      rm $file.ps
+      chcmd=""
+#                                       Use this if not a PS printer
+#     cat $file | $printer
+      printed=true
+   fi
+   stat=$?
+   if [ $stat -ne 0 ] ; then
+      echo "Tried to send PostScript to $cmd thus:"
+      echo " "
+      echo "      cat $file | $psfilter -$2 | $cmd -"
+      echo " "
+      echo "but it failed with status $stat for some reason.  Sorry!"
+      exit $stat
+   fi
+else
+   echo "Unknown printer type $printype on the $printext"
+   echo "(ZLPCL2 doesn't know what to do for that type of printer)"
+   exit 1
+fi
+#                                       See if it got printed
+if [ "$printed" = true ] ; then
+   echo "Messages sent to the $printext"
+   [ "$chcmd" != "" ] && $chcmd$printer
+fi
+exit 0

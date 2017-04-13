@@ -1,0 +1,694 @@
+; BLING
+;---------------------------------------------------------------
+;! find residual rate and delay on individual baselines
+;# TASK CALIBRATION VLBI AP OOP
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995-1997, 1999-2004, 2006, 2009-2010
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+BLING     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+BLING:  Task to determine residual delays and rates
+
+INNAME                             UV file name (name)
+INCLASS                            UV file name (class)
+INSEQ              0.0      9999.0 UV file name (seq. #)
+INDISK             0.0         9.0 UV file disk unit #
+
+CALSOUR                            Calibrator sources
+QUAL            -10.0              Calibrator qualifier
+                                     -1 => all
+CALCODE                            Calibrator code
+                                     '    '=>all
+
+STOKES                             Polarizations to process
+TIMERANG                           Time range to use.
+ANTENNAS                           Antennas to use. 0=all
+BASELINE                           Baselines with ANTENNAS.
+SUBARRAY          0.0     1000.0   Subarray.    0 => 1
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select.
+BIF               0.0              First IF to use   0 => 1
+EIF               0.0              Last IF to use    0 => max
+BCHAN             0.0     2048.0   Lowest channel number
+                                    0 => 1
+ECHAN             0.0     2048.0   Highest channel number
+                                    0 => max
+UVRANGE                            Range of uv distances to
+                                    use
+
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL table to apply.
+DOPOL            -1.0       10.0   If >0 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+FLAGVER                            Flag table version
+DOBAND           -1.0       10.0   If >0 apply bandpass cal.
+                                     Method used depends on
+                                     value of DOBAND (see HELP
+                                     file).
+BPVER                              Bandpass table version
+SMOOTH                             Smoothing function. See
+                                     HELP SMOOTH for details.
+
+IN2NAME                            Cleaned map name (name)
+IN2CLASS                           Cleaned map name (class)
+IN2SEQ            0.0     9999.0   Cleaned map name (seq. #)
+IN2DISK           0.0        9.0   Cleaned map disk unit #
+INVERS           -1.0    46655.0   CC file version #.
+NCOMP                              # comps to use for model.
+                                   1 value per field
+FLUX                               Lowest CC component used.
+NMAPS             0.0     4096.0   No. Clean map files
+CMETHOD                            Modeling method:
+                                   'DFT','GRID','    '
+CMODEL                             Model type: 'COMP','IMAG'
+
+OPCODE                             Type of solution:
+                                     '    ' => 'INDE'
+SOLINT                             Solution interval (min)
+INFILE                             Control file
+APARM                              Task enrichment parameters:
+                                      1: minimum integration
+                                         time in sec (0 => 1.0)
+                                      2: > 0 => subtract model
+                                      3: > 0 => stack data
+                                      4: min SNR (0 => 5.0)
+                                      5: minimum coherence (%)
+                                         0 => 20%
+                                      6: delay precision tuning
+                                           (see help for BLING)
+                                      7: rate precision tuning
+                                           (see help for BLING)
+DPARM                              Delay-rate windows:
+                                     1: multiband delay centre
+                                     2: multiband delay width
+                                     3: single-band delay ctr
+                                     4: single-band delay wdth
+                                        (delays in nanosec)
+                                     5: rate centre (mHz)
+                                     6: rate width (mHz)
+                                     7: accel. centre (uHz/sec)
+                                     8: accel. width (uHz/sec)
+                                     9: accel. step (uHz/sec)
+DOUVCOMP                           If > 0 then use compressed
+                                   scratch files.
+BADDISK                            List of disks not to be
+                                   used for scratch files.
+----------------------------------------------------------------
+BLING
+Task:  BLING determines the residual group delay and phase rate and
+       acceleration for each baseline in an array.  The results are
+       stored in a baseline fringe solution (BS) table attached to the
+       uv data file.  The task BLAPP will read a BS table and
+       distribute the baseline-based quantities between telescopes.
+            Model images made with both values of IMAGR's DO3DIMAG
+       option are handled correctly, as are multi-scale images.  Set
+       NMAPS = NFIELD * NGAUSS.
+
+Adverbs:
+Input data file:
+  INNAME.....Input UV file name (name).       Standard defaults.
+  INCLASS....Input UV file name (class).      Standard defaults.
+  INSEQ......Input UV file name (seq. #).          0 -> highest.
+  INDISK.....Disk drive # of input UV file.            0 -> any.
+
+Source selection (multisource files only):
+  CALSOUR....List of sources for which residual fringe
+             parameters are to be determined, i.e. the
+             calibrator sources.
+             If all entries are blank then all sources in the
+             input file will be used.  If any entry is preceded
+             by a minus sign then all sources in the input file
+             other than those listed in CALSOUR will be used.
+  QUAL.......Only sources with a source qualifier number in the
+             SU table matching QUAL will be used if QUAL is not
+             -1.  This selection criterion is applied to sources
+             selected using CALSOUR.
+  CALCODE....Calibrators may be selected on the basis of the
+             calibrator code:
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+                  anything else = calibrator code to select.
+             This selection criterion is applied to the sources
+             selected using CALSOUR and QUAL.
+Note that the source selection parameters should only specify a
+single source if a model is to be subtracted before searching
+for fringes.
+
+Data selection:
+  STOKES.....The polarizations to use.  This should be a
+             concatenation of any of the four polarization
+             correlations RR, LL, RL and LR or one of
+             the special values 'HALF' (RR and LL) or 'CROS'
+             (RL and LR).  Default: 'HALF'
+  TIMERANG...Time range of the data to be used. In order:
+             Start day, hour, min. sec., end day, hour, min,
+             sec.  Days relative to the reference date of the
+             observations.  Default: from the beginning of the
+             observations in the input file to the end.
+  ANTENNAS...A list of antennas used, in combination with
+             BASELINE, to select the baselines to process.
+             If all entries are positive include only baselines
+             including the listed telescopes; if any entry is
+             negative use all telescopes not listed.
+             Default: use all baselines.
+  BASELINE...Antennas appearing at the other end of selected
+             baselines from telescopes selected using
+             ANTENNAS.  Example: to select  baselines 1-6,1-8,
+             2-6 and 2-8 set ANTENNAS=1,2; BASELINE=6,8.
+             Default: use all baselines involving telescopes
+             selected using ANTENNAS.
+  SUBARRAY...Subarray number to use.  Default: 1.
+  SELBAND....Bandwidth of the data to be selected. If more than
+             one IF is present SELBAND is the bandwidth of the
+             first IF required. Units = kHz.  Default: use
+             FREQID.
+  SELFREQ....Frequency of data to be selected. If more than
+             one IF is present SELFREQ is the frequency of the
+             first IF required. Units = MHz.  Default: use
+             FREQID.
+  FREQID.....Frequency (FQ) group identifier to select (you may
+             determine which is applicable from the
+             OPTYPE='SCAN' listing produced by LISTR).  If
+             either of SELBAND or SELFREQ are set then their
+             values overide that of FREQID unless SELBAND
+             and SELFREQ are ambiguous;  if SELBAND and
+             SELFREQ are ambiguous then the task will request
+             that you use FREQID.
+  BIF........First IF to use.  Default: 1
+  EIF........Last IF to use.   Default: highest IF number in
+             file.
+  BCHAN......First channel to use.   Default: 1
+  ECHAN......Highest channel to use. Default: highest channel
+             number in file.
+  UVRANGE....Range of projected spacings to be used in 1000's
+             of wavelengths.  Default:  1.0 to 1.0E10
+
+Calibration switches (multisource files only):
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....Version number of the CL table to apply to the
+             data.   Default: highest version number
+  DOPOL......If > 0.5 then correct data for instrumental polarization
+             as represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  BLVER......Version number of the baseline based calibration
+             (BL) table to appply. <0 => apply no BL table,
+             0 => highest.
+  FLAGVER....Specifies the version of the flagging table to be
+             applied. 0 => highest numbered table.
+                     <0 => no flagging to be applied.
+  DOBAND.....If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+  BPVER......Version of the BP table to be applied.
+               0 => highest.
+             < 0 => no bandpass correction to be applied.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+
+Source model to be divided into the data.
+  IN2NAME....Cleaned map name (name).    Standard defaults.
+             For a single source file the model determined by
+             SMODEL is used instead of the CLEAN components
+             if IN2NAME = ' ' and IN2CLASS = ' ';
+             For a multi-source file a point source with flux given
+             in the SU table is used instead of a CLEAN components
+             if IN2NAME = ' ' and IN2CLASS = ' '.
+             Note: a CLEAN image for only a single source may
+             be given although it may be in a multisource file.
+  IN2CLASS...Cleaned map name (class).     Standard defaults.
+  IN2SEQ.....Cleaned map name (seq. #).    0 -> highest.
+  IN2DISK....Disk drive # of cleaned map.  0 => any.
+  INVERS.....CC file version #.  0=> highest numbered version
+  NCOMP......Number of Clean components to use for the model, one
+             value per field.  If all values are zero, then all
+             components in all fields are used.  If any value is not
+             zero, then abs(NCOMP(i)) (or fewer depending on FLUX and
+             negativity) components are used for field i, even if
+             NCOMP(i) is zero.  If any of the NCOMP is less than 0,
+             then components are only used in each field i up to
+             abs(NCOMP(i)), FLUX, or the first negative whichever
+             comes first.  If abs(NCOMP(i)) is greater than the number
+             of components in field i, the actual number is used.  For
+             example
+                   NCOMP = -1,0
+             says to use one component from field one unless it is
+             negative or < FLUX and no components from any other
+             field.  This would usually not be desirable.
+                   NCOMP = -1000000
+             says to use all components from each field up to the
+             first negative in that field.
+                   NCOMP = -200 100 23 0 300 5
+             says to use no more than 200 components from field 1, 100
+             from field 2, 23 from field 3, 300 from field 5, 5 from
+             field 6 and none from any other field.  Fewer are used if
+             a negative is encountered or the components go below
+             FLUX.
+  FLUX.......Only components > FLUX in absolute value are used in the
+             model.
+  NMAPS......Number of image files to use for model.  For multi-scale
+             models, set NMAPS = NFIELD * NGAUSS to include the Clean
+             components of the extended resolutions.  If more than one
+             file is to be used, the NAME, CLASS, DISK and SEQ of the
+             subsequent image files will be the same as the first file
+             except that the LAST 3 or 4 characters of the CLASS will
+             be an increasing sequence above that in IN2CLASS.  Thus,
+             if INCLASS='ICL005', classes 'ICL005' through 'ICLnnn'
+             or 'ICnnnn', where nnn = 5 + NMAPS - 1 will be used.  Old
+             names (in which the 4'th character is not a number) are
+             also supported: the last two characters are '01' through
+             'E7' for fields 2 through 512.  In old names, the highest
+             field number allowed is 512; in new names it is 4096.
+  CMETHOD....This determines the method used to compute the
+             model visibility values.
+             'DFT' uses the direct Fourier transform, this
+             method is the most accurate.
+             'GRID' does a gridded-FFT interpolation model
+             computation.
+             '    ' allows the program to use the fastest
+             method.
+             NOTE: when using a model derived from data with
+             difference uv sampling it is best to use 'DFT'
+  CMODEL.....This indicates the type of input model; 'COMP' means that
+             the input model consists of CLEAN components, 'IMAG'
+             indicates that the input model consists of images.  If
+             CMODEL is '   ' clean components will be used if present
+             and the image if not.
+             Note: A normal CLEAN restored image is not a suitable
+             model as it has been tapered by the restoring beam.  A
+             CLEANed image restored with a very small restoring beam
+             is usable.
+             Note that IMAG models are USUALLY scaled by the beam area
+             and CC models are scaled to match the source-table total
+             flux when appropriate.  BLING DOES NOT DO THESE SCALINGS.
+
+Task control:
+  OPCODE ....Solution type
+               'INDE' => independent delay and rate solutions
+                         for each IF and polarization.  Use
+                         for multi-IF data without phase cal.
+               'VLBA' => single delay and rate for all IFs
+                         in each polarization.  Use for VLBA
+                         data or any other multi-IF data with
+                         more than one phase cal per IF.
+               'MK3 ' => multiband and single-band delays
+                         and rates for all IFs in each
+                         polarization.  Use for Mk3 VLBI data
+                         or any other multi-IF data with only
+                         one phase cal per IF.
+               'RATE' => fit rate and accelerations only.
+                         Use on one channel only when
+                         interpolating rates from fringe
+                         finders to program sources.
+  SOLINT.....Solution interval in minutes.  A solution interval
+             may be cut short to avoid crossing a scan boundary
+             if an index table is present.  The solution inter-
+             val may be overridden for particular times and
+             baselines in the control file.          0 -> 5 min
+  INFILE.....The name of a text file containing solution inter-
+             vals and search windows for specific baselines and
+             time ranges.
+  APARM......Miscellaneous control parameters.
+             APARM(1)...Minimum integration time in file in
+                        seconds. This is used to calculate the
+                        amount of data storage that BLING must
+                        allocate.  It is usually better to set
+                        this too small than too large although
+                        smaller values make it more likely that
+                        you will run out of memory.
+                                              <= 0.0 -> 1.0 sec
+             APARM(2)...Model division flag.  If this has a
+                        positive value then a model will be
+                        divided into the data before
+                        searching for fringes.
+             APARM(3)...Baseline stacking flag.  If this has a
+                        positive value baseline data will be
+                        stacked.  Baseline stacking uses the
+                        data from baselines i-k and k-j (for all
+                        k.ne.i and k.ne.j) to increase the
+                        sensitivity on baseline i-j.  Do not
+                        enable stacking if your file contains
+                        multiple integration times.
+             APARM(4)...Minimum SNR for detection.   <= 0 -> 5.0
+             APARM(5)...Minimum coherence value in percent.  The
+                        lowest ratio of the vector amplitude sum
+                        and the scalar amplitude sum that will
+                        be accepted.                 <= 0 -> 20%
+             APARM(6)...Delay precision control.
+             APARM(7)...Rate precision control.
+                        These parameters control the amount of
+                        padding used in the FFT searches.
+                            >= 0  pads by a factor of   2
+                              -1  ...................   4
+                              -2  ...................   8
+                              -3  ...................  16
+                              -4  ...................  32
+                              -5  ...................  64
+                              -6  ................... 128
+                           <= -7 ....................   2
+                        Increasing the padding may give a little
+                        extra precision but will slow BLING down
+                        by a factor of up to (approximately)
+                        2 ^ -(APARM(5) + APARM(6)).  It is rarely
+                        worth while to use extra padding.
+  DPARM......Default search windows (may be overridden in the
+             control file).  Window widths less than or equal
+             to zero default to the full ambiguity range.
+             DPARM(1)...Multiband delay window centre (ns)
+             DPARM(2)...Multiband delay window width (ns)
+             DPARM(3)...Single-band delay window centre (ns)
+             DPARM(4)...Single-band delay window width (ns)
+             DPARM(5)...Fringe rate window centre (mHz)
+             DPARM(6)...Fringe rate window width (mHz)
+             DPARM(7)...Acceleration window centre (uHz/s)
+             DPARM(8)...Acceleration window width (uHz/s)
+             DPARM(9)...Acceleration search step (uHz/s)
+             DPARM(9) <= 0.0 turns off the acceleration search
+             unless overridden in the control file.
+  DOUVCOMP...UV data compression flag.  If this is greater than zero
+             then BLING scratch files will be written in compressed
+             form.  This reduces the amount of disk required to run
+             BLING but can decrease the precision of intermediate
+             results and can affect weighting and flagging.  Avoid
+             compressing scratch data if your original data is
+             uncompressed or if you are dividing by a model unless
+             disk space is at a premium.
+  BADDISK....A list of disks not to be used for scratch files.
+------------------------------------------------------------------------
+BLING:  Task to find fringes on individual baselines.
+DOCUMENTOR: Chris Flatters, NRAO
+RELATED PROGRAMS: BLAPP, PRTBS, FRING
+
+INTRODUCTION
+
+BLING searches for fringes in residual delay and rate on
+individual baselines and stores the results in a baseline
+solution (BS) table attached to the uv data.  These results can
+be applied to the data by using BLAPP to resolve the
+baseline-based quantities into antenna-based terms.  This
+procedure is similar to that described by Alef and Porcas
+(Astron. Astrophys. vol. 168 p365, 1986).
+
+While BLING is usually much slower than FRING, it offers a
+greater level of control.  Search windows and solution intervals
+can be specified for individual baselines and time ranges and
+BLING can search for a fringe acceleration term (the time
+derivative of the residual rate).
+
+You should normally use FRING to determine rates and delays and
+restrict your use of BLING to cases where FRING may have
+problems.  Cases where BLING may be preferable to FRING include
+the following.
+
+* Fringe acceleration searches are needed.  This is only likely
+  for space VLBI.
+
+* Fringe locations can be predicted, allowing tight, off-centre
+  windows to be used.
+
+* Differing baseline sensitivities make it desirable to use
+  different solution intervals for different baselines.
+
+* Differing baseline sensitivities defeat FRING's strategy for
+  choosing baselines for the coarse search (for any given
+  antenna, FRING will look at the baseline from that antenna to
+  the reference antenna and will try a baseline to a secondary
+  reference if fringes are not found but will not try all
+  possible secondary references while BLING will examine all of
+  the baselines to a given telescope.
+
+SOLUTION MODES
+
+BLING has a number of modes which allow it to search for
+different sets of fringe parameters.  The mode is chosen by
+setting OPCODE and the parameters to be solved for in each mode
+are shown in the following table.
+
++------+-----------------+-------------------+------+
+| Mode | Multiband delay | Single-band delay | Rate |
++------+-----------------+-------------------+------+
+| INDE |       no        |        yes        | yes  |
+| VLBA |       yes       |        yes        | yes  |
+| MK3  |       yes       |        yes        | yes  |
+| RATE |       no        |        no         | yes  |
++------+-----------------+-------------------+------+
+
+'INDE' mode produces independent delay and rate solutions for
+each IF while the other 3 modes produce a combined solution that
+applies to all IFs.  'VLBA' mode differs from 'MK3 ' mode in
+that multiband delay is assumed to be equal to single-band delay
+in 'VLBA' mode but not in 'MK3 ' mode.  Acceleration searches
+may be requested independently of the mode setting.
+
+BASELINE STACKING
+
+BLING is capable of "stacking" data from different baselines.
+This technique is explained in the Schwab and Cotton paper on
+global fringe-fitting (Astron. J. vol. 88 p688, 1983) and is
+also used in FRING.  The basic idea is that the slope of the
+summed visibility phase from baselines i-j and j-k with respect
+to frequency is wholly determined by the residual delays of i
+and k (since the delay at j cancels in the addition) and can
+therefore be used to supplement the data from baseline i-k.
+In the limiting case where there are N identical telescopes and
+one which is much less sensitive this technique will reduce the
+fringe-detection threshold by a factor of sqrt(N).  BLING can
+stack data that uses one intermediate antenna while FRING can
+use up to two intermediate antennae.  Allowing a second
+intermediate antenna gives only a modest improvement over using
+a single intermediate.
+
+In reality neither BLING nor FRING average phases directly, as
+suggested above, but sum a vector quantity with the phase of the
+visibility data and an amplitude equal to the visibility weight.
+This procedure is more appropriate to a process that uses a
+Fourier transform (as both tasks do in their coarse searches)
+but may break down if the source is not dominated by a bright
+unresolved component.  You may therefore need to disable
+baseline stacking if you are observing a source with complex
+structure and do not have a model that can be divided into
+the data.
+
+Stacking is enabled by default but will be disabled if you set
+APARM(2) to a positive number.
+
+BLING will use all of the possible intermediate antennae in the
+data set, regardless of whether they are listed in the ANTENNAS
+and BASELINE adverbs (which determine which baselines BLING will
+search for fringes).  If you wish to exclude an antenna from
+the set of intermediates then you should use UVFLG to flag data
+from that antenna and unflag the data after running BLING.
+
+ACCELERATION SEARCHES
+
+The acceleration search is carried out in a different way to the
+searches in delay and rate.  If an acceleration search is
+carried out then BLING will try a number of coarse searches at
+different acceleration values and pick the acceleration value
+that gives the best degree of coherence as the starting point
+for the fine search.  This means that you must specify an
+acceleration step size to use in the coarse search as well as
+a search window.  If the step size is zero or negative then
+there will be no search in acceleration.
+
+It should be obvious from the above that enabling acceleration
+searches will slow the program down considerably.  Since
+enabling acceleration searches adds additional parameters to be
+modelled, it will also tend to degrade the quality of your
+solutions if you turn it on when it is not needed.  You should,
+therefore, restrict your use of acceleration searches to those
+cases where it is absolutely necessary.
+
+CONTROLLING BLING
+
+The search windows and solution interval may be changed for
+particular time ranges and baselines using a control file
+specified as INFILE.
+
+The control file should contain a number of baseline groups
+Each group should start with a header card with the general
+form
+
+telescope1 telescope2 /
+
+This informs BLING that the following records apply to baseline
+telescope1-telescope2 where telescope1 and telescope2 are either
+telescope names taken from the antenna table of the special name
+"ANY".  Thus
+
+PT MK /
+
+starts a group applying to the Pie Town - Mauna Kea baseline
+while
+
+PT ANY /
+
+or
+
+ANY PT /
+
+starts a group applying to any baselines involving Pie Town and
+
+ANY ANY /
+
+starts a group applying to any baselines.
+
+The header card should be followed by one or more cards having
+14 fields.  The fields are as follows.
+
+ 1  integer  Annual day number (Jan 1 = 1) of the day at which
+             the parameters on this line become valid.
+ 2  time     The time (hh:mm:ss - seconds are optional) at which
+             the parameters become valid.
+ 3  integer  Annual day number of the day on which the parameters
+             become invalid.
+ 4  time     The time at which the parameters become invalid.
+ 5  real     The solution interval for this time range.
+ 6  real     The multiband search window centre (nanoseconds).
+ 7  real     The multiband search window width (nanoseconds).
+ 8  real     The single-band search window centre (nanoseconds).
+ 9  real     The single-band search window width  (nonoseconds).
+10  real     The rate window centre (mHz).
+11  real     The rate window width (mHz).
+12  real     The acceleration window centre (uHz/sec).
+13  real     The acceleration window width (uHz/sec).
+14  real     The acceleration search step (uHz/sec).
+
+The group should end with a single slash ("/").
+
+Here is an example baseline group.
+
+PT MK /
+27 12:00 27 13:00 10.0 0.0 100.0 0.0 100.0 0.0 20.0 0.0 0.0 0.0
+27 13:00 27 14:00  5.0 0.0 100.0 0.0 150.0 0.0 30.0 0.0 0.0 0.0
+/
+
+The following rules apply.
+
+* All of the windows must be defined in each card regardless
+  of whether the corresponding parameter will be solved for.
+  Of course, the values in the fields corresponding to unused
+  windows do not matter.
+
+* More specific baseline groups override less specific ones
+  so that PT MK is preferred over PT ANY which is preferred
+  over ANY ANY for any given time.
+
+* If there is no entry applicable to a given time for a
+  particular baseline then the solution interval will be set
+  from the SOLINT adverb and the windows will be set from the
+  DPARM adverb.
+
+* If a delay or rate window is set to zero or a negative number
+  then  BLING will search the full ambiguity range around the
+  given window centre.
+
+* If the acceleration search step is zero or negative then there
+  will be no search in acceleration.
+
+CHANGES FROM 15OCT96
+
+* BLING now uses a simple interpolation scheme to refine the
+  fringe positions.  This has allowed the default amount of
+  FFT padding to be reduced so that BLING is now much faster.
+  Consequently, errors listed in the BS table are now worst-case
+  errors and realistic errors will normally be a factor of 10 to
+  100 better for high SNR data.
+
+CHANGES FROM 15JAN96
+
+BLING has been extensively rewritten since the 15JAN96 release
+of AIPS.
+
+* You may now divide a model into the data.
+
+* Baseline stacking is now possible.
+
+* The logic for dividing the data into scans has changed.  The
+  index file is no longer used to define solution intervals and
+  is no longer required.  If an index file is present solution
+  intervals will be truncated to avoid crossing scan boundaries
+  defined by the index file but the scan will not be split into
+  equal subdivisions as before. [This change was made to support
+  the possibility of model division but also removes the need
+  to reindex the data for efficient file access.]
+
+* Windows are now specified by a centre and width rather than
+  a beginning and an end.  The format of the control file has
+  changed to reflect this. [This change makes BLING more
+  amenable to predictive window-setting.]
+
+* The solution interval may now be changed for specific
+  baselines and times.
+
+* Changes to the FFT set-up have improved the efficiency of
+  AP memory usage allowing more FFT interpolation to be used.
+  This has made it possible to remove the chi-squared fit
+  used to refine the fringe positions in previous versions
+  of BLING making the results more robust.  The savings in
+  computer time have been swallowed by the increased sizes
+  of the FFTs, however.
+
+

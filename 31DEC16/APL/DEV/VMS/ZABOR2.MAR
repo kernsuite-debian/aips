@@ -1,0 +1,130 @@
+        .TITLE ZABOR2 (PRGN, TTYP, ACTION)   ESTABLISH EXIT HANDLER
+;-----------------------------------------------------------------------
+;! establishes or carries out (when appropriate) abort handling
+;# Z2 System
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;-----------------------------------------------------------------------
+;   ZABOR2 will take one of two actions depending on the value of
+;   "action".  If "action" is zero, it establishes abort handling
+;   to clean up for programs in the event of an ABORTASK or otherwise
+;   fatal signal.  Hangup, interrupt (except for AIPS or BATER) and
+;   quit are ignored.  If running under the control of a debugger, it
+;   simply returns (to avoid affecting the debugger signal handling).
+;   If "action" is non-zero, it will issue an illegal instruction in
+;   order to induce the abort handler.  This is mostly to get a
+;   traceback for debugging purposes (e.g., when an invalid argument
+;   to a subroutine is detected).
+;   Inputs:
+;      PRGN     C*6   Program name
+;      TTYP     I     1 => stand-alone program, 0 => task
+;      ACTION   I     Action indicator code:
+;                        0 => establish abort handling
+;                        1 => invoke an illegal instruction
+;   Output:
+;      none
+;   Common: DMSG.INC
+;      MSGTXT   C*80   Calls MSGWRT with "ABORTS" and calls
+;                      ACOUNT (3, ...)
+;   VMS version - This subroutine will set up an exit handler to clean
+;   up for AIPS in case of abort or control Y.
+;----------------------------------------------------------------------
+;                                       Define symbols.
+      PRGN = 4
+      TTYP = 8
+      ACTION = 12
+      $SSDEF
+      $JPIDEF
+;----------------------------------------------------------------------
+;                                       Code for establishing handler.
+      .PSECT  CODE,NOWRT,LONG
+      .ENTRY  ZABOR2,^M<R2>
+         $DCLEXH_S    DESBLK = EXITBLK        ; establish handler
+         RET                                  ; return
+;----------------------------------------------------------------------
+;                                       Error handler code.
+EXITRTN:
+      .WORD   ^M<R2,R3,R4,R5>
+         CMPL    STATUS,#SS$_NORMAL
+         BEQL    DELPRC
+            CALLG  ARGS,ACOUNT                ; Call ACOUNT(3)
+            MOVC5  #7,MSG,#^A/ /,#80,MSGTXT   ; Move message to
+                                              ;  MSGTXT in commons.
+            CALLG  ARGM,MSGWRT                ; Call MSGWRT(10)
+DELPRC:
+         $GETJPIW_S ITMLST = JPILST           ; Are we a subprocess?
+         CMPL     OWNER,#0                    ; If no then owner is 0
+         BEQL      FINI                       ; Branch if not subproc
+         CMPL      PRCNAM,AIPS                ; Branch if we are AIPS
+         BNEQ      DOIT
+         CMPW      #5,NAMLEN
+         BEQL      FINI
+DOIT:
+         $DELPRC_S                            ; Delete this process
+FINI:
+         RET
+;                                       Data area.
+      .PSECT  RWDATA,LONG
+EXITBLK:                                        ; Exit control block.
+         .LONG        0                       ; System uses for ptr.
+         .ADDRESS     EXITRTN                 ; Addr of exit handler.
+         .LONG        1                       ; Number of args.
+         .ADDRESS     STATUS                  ; 1st arg (exit status)
+STATUS:    .BLKL        1                       ; Block to hold status.
+
+                                              ; Argument lists
+JPILST:    .WORD        4                       ; Length of list in I4
+         .WORD        JPI$_OWNER              ; Code to find owner
+         .ADDRESS     OWNER                   ; Answer goes here
+         .LONG        0                       ; No length returned
+         .WORD        7
+         .WORD        JPI$_PRCNAM
+         .ADDRESS     PRCNAM
+         .ADDRESS     NAMLEN
+         .LONG        0                       ; End list code
+OWNER:     .LONG        0                       ; Answer
+NAMLEN:    .BLKW        1
+PRCNAM:    .ASCII       /1234567/
+AIPS:      .ASCII       /AIPS/
+ARGS:      .LONG        2                       ; Dummy argument list.
+         .ADDRESS     THRE
+         .ADDRESS     BUFFER
+THRE:      .LONG        3
+
+ARGM:      .LONG        1                       ; Number of args.
+         .ADDRESS     TEN                     ; Argument pointer.
+TEN:       .LONG        10                      ; Message level
+MSG:       .ASCII       /ABORTS!/               ; Message text.
+
+BUFFER:    .BLKL        256
+
+                                              ;FORTRAN COMMONS -
+                                              ; MSGCHR
+      .PSECT  MSGCHR,OVR,GBL,SHR,NOEXE,PIC,LONG
+MSGTXT:    .BLKL        20                      ; Message text buffer.
+         .BLKW        3
+      .END

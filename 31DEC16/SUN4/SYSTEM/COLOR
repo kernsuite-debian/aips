@@ -1,0 +1,122 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Format Encapsulated PostScript (TM) for a Color Laser Printer
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#-----------------------------------------------------------------------
+# This procedure takes an Encapsulated PostScript (TM of Adobe) file
+# that comes from the public domain program "xgrab" and formats it for
+# a 35mm color slide printer.  See also AIPS task TVCPS and other
+# programs such as the shareware "xv".
+#
+# Usage: COLOR <file> [pr=n]
+#
+# Note that this script uses the FIRST available color printer or
+# whatever is specified
+#
+# Requires FILLSLIDE.SH or FILLSLIDE.EXE in $SYSLOCAL.
+#-----------------------------------------------------------------------
+myname=`basename $0`
+#                                       Delay in zapping file (secs)
+DELAY=1800
+#                                       Get printer definitions
+if [ -f $AIPS_ROOT/PRDEVS.SH ] ; then
+   . $AIPS_ROOT/PRDEVS.SH
+else
+   echo '$myname: Cannot find PRDEVS.SH (is AIPS_ROOT defined?)"
+   exit 1
+fi
+if [ ! -f $1 ] ; then
+   echo "$myname: $1 not found"
+   exit 1
+fi
+if [ "$2" != "" ] ; then
+   case $2 in
+      pr=[0-9]*) printer=`echo $2 | awk -F= '{print $2}'` ;;
+   esac
+   if [ \( $printer -gt $LPDEVS \) -o \( $printer -lt 1 \) ] ; then
+      echo "$myname: no such AIPS printer number $printer."
+      echo "$myname: Choose a number between 1 and $LPDEVS."
+      exit 1
+   fi
+else
+   printer=1
+   found=0
+   while [ \( $printer -le $LPDEVS \) -a \( found -eq 0 \) ] ; do
+      lptype="\$LPTYPE$printer"
+      lptype=`eval echo $lptype`
+      if [ "$lptype" = "PS-CMYK" ] ; then
+	 found=1 ; break
+      fi
+   done
+   if [ $found -eq 0 ] ; then
+      echo "$myname: No color printer found in configured AIPS printers"
+      echo "$myname: check $AIPS_ROOT/PRDEVS.SH for PS-CMYK printers."
+      exit 1
+   fi
+fi
+lpdev="\$LPDEV$printer"
+lpdev=`eval echo $lpdev`
+lpdesc="\$LPDESC$printer"
+lpdesc=`eval echo $lpdesc`
+lptype="\$LPTYPE$printer"
+lptype=`eval echo $lptype`
+if [ "$2" != "" ] ; then
+   if [ "$lpdev" = "" ] ; then
+      echo "$myname: something wrong with $AIPS_ROOT/PRDEVS.SH!"
+      echo "$myname: Printer #$printer somehow messed up?"
+      exit 1
+   elif [ "$lptype" != "PS-CMYK" ] ; then
+      echo "$myname: printer number $printer ($lpdesc) is type $lptype!"
+      echo "$myname: Sorry, but it has to be of type PS-CMYK"
+      exit 1
+   else
+      echo "$myname: using the $lpdesc"
+   fi
+else
+   echo "$myname: using default color printer: $lpdesc"
+fi
+#                               make sure the file exists
+#                               use executable if available
+if [ -f $SYSLOCAL/FILLSLIDE.EXE ] ; then
+   cat $1 | $SYSLOCAL/FILLSLIDE.EXE > $1.s
+elif [ -f $SYSLOCAL/FILLSLIDE.SH ] ; then
+   cat $1 | $SYSLOCAL/FILLSLIDE.SH > $1.s
+else
+   echo "$myname: cannot find FILLSLIDE (.SH or .EXE) in $SYSLOCAL"
+   exit 1
+fi
+#                                       SunOS specific
+lpr -P$lpdev $1.s
+#                                       wait a bit before checking it
+sleep 2
+#                                       check the print queue
+lpq -P$lpdev
+((sleep $DELAY; rm -f $1.s)&)
+echo "$myname: will remove $1.s in $DELAY seconds"
+#                                       End of script

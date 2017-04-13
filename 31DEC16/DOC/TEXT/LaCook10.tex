@@ -1,0 +1,1607 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995, 1997-1998, 2000-2001, 2003-2004, 2007-2008,
+%;  Copyright (C) 2010, 2013-2014, 2016
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\chapts{Single-Dish Data in \AIPS}{sd}
+
+\renewcommand{\titlea}{31-December-2008 (revised 11-November-2016)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+     \AIPS\ was not originally intended as a reduction package for
+\Indx{single-dish} data and cannot be considered as such today.
+However, because of the similarity of single-dish data taken at
+``random'' pointings on the sky to interferometric data taken at
+``random'' locations in the \uv\ plane, \AIPS\ was seen as a system to
+be used to solve large imaging problems arising from single-dish
+observations.  Many of the \AIPS\ \uv-data tasks are able to do
+something sensible --- or even desirable --- with single-dish data and
+a few special tasks to process single-dish data have been written.
+The present chapter contains a discussion of the representation of
+single-dish data in \AIPS\ followed by a description of how such data
+may be calibrated, corrected, converted into images, and analyzed by
+\hbox{\AIPS}.  A final section on using single-dish observations to
+improve the imaging of interferometric data represents what little we
+now know about this potentially important process.
+
+\sects{\AIPS\ format for single-dish data}
+
+     Single-dish data in \AIPS\ is treated as \uv\ data with
+different, but related random parameters and with the imaginary part
+of the visibility replaced by an additive calibration or offset.  The
+{\it u\/} and {\it v\/} random parameters are replaced by parameters
+labeled {\tt RA} and {\tt DEC}, although other labels such as {\tt
+ELON}, {\tt ELAT}, {\tt GLON}, and {\tt GLAT} are also recognized.
+(Conversion between these coordinate systems is not provided in the
+``\uv'' plane although some conversion can be done on images.)  The
+random parameter data are the sample coordinates in degrees.  The {\tt
+TIME1} random parameter is the time (IAT) since midnight on the
+reference date in days as with real \uv\ data.  The {\tt BEAM} random
+parameter corresponds to {\tt BASELINE} and is used to separate data
+which should be edited and calibrated separately (\eg\ separate beams
+of a multi-feed system, different polarizations or observing runs of a
+multi-polarization system).  The actual beam number is recorded as 257
+times the desired number so that visibility-data tasks will recognize
+the ``baseline'' as auto-correlation data.  Two other random
+parameters, {\tt SCAN} and {\tt SAMPLE}, have no relation to any
+visibility parameters and are simply used to retain the ``scan''
+number and sample number within the scan which are traditional in
+single-dish observations.  Very little is made of these, but {\tt
+\tndx{INDXR}} will make a new index entry when the scan number changes
+and {\tt \tndx{PRTSD}} will display the scan and sample numbers.  {\tt
+\tndx{SDVEL}} uses the scan numbers to determine when to update the
+reference velocity in some observing modes.  Single-dish data may be
+stored in compressed form, in which the weight and compression scale
+are stored as random parameters exactly as in true visibility data.
+This should {\it not\/} be done if the applied offset is large as in
+\indx{beam-switched continuum} observations.
+
+     The measured single-dish flux, usually in units of degrees
+Kelvin, appears in the real part of the ``complex visibility.''  The
+imaginary part of the visibility is sometimes used to hold an offset
+which can be applied to the data to remove, for example, a
+time-variable bias.  The data weight is used to weight the data and
+should be proportional to $\sigma^{-2}$, where $\sigma$ is the
+uncertainty in the flux.  The visibility sample can contain multiple
+polarizations, described with the {\tt STOKES} axis (values 1 through
+4 for I, Q, U, and V, respectively).  The sample can also contain
+multiple spectral-line frequencies, described with a {\tt FREQ} axis
+giving the observed reference frequency and increment in Hz.
+
+     The \uv-data header in an \AIPS\ data set is expected to contain
+the reference (usually central) longitude and latitude given either as
+1-pixel coordinate axes and/or in the ``observed'' coordinate location.
+The convolution size is usually used to hold the single-dish beam
+width (fwhm) and rest frequency and velocity information should also
+appear with spectral-line data.  Many of the parameters can be added
+to the header by the user if they are missing and needed.  Verbs {\tt
+\tndx{ADDBEAM}}, {\tt \tndx{ALTDEF}}, and {\tt \tndx{PUTHEAD}} are
+useful for this purpose.  A complete data set will also have an
+antenna extension file giving the location of the antenna.  This
+allows tasks to compute things like zenith angles and Doppler
+corrections when needed.
+
+\subsections{On-the-fly data from the 12m}
+
+     At the present time, the only reliable routes for
+\Indx{single-dish} data into \AIPS\ are provided by the tasks {\tt
+OTFBS} and \hbox{{\tt OTFUV}}.  These tasks work only on beam-switched
+continuum and on spectral-line observations, respectively, from the
+NRAO 12m telescope.  They use files in the UniPops native format and
+do not read the FITS table format written by UniPops.  Both programs
+are designed for ``\Indx{on-the-fly}'' or ``\Indx{OTF}'' observing
+modes in which the telescope takes data rapidly while continuously
+changing its pointing position.
+
+\subsubsections{Listing OTF input files}
+
+     To read OTF files, you must first define an environment variable
+to point to the disk area in which your data resides.  This
+environment variable and your file names should be in upper case
+letters, but there is an {\tt AIPS} ``feature'' which allows you to
+use lower case.  On Unix systems, you may set the environment variable
+and rename the files to upper case with
+\dispx{{\tt \%\qs}cd \qs /my/disk/directory \CR}{to switch to the disk
+              directory containing your data.}
+\dispx{{\tt \%\qs}setenv \qs MYAREA \qs `pwd` \CR}{to define {\tt
+              \$MYAREA} under c shell, or}
+\dispx{{\tt \%\qs}export \qs MYAREA=`pwd` \CR}{to define {\tt
+              \$MYAREA} under Bourne, bash, korn shells.}
+\dispx{{\tt \%\qs}mv mysdd.file MYSDD.FILE \CR}{to rename the data
+              file to upper case letters.}
+\dispx{{\tt \%\qs}mv mygsdd.file MYGSDD.FILE \CR}{to rename the gain
+              file to upper case letters.}
+\dispe{Then start your {\tt AIPS} session.}
+
+     To review the contents of your data set, use the task {\tt
+\Tndx{OTFIN}} which will list SDD modes, IF and scan numbers, times,
+coordinates, velocities, and number of samples.  This output should
+help in setting the range of scan numbers to be loaded by {\tt
+\Tndx{OTFUV}} or \hbox{{\tt \tndx{OTFBS}}}.  Type:
+\dispt{TASK\qs 'OTFIN'\qs ;\qs INP \CR}{to list the required inputs on
+          your screen.}
+\dispt{DATAIN\qs 'MYAREA:MYSDD.FILE' \CR}{to specify the name of
+          the 12m raw data file, where {\tt MYAREA} is an environment
+          variable which points at a disk data area and {\tt
+          MYSDD.FILE} is the name of your file in that area.  See
+          \Sec{externfile}.  If your environment variable and/or your
+          file name contain lower case letters, type the name
+          carefully with the correct case for all letters and leave
+          off the second (close) quote mark.  When you use this
+          ``feature'' of the {\tt AIPS} compiler, you cannot type
+          anything following the {\tt DATAIN} name (or other string
+          adverb) on that line.}
+\dispt{BCOUNT\qs 0 ; ECOUNT\qs 0 \CR}{to include all 12m scans in the
+          file.}
+\dispt{BIF\qs 0 \CR}{to include all SDD ``IFs.''}
+\dispt{DOCRT\qs -1 \CR}{to print the listing on the line printer, or}
+\dispt{DOCRT\qs 1 \CR}{to view the listing, one page at a time, on
+          your terminal window.  The width given (if $> 72$) should
+          match the width desired; a width of $< 72$, as given here,
+          uses the actual width ot the window and so maximizes the
+          information per line.}
+\dispt{INP \CR}{to review the parameters.}
+\dispt{GO \CR}{to run the task.}
+\pd
+
+\vfill\eject
+\Subsubsections{Reading spectral-line OTF files into \AIPS}{otfuv}
+
+     To run {\tt \Tndx{OTFUV}} after running {\tt OTFIN}, type
+\dispt{TASK\qs 'OTFUV'\qs ;\qs INP \CR}{to list the required inputs on
+          your screen.}
+\dispt{DATAIN\qs 'MYAREA:MYSDD.FILE' \CR}{to specify the name of
+          the 12m raw data file, where {\tt MYAREA} is an environment
+          variable which points at a disk data area and {\tt
+          MYSDD.FILE} is the name of your file in that area.  See
+          \Sec{externfile}.}
+\dispt{DATA2IN\qs 'MYAREA:MYGSDD.FILE' \CR}{to specify the name
+          of the 12m gain file corresponding to the file specified
+          with {\tt DATAIN}.}
+\dispt{BCOUNT\qs $n_1$ ; ECOUNT\qs $n_2$ \CR}{to include 12m scans
+          $n_1$ through $n_2$ in the output file.}
+\dispt{BIF\qs 0 ; EIF \qs 0 \CR}{to include all SDD ``IFs'' matching
+          the lowest numbered one found.  IFs which do not match in
+          central frequency or channel width are skipped.}
+\dispt{DOUVCOMP\qs TRUE \CR}{to write the data in a compressed format.
+          This reduces the size of the file by nearly a factor of 3
+          with no significant loss of information in this case.}
+\dispt{XINC\qs 1 ; YINC \qs 1 \CR}{to write out all data samples with
+          no time averaging.  One can smooth by {\tt YINC} samples and
+          write out the data every {\tt XINC} sample times in order to
+          reduce the size of the output data set and improve the
+          signal-to-noise of the individual samples with only a minor
+          loss of information..}
+\dispt{DOWEIGHT\qs 1 \CR}{to use offs and gains interpolated to the
+          time of each observation.  This seems to produce better
+          results.}
+\dispt{DETIME\qs 0 \CR}{to add no offset to the actual observation
+          times.}
+\dispt{BCHAN\qs 0; ECHAN\qs 0 \CR}{to include all spectral channels.}
+\dispt{CHANSEL\qs 0 \CR}{to flag no channels.  {\us CHANSEL\qs
+          31,34,3 \CR}, for example, would mark channels 31 and 34 as
+          bad.  Data may be edited later more selectively.}
+\dispt{INP \CR}{to review the parameters.}
+\dispt{GO \CR}{to run the task.}
+\dispe{While {\tt OTFUV} runs, it will show you (on the message
+monitor or your window) the name and location of the output \AIPS\
+file created and then provide a list of the scans and IFs read and the
+gain scans used upon them.}
+
+     In many cases, the 12m in \Indx{OTF} mode observes two separate
+polarizations using the same center frequency and spectral resolution.
+In the UniPops/12m nomenclature, these are separate ``IFs.''  A
+similar nomenclature is used to distinguish the feeds in the multi-feed
+system.  {\tt OTFUV} can now read up to eight IFs at the same time,
+avoiding the necessity of multiple runs of {\tt OTFUV}, followed by a
+data sort to restore time order.  {\tt OTFUV} will distinguish
+the IFs not by an \AIPS\ ``IF axis,'' but by assigning them beam
+numbers equal to the SDD IF number (or autocorrelator baseline number
+equal to the SDD IF number with itself).\Iodx{on-the-fly}
+\iodx{spectral-line}\Iodx{single-dish}
+
+     You may append data from another IF in the first input data set
+or data from another OTF pass on the source to the \AIPS\ data set
+created above, by entering new {\tt DATAIN} and {\tt DATA2IN} names
+and new {\tt BCOUNT} and {\tt ECOUNT} ranges, if needed and
+\dispt{BIF\qs $m_1$ ; EIF\qs $m_2$ \CR}{to load IFs $m_1$ through
+          $m_2$.}
+\dispt{DOCONCAT\qs TRUE \CR}{to enable the concatenation mode.}
+\dispt{OUTDISK\qs {\it n\/} ; GETONAME\qs{\it m\/} \CR}{to select the
+          output file, where {\it n\/} and {\it m\/} are the output
+          disk and catalog slot number used by the first run of {\tt
+          OTFUV}.}
+\dispt{FQTOL\qs {\it ff\/} \CR}{to allow data sets within {\it ff\/}
+          MHz of each other to be concatenated.  \indx{Doppler}
+          tracking will cause two \Indx{OTF} passes to appear to be at
+          separate frequencies.  Narrow-band, wide-field observations
+          should not be concatenated in this way; see the discussion
+          of {\tt \tndx{SDVEL}} below (\Sec{sdcorr}).}
+\dispt{GO \CR}{to run the task appending the additional data.}
+\dispe{Another way to concatenate two 12m IFs --- or multiple
+observing runs --- is to create two output files with {\tt OTFUV} and
+then concatenate them with \hbox{{\tt \tndx{DBCON}}}.  If the two {\tt
+\Tndx{OTFUV}} files are in time order, then {\tt DBCON} will actually
+merge the two data sets, retaining the time order.  Avoid the use of
+multiple sub-arrays, which are a useless complication in this case, by
+setting {\tt DOARRAY = 0}.  To have the most ``complete'' antenna
+file, put the data set with the higher 12m IF in the first input name
+set ({\tt INNAME}, {\tt INCLASS} etc.)\iodx{spectral-line}}
+
+\subsubsections{Reading continuum OTF files into \AIPS}
+
+     The NRAO 12m telescope can observe in a \Indx{beam-switched
+continuum} \Indx{on-the-fly} mapping mode.  Such data may be read into
+\AIPS\ and reduced, in a somewhat experimental fashion, into images.
+To read in the data (after using {\tt OTFIN}), enter
+\dispt{TASK\qs '\tndx{OTFBS}'\qs ;\qs INP \CR}{to list the required
+          inputs on your screen.}
+\dispt{DATAIN\qs 'MYAREA:MYSDD.FILE' \CR}{to specify the name of
+          the 12m raw data file, where {\tt MYAREA} is an environment
+          variable which points at a disk data area and {\tt
+          MYSDD.FILE} is the name of your file in that area.  See
+          \Sec{externfile}.}
+\dispt{BCOUNT\qs $n_1$ ; ECOUNT\qs $n_2$ \CR}{to include 12m scans
+          $n_1$ through $n_2$ in the output file.}
+\dispt{BIF\qs 0 ; EIF \qs 0 \CR}{to include all SDD ``IFs'' matching
+          the lowest numbered one found.  IFs which do not match in
+          central frequency or channel width are skipped.}
+\dispt{INP \CR}{to review the parameters.}
+\dispt{GO \CR}{to run the task.}
+\dispe{While {\tt OTFBS} runs, it will show you (on the message
+monitor or your window) the name and location of the two output \AIPS\
+files created (one for ``plus'' and one for ``minus'' beam throws) and
+then provide a list of the scans and IFs read with the number of
+samples.  The two output files will have the same names except for a
+``{\tt +}'' and a ``{\tt -}'' as the sixth character of the output
+class.}
+
+\subsections{Other input data formats}
+
+     Another method for getting \Indx{single-dish} data into \AIPS\ is
+through the use of FITS-format binary tables.  If the data are able to
+be put in a usable table, then the \AIPS\ FITS reading tasks such as
+{\tt \tndx{FITLD}} (see \Sec{uvlod}) can be used to read them into a
+disk table attached to a cataloged file.  Then {\tt \Tndx{SDTUV}} can
+be used to convert the table into the \uv\ format described above
+applying a variety of calibrations along the way.  Unfortunately, the
+non-\AIPS\ program that did the UniPops to FITS conversion has been
+lost and the \AIPS\ FITS readers cannot handle the FITS tables written
+by UniPops.  There are two problems with the latter: \AIPS\ is unable
+to handle tables with more than 128 columns while UniPops writes
+tables with around 200 columns.  Even if \AIPS\ could be extended in
+some special task, it would be unable to handle the current UniPops
+tables since the parameters given do not correctly describe the
+contents.  Specialized unpublished knowledge about each receiver is
+required to disentangle the coordinate information and data structure.
+
+     The task {\tt SDTUV} expects a sequence of related tables each
+with a number of keywords giving useful information such as scan,
+observer, telescope, object, scan start UT date and time, sample rate,
+velocity, and the like.  The data are then a regular time sequence
+with each row of the table containing the right ascension,
+declination, and data for {\it N\/} receivers.  Breaks in the time
+sequence are assumed to be new scans found in the next table.  {\tt
+SDTUV} has the ability to apply receiver position offsets and pointing
+corrections and to fit and remove receiver baselines using a sliding
+median window and spline fit.  Interference rejection, lateral
+defocusing corrections, and a priori baseline removal are also
+offered.  At present {\tt \Tndx{SDTUV}} is an example of what can be
+done rather than a directly usable task.  It is limited to continuum
+problems currently and is moderately restricted in the number of data
+samples that can be read in any one scan.
+
+     Therefore, it will be necessary to write some sort of program in
+addition to those in the standard \AIPS\ release to get single-dish
+data into \hbox{\AIPS}.  We encourage anyone who develops such a
+program to provide it to the \AIPS\ group so that we may offer it to
+other single-dish users.
+
+\sects{Single-dish data in the ``uv'' domain}
+
+     Once you have gotten your data into \AIPS, a wide range of tasks
+become available to you.  In addition to the \Indx{single-dish}
+specific tasks discussed below, these include data movement tasks
+({\tt UVCOP}, {\tt UVSRT}, {\tt DBCON}), data averaging ({\tt AVER},
+{\tt UVAVG}, {\tt AVSPC}), non-interactive editing ({\tt CLIP}, {\tt
+UVFLG}), interactive editing ({\tt SPFLG}, {\tt EDITR}, {\tt TVFLG}),
+data backup and restore ({\tt FITTP}, {\tt FITLD}), and data display
+({\tt PRTAN}, {\tt PRTUV}, {\tt UVPRT}, {\tt UVPLT}).
+
+\subsections{Using {\tt PRTSD}, {\tt UVPLT}, and {\tt POSSM} to look
+    at your data}
+
+     In the process of calibrating, modeling, editing, and imaging of
+single-dish data, there are occasionally problems that seem to arise
+because  users are not aware of the data that they actually have.
+{\tt \tndx{PRTSD}} is the task for such users.  It displays the data
+with or without calibration for selected portions of your data set.
+This will help you identify what pointing positions actually occur in
+your data, which channels are highly variable or bad, and the like.
+{\tt SPFLG}, {\tt UVPLT}, and others are good for looking at the data
+set as a whole, but {\tt PRTSD} really shows you what you have.
+
+     To run it, type:
+\dispt{TASK\qs 'PRTSD'\qs ;\qs INP \CR}{to list the required inputs on
+          your screen.}
+\dispt{INDISK \qs {\it n\/} ; GETN \qs {\it ctn\/} \CR}{to select the
+          single-dish ``\uv'' file to be displayed.}
+\dispt{DOCRT\qs 1 \CR}{to select the on-screen display at its current
+          width; make sure your window is at least 132 characters
+          across for the best results.}
+\dispt{DOCELL\qs -1 \CR}{to look at the data values; {\tt DOCELL} $>
+          0$ causes the offsets that have been removed (usually 0) to
+          be displayed.}
+\dispt{CHANNEL\qs {\it m\/} \CR}{to display channels {\it m\/} through
+          $m+5$.}
+\dispt{DOCAL\qs FALSE \CR}{to apply no calibration.  Note that the
+          12m off scans and instrumental gains are applied by {\tt
+          OTFUV}; this parameter applies only to any additional
+          calibration contained in {\tt CS} files.  See \Sec{sdcal}.}
+\dispt{TIMERANG\qs 0 \CR}{to look at all times.}
+\dispt{ANTENNAS\qs $a1, a2, \ldots$ \CR}{to look at beams/IFs $a1,
+          a2, \ldots$ only.}
+\dispt{BPRINT\qs {\it bb\/} \CR}{to begin the display with the
+          $bb^{\uth}$ sample in the data set {\it before\/}
+          application of the other selection criteria ({\tt TIMERANG},
+          {\tt ANTENNAS}, etc.)}
+\dispt{NPRINT\qs 2000 \CR}{to shut off the display interactively or
+          after a lot of lines.}
+\dispt{XINC\qs {\it x\/} \CR}{to display only every $x^{\uth}$ sample
+          of those selected by the other criteria.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to start the task.}
+\dispe{{\tt PRTSD} will start and, after a pause to get through any
+data not included at the start of the file, will begin to display
+lines on your terminal showing the scan number, time, coordinates, and
+data for six spectral channels.  After 20 or so lines, it will pause
+and ask if you want to continue.  Hit \CR\ to continue or type {\us Q
+\CR} or {\us q \CR} to quit.  If you decide to get hard copy, set {\tt
+DOCRT = -1} and the output will be printed.  To save the display in a
+text file, without printing, set {\tt DOCRT = -1} and give the name of
+the file in the {\tt OUTPRINT} adverb.  See \Sec{message} and
+\Sec{textfile} for more information on printing.}
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.0in}{\gname{uvpltSD3}\hspace{0.8cm}\gname{uvpltSD2}}
+\resizebox{!}{3.0in}{\gbb{534,555}{uvpltSD3}\hspace{0.8cm}\gbb{540,559}{uvpltSD2}}
+\caption[{\tt UVPLT} displays of single-dish data.]{{\it left:\/} {\tt
+\tndx{UVPLT}} display of 12m \indx{beam-switched continuum} data on
+Jupiter.  The time range is set to display one row of the OTF
+observation and the ``minus'' beam throw data have been subtracted
+from the ``plus'' throw. {\it right:\/} {\tt UVPLT} display of the
+right ascension and declination of each sample in spectral-line OTF
+data set over a limited time range.\Iodx{single-dish}}
+\label{fig:sdUVPLT}
+\end{figure}
+
+     There are a number of tasks which plot \uv\ visibility data; see
+\Sec{plotuv}.  The most basic of these is {\tt \tndx{UVPLT}}, which
+can be useful for single-dish data sets.  For example, to generate the
+plot of flux versus time in 12m OTF \indx{beam-switched continuum}
+differenced data seen in the accompanying figure (\Rfig{sdUVPLT}), the
+parameters given below were used:
+\dispt{TASK\qs 'UVPLT' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{DOCALIB\qs FALSE \CR}{to apply no calibration; {\tt UVPLT} does
+         not understand \Indx{single-dish} calibration.}
+\dispt{BPARM = 11,9,0 \CR}{to plot time in hours on the {\it x\/} axis
+         and flux in Kelvins on the {\it y\/} axis.  The other
+         parameters can be used to specify fixed scales on one or both
+         axes, but are just self-scaled in this example.}
+\dispt{XINC\qs 1 \CR}{to plot every selected sample.}
+\dispt{BCHAN\qs 1 ; ECHAN\qs 1 \CR}{to plot only ``spectral channel''
+         1, the actual data values.}
+\dispt{ANTENNA\qs 1,0 ; BASELINE\qs 0 \CR}{to do all baselines with
+         antenna 1, namely 1--1 or, in 12m nomenclature, IF 1..}
+\dispt{TIMER = 0, 5, 38, 5, 0, 5, 38, 55 \CR}{to restrict the times to
+         a single scan.}
+\dispt{DOCRT = -1 ; GO \CR}{to make a \Indx{plot file} of these data.}
+\dispe{After {\tt UVPLT} is running, or better, after it has
+finished:}
+\dispt{PLVER\qs 0 ; GO\qs LWPLA \CR}{to plot the latest version on a
+         \indx{PostScript} printer/plotter.}
+\dispe{The second plot in \Rfig{sdUVPLT} was generated with {\tt BPARM
+= 6, 7} and shows where samples occur on the sky in a different data
+set.}
+
+     With spectral-line data, {\tt \tndx{POSSM}} will plot observed
+spectra averaged over selected ``antennas,'' time ranges, and the
+like.  Thus,
+\dispt{TASK\qs 'POSSM' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{BCHAN\qs 0 ; ECHAN\qs 0 \CR}{to plot all channels.}
+\dispt{ANTENNAS\qs 0 ; BASELINE\qs 0 \CR}{to average all 12m IFs.}
+\dispt{TIMERA\qs 0 ; SOLINT\qs 0 \CR}{to average all times into one
+         plot.}
+\dispt{APARM(7) = 2 \CR}{to have velocity labels on the {\it x\/}
+         axis.}
+\dispt{GO \CR}{to run the task.}
+\dispe{{\tt \tndx{LWPLA}} was then used to make a PostScript version
+of the plot seen in \Rfig{sdPOSSM}.}
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.0in}{\gname{possmSD}}
+\resizebox{!}{3.0in}{\gbb{724,502}{possmSD}}
+\caption[{\tt POSSM} display of single-dish data.]{{\tt \tndx{POSSM}}
+display of all of a 12m observation taken on W51.  All samples (on and
+off the actual source) and both ``antennas'' are averaged together.}
+\label{fig:sdPOSSM}
+\end{figure}
+
+\Subsections{Using {\tt UVFLG}, {\tt SPFLG}, and {\tt EDITR} to edit
+     your data}{spflg}
+
+     Editing is the process by which you mark data samples as
+``unreliable'' or ``bad.''  In \AIPS, there are two methods for doing
+this.  The simplest is to have the \indx{editing}\iodx{flagging}
+software alter the weight of the sample to indicate that it is
+flagged.  If the data are not compressed, this is a reversible
+operation.  If the data are compressed, however, then the data
+themselves are marked as ``indefinite'' and the operation is not
+reversible.  The second method is the use of a flag ({\tt FG})
+extension table attached to your \uv\ data set.  This method requires
+that the data be sorted into time order for large {\tt FG} tables and
+is supported by most, but not all, tasks.  Small ($< 6000$ row) {\tt
+FG} tables may be used with data in any sort order.  If the task does
+not have the {\tt FLAGVER} adverb, then it does not support flag
+tables. However, since flag tables can be applied to the data by {\tt
+SPLIT}, we use them in the recipes below.
+
+     To sort the data into ``time-baseline'' ({\tt TB}) order,
+\dispt{TASK\qs '\tndx{UVSRT}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+      and catalog entry of the data set.}
+\dispt{SORT\qs'TB' \CR}{to sort into time-baseline order.}
+\dispt{ROTATE\qs 0 \CR}{to avoid damage to the coordinates.}
+\dispt{INP \CR}{to check the parameters, \eg\ the output name.}
+\dispt{GO \CR}{to run the task.}
+\pd
+
+     The most direct \indx{flagging} task is {\tt \tndx{UVFLG}}, which
+puts commands into the flag table one at a time (or more than one when
+read from a disk text file).  To use this task to flag channel 31 from
+7 to 8 hours on the first day of observation from the second input
+(\Indx{single-dish} nomenclature) IF:
+\dispt{TASK\qs 'UVFLG' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the sorted data set.}
+\dispt{OUTFGVER\qs 1 \CR}{to select the desired flag table.}
+\dispt{TIMERANG\qs 0, 7, 0, 0, 0, 8, 0, 0 \CR}{to set the time range
+         from 7 to 8 hours.}
+\dispt{BCHAN\qs 31 ; ECHAN\qs 31 \CR}{to flag only channel 31.}
+\dispt{BIF\qs 0 ; EIF\qs 0 \CR}{to do all \AIPS\ IFs.}
+\dispt{ANTEN\qs 2, 0 ; BASELIN\qs 2, 0 \CR}{to select ``baseline''
+         2-2, the $2^{\und}$ IF in 12m nomenclature.}
+\dispt{APARM\qs 0 \CR}{to ignore amplitude in flagging.}
+\dispt{OPCODE\qs 'FLAG' \CR}{to flag the data.}
+\dispt{REASON\qs 'Bad channel' \CR}{to store away a reason.}
+\dispt{INP \CR}{to check the full set of adverbs.}
+\dispt{GO \CR}{to add one line to the flag table, creating one if
+         needed.}
+\dispe{Multiple runs of {\tt UVFLG} may be done to incorporate what
+you know about your data into the flagging table.  Use {\tt PRTSD} and
+the plot programs to help you find the bad data.  If you have a long
+list of flagging commands, you may find it easier to use the {\tt
+INTEXT} option of {\tt UVFLG} to read in up to 100 flagging
+instructions at a time from a free-format text file.}
+
+     The task {\tt \tndx{CLIP}} is popular on interferometer data sets
+since it automatically flags all samples outside a specified flux
+range without interaction with the user.  This blind flagging is
+often acceptable for interferometer data since each \uv\ sample
+affects all image cells so that the damage done by a few remaining bad
+samples is attenuated by all the good samples.  However, a bad sample
+in single-dish data affects only a few image cells and is hence
+not attenuated.  Thus it is important to find and remove samples that
+are too small as well as those that are too large.  For this reason,
+we do not recommend {\tt CLIP}, but suggest that you look at your data
+and make more informed flagging decisions.
+
+     The best known of the interactive \indx{editing} tasks is {\tt
+TVFLG} (\Sec{tvflg}).  This task is not suitable for single-dish data
+since it displays multiple baselines along the horizontal axis.  The
+data on these baselines are related in interferometry, but, in single
+dish, they are from separate feeds or polarizations and hence neither
+numerous nor necessarily related.  For \indx{spectral-line}
+single-dish data, the task {\tt \tndx{SPFLG}} is an ideal task to
+examine your data and to edit portions if needed.  {\tt SPFLG} is a
+menu-driven, TV display editing task in which spectral channel varies
+along the horizontal axis of the TV display and time along the
+vertical.  (The spectral channels for each interferometer IF are
+displayed on the horizontal axis, but single-dish data in \AIPS\ has
+only 1 of this sort of IF\@.)  The data may be displayed with as much
+or as little time averaging as desired and is very useful for
+examining your data even if you do not think that editing is needed.
+
+      To run {\tt SPFLG}, type
+\dispt{TASK\qs 'SPFLG' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the sorted data set.}
+\dispt{FLAGVER\qs 1 \CR}{to select the use of a flag table {\it on the
+         input data.}}
+\dispt{OUTFGVER\qs 0 \CR}{to write a new flag table including all
+         flags applied to the input data.}
+\dispt{BCHAN\qs 0 ; ECHAN\qs 0 \CR}{to view all spectral channels.}
+\dispt{DOCALIB\qs FALSE \CR}{to inhibit {\it interferometer\/}
+         calibration of your data.}
+\dispt{IN2SEQ\qs 0 ; DOCAT \qs FALSE \CR}{to create a new, but
+         temporary ``master file'' each time.}
+\dispt{ANTEN\qs 0 ; BASEL \qs 0 \CR}{to include all ``baselines.''}
+\dispt{DPARM\qs 0, 1, 0, 0, 0, 0.1 \CR}{to include autocorrelation
+         data and to set the fundamental interval used to average data
+         into the master file.  The defaults for these parameters are
+         not suitable for single-dish data.  The other {\tt DPARM}
+         parameters may be ignored since they can be altered during
+         the interactive session.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to begin the interactive display and editing.}
+\dispe{The task will then read your data to determine which times
+occur in the included portions (you may set {\tt TIMERANG}, restrict
+autocorrelations, etc.) and then construct a master grid file with
+spectral channel as the first axis, pseudo-regular times on the second
+axis (gaps are mostly suppressed), and, if needed, baseline number on
+the third axis.  {\tt SPFLG} tells you the size of the resulting file,
+\eg\ {\tt SPFLG1: Basic UV image is  128 14079 pixels in X,Y (Ch,T)}.
+\Iodx{single-dish}}
+
+     At this point, {\tt \tndx{SPFLG}} selects an initial {\it
+display\/} smoothing time long enough to fit all of the master grid
+onto your TV window.  It then averages the data to this interval and
+creates a display not unlike that seen in \Rfig{spflg}.  Move the
+TV cursor to any menu item (it will change color to show which has
+been selected) and press button {\tt D} for on-line help information
+or press buttons {\tt A}, {\tt B}, or {\tt C} to select the operation.
+Normally, you will probably begin by reducing the smoothing time ({\tt
+ENTER SMOOTH TIME} menu option followed by typing in the new smoothing
+multiple on your {\tt AIPS} window).  Note that the display does not
+change other than to add an asterisk after the smoothing time to
+indicate that that will change on the next image load.  This behavior
+is to allow you to alter a number of choices before doing the
+potentially expensive TV display.  In this typical example, you would
+either {\tt ENTER BLC} and {\tt ENTER TRC} by hand and finally {\tt
+LOAD} the sub-image or you can do this interactively with {\tt SET
+WINDOW + \hbox{LOAD}}. You may examine data values (like {\tt CURVAL})
+and flag data with the options in the fourth column.  Flagged data are
+removed from the display.  You may review the flags you have prepared,
+undo any that you dislike, re-apply the remaining ones to make sure
+the display is correct, and modify the appearance of the display with
+the options in the first column.  The image may be shown in zoom only
+during \indx{editing} in order to give you greater accuracy in
+examining the data values and locations.  If you are doing some time
+smoothing within {\tt SPFLG}, the {\tt DISPLAY RMS} option allows you
+to view images of the rms rather than the value of the time average.
+Such a display allows you to find excessively noisy portions of the
+data quickly.\iodx{spectral-line}
+
+\begin{figure}
+\centering
+%\resizebox{!}{7.0in}{\gname{spflgSD}}
+\resizebox{!}{7.0in}{\gbb{519,702}{spflgSD}}
+\caption[{\tt SPFLG} display.]{A display of a sample TV screen from
+{\tt \tndx{SPFLG}} on \Indx{single-dish} data, made using the \AIPS\
+task {\tt \tndx{TVCPS}} to produce a negative black-and-white display.
+The {\tt SPFLG} menu (in the boxes) and status lines (at the bottom)
+are displayed in a graphics plane which is normally colored light
+green. The data are grey scales in a TV memory and may be enhanced in
+black-and-white or pseudo-colored.  The data actually displayed range
+in intensity from -1.7 to 5.2 Kelvins (as stated during the image
+loading) and have been averaged to 0.8 seconds.  The entire master
+grid contains 14079 times, but the current window includes only times
+5403 through 9538. Flag commands generated at the moment illustrated
+will flag all source names, all IFs (in the \AIPS\ sense), only the
+displayed baseline, and all Stokes.  {\it Note that the menu displayed
+is now out of date, more options are available in later
+versions.}\iodx{editing}\iodx{flagging}
+\iodx{spectral-line}\iodx{OTF}\iodx{on-the-fly}}
+\label{fig:spflg}
+\end{figure}
+
+     Finally, when you are done, select \hbox{{\tt EXIT}}.  If you
+have prepared any \indx{flagging} commands, {\tt SPFLG} will ask you
+if you wish to enter them into your input data set.  Answer yes unless
+you want to discard them or you have set {\tt DOCAT\qs TRUE} to
+catalog the master file in order to use it for multiple sessions.  If
+you set {\tt OUTFGVER} to zero, then the flag commands are put into a
+new flag table which can be deleted later if you wish.
+
+     {\tt SPFLG} is not useful on continuum data; the interactive
+editor of choice for such data used to be the task {\tt \tndx{IBLED}},
+but is now \hbox{{\tt \tndx{EDITR}}}.  These tasks are also useful for
+spectral-line data in that they can display the average (and rms) of a
+selected range of channels.  The spectral averaging should let you see
+more subtle level problems  than can be seen on individual channels
+(\ie\ in \hbox{{\tt SPFLG}}).  {\tt EDITR} is a menu-driven, TV
+display editing task, but it does not use grey-scales to show data
+values.  Instead, it plots time on the horizontal axis and data value
+on the vertical axis.  The full data set for the chosen baseline is
+displayed initially in a potentially crowded area at the bottom of the
+TV window.  This area is available for editing.  If {\tt DOTWO} is
+true, then it also displays above the edit area a second observable
+(initially the difference between the amplitude and a running mean of
+the amplitude) for the primary baseline. {\tt EDITR} allows you to
+display up to ten other ``baselines'' (\eg\ 12m-antenna IFs) in frames
+above the active editing frame.  These should speed the process of
+editing and guide you in the choice of flagging one or all baselines
+at the time of the observation.  A smaller time range or window into
+these full data sets may be selected interactively to enable more
+detailed editing.  Be sure to set {\tt SOLINT} to specify an
+appropriate averaging interval.  Unlike {\tt SPFLG}, no further time
+averaging is possible.  The menu options allow you to work your way
+through all of your data, selecting time windows and baselines as
+desired.  Consult \Sec{editr} for more details about \hbox{{\tt
+EDITR}}.
+
+     {\tt \tndx{EDITR}} has the ability to display a second data set
+for reference in parallel with the one being edited.  This option is
+likely to prove useful for beam-switched continuum observations.
+Select one of the beam throws for editing and the other for reference
+display.  Then, if editing is required, reverse the roles.  It may
+also be useful to look at your beam-switched data in its differenced
+form.  The task {\tt \tndx{DIFUV}} may be used to difference the plus
+and minus throws, followed by {\tt EDITR} (or any other \AIPS\ uv-data
+task) to look at the differences.  Be sure to tell {\tt DIFUV} that
+the time difference between the plus and the minus beam throws should
+not be considered significant, \ie\ {\tt SOLINT = 1 / 8 / 60} or a
+little bit more to avoid round-off effects.
+\iodx{editing}\iodx{flagging}
+
+\Subsections{Using {\tt CSCOR} and {\tt SDCAL} to calibrate your
+data}{sdcal}
+
+     The current \indx{calibration} routines for \Indx{single-dish}
+data in \AIPS\ are fairly rudimentary.  The concept is similar to that
+used for interferometers.  Corrections are developed in an extension
+table (called {\tt CS} in single-dish, {\tt CL} in interferometry)
+which can be applied to the data by some tasks.  In particular, the
+single-dish tasks {\tt PRTSD} and {\tt SDGRD} are able to apply the
+{\tt CS} table to the data without modifying the data as stored on
+disk.  They do this using the {\tt DOCAL} and {\tt GAINUSE} adverbs.
+Other \uv\ tasks, designed primarily for interferometry, also use
+these adverbs, but do not understand or apply {\tt CS} tables.  For
+such tasks, you should carefully turn off the calibration option.  If
+you do not, such tasks will fail.
+
+     There are two tasks which can create {\tt CS} tables: {\tt SDTUV}
+discussed above and \hbox{{\tt \tndx{INDXR}}}.  To use the latter,
+enter
+\dispt{TASK\qs 'INDXR' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{CPARM\qs $T_1$, $T_2$, $\Delta T$ \CR}{to set the largest gap
+         ($T_1$) and longest scan ($T_2$) times expected in the data
+         set (for the index table) and to set the time interval
+         ($\Delta T$) in the {\tt CS} table, all in minutes.}
+\dispt{GO\qs \CR}{to run the task to create an index ({\tt NX}) and a
+         \indx{calibration} ({\tt CS}) table attached to the main data
+         set.}
+\dispe{Note that this task requires the data to be in time order and
+expects an antenna ({\tt AN}) table.  You may set {\tt CPARM(5)} to
+the maximum antenna number (beam number) in your data set and, with a
+few grumbles, {\tt INDXR} will still create and initialize a {\tt CS}
+table when you do not have an antenna table.}
+
+     At this writing, the {\tt CS} table may be used to correct
+the recorded right ascension and declination (\ie\ the pointing) and
+to correct the amplitudes for atmospheric opacity and other gain as a
+function of zenith angle effects.  To add an atmospheric opacity
+correction to the {\tt CS} table produced by {\tt INDXR}, type:
+\dispt{TASK\qs '\Tndx{CSCOR}' ; INP \CR}{to review the inputs.}
+\dispt{TIMERAN\qs 0 ; ANTENN\qs 0 \CR}{to do all times and antennas.}
+\dispt{GAINVER\qs 1 ; GAINUSE\qs 2 \CR}{to modify the base table,
+           producing a new table.}
+\dispt{OPCODE\qs 'OPAC' \CR}{to do the opacity correction.}
+\dispt{BPARM\qs $O_z$, 0 \CR}{to specify the zenith opacity in
+           nepers.}
+\dispt{GO \CR}{to run the task.}
+\dispe{Note that {\tt \Tndx{CSCOR}} only writes those records in the
+output file that you have selected via {\tt TIMERANG}, {\tt ANTENNAS},
+etc. To make a new {\tt CS} table to work for the full data set, you
+should first use {\tt TACOP} to write the new table and then set {\tt
+GAINVER} and {\tt GAINUSE} to both point at the new table.  {\tt
+CSCOR} needs to compute the zenith angle and therefore needs to have
+an antennas file.  If your data set does not have one, you may give
+the antenna longitude and latitude in the {\tt CPARM} adverb.  The
+other operations offered by {\tt CSCOR} are {\tt GAIN}, {\tt PTRA},
+and {\tt PTDC} which apply as second-order polynomial functions of
+zenith angle corrections to the gain, right ascension, and
+declination, respectively.  The format of the {\tt CS} table allows
+for an additive flux correction as well.  There are no tasks at this
+time to determine such a correction.\iodx{calibration}}
+
+     The basic \Indx{single-dish} tasks {\tt PRTSD} and {\tt SDGRD}
+can apply the {\tt CS} table to the data as they read them in.  Other
+\uv\ tasks which are more directed toward interferometry data cannot
+do this.  If you need to use such tasks with corrected data, then you
+must apply the corrections with {\tt \tndx{SDCAL}} and write a new
+``calibrated'' data set.  To do this:
+\dispt{TASK\qs 'SDCAL' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{TIMERA\qs 0 ; FLAGVER\qs 1 \CR}{to do all times and apply any
+         flagging.}
+\dispt{BCHAN\qs 1 ; ECHAN\qs 0 \CR}{to get all channels.}
+\dispt{DOCAL\qs TRUE ; GAINUSE\qs 0 \CR}{to apply the highest numbered
+         {\tt CS} table.}
+\dispt{APARM\qs 0\CR}{to do no averaging of spectral channels.}
+\dispt{GO\qs \CR}{to run the task.}
+\dispe{The output file from {\tt SDCAL} can then be fed to {\tt
+UVPLT}, {\tt SPFLG}, or any other \uv-data task including of course
+{\tt PRTSD} and \hbox{{\tt SDGRD}}.}
+
+\Subsections{Using {\tt SDLSF} and {\tt SDVEL} to correct your
+    spectral-line data}{sdcorr}
+
+     It may be convenient to remove a spectral baseline from each
+sample before the imaging step.  Doing so may allow you to skip the
+removal of a spectral baseline from the image cubes (as described in
+\Sec{sdbaseline}).  To do this, type:\iodx{spectral-line}
+\dispt{TASK\qs '\Tndx{SDLSF}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{NCOUNT\qs 1 \CR}{to solve for a slope as well as a constant in
+         the baselines.}
+\dispt{DOALL\qs 1 \CR}{to fit a single baseline to all samples taken
+         at a particular time.  This is useful for single-beam,
+         multi-polarization data, but, for multi-beam data, it is
+         found that instrumental problems dominate weather and require
+         {\tt DOALL = -1 \CR} instead.}
+\dispt{DOOUT\qs -1 \CR}{to avoid writing a continuum data set.}
+\dispt{FLUX\qs 0 ; CUTOFF\qs 0 \CR}{to write all data with no
+         flagging.}
+\dispt{CHANSEL\qs $s_1 , e_1 , i_1, s_2, e_2, i_2 \ldots$ \CR}{to use
+         every $i_1$ channel from $s_1$ through $e_1$, every $i_2$
+         channel from $s_2$ through $e_2$, and so forth to fit the
+         baseline.  Be sure to avoid dubious channels, if any, at the
+         ends and any channels with real line signal.  It is important
+         to have regions at both ends of the spectrum to fit the
+         slope.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the task.}
+\dispe{You may, and probably should, use {\tt FLUX} and {\tt CUTOFF}
+to flag those data having excessive noise or excessive signals in
+individual channels.  These ``excesses'' are measured only in the
+channels selected by {\tt CHANSEL} for fitting the baseline.
+\Todx{SDLSF}}
+
+     If you have observed a wide field with relatively narrow spectral
+channels, there is an effect which you should consider.  The
+``velocity'' corresponding to a particular frequency of observation
+depends on the velocity definition (\eg\ LSR or heliocentric), the
+direction at which the telescope pointed, the time of year, the time
+of day, and the location of the telescope.  Most telescopes adjust the
+observing frequency to achieve the desired velocity for some reference
+time and position and many adjust the frequency periodically to
+account for time changes.  However, few, if any, can adjust the
+observing frequency for every pointing direction and time in a rapidly
+scanned \indx{on-the-fly} observing mode.  The 12m telescope now sets
+the frequency once per image with respect to the reference coordinate
+(usually the image center).  In this mode, the maximum velocity error
+in a 2 degree by 2 degree image is about 1.16 km/s (in LSR velocities)
+and 0.79 km/s (heliocentric).  Since mm lines are often narrow, this
+can be a significant effect.  Fortunately, single-dish OTF data may be
+fully corrected for this effect so long as your spectra are fully
+sampled in frequency.  The task {\tt \Tndx{SDVEL}} shifts each
+spectrum so that the reference channel has the reference velocity for
+its pointing position.  The {\tt DPARM} adverb array is used to tell
+the task how the telescope set reference velocities and to ask the
+task to report any excessive shifts and even flag data having really
+excessive shifts.  The latter are to detect and/or remove times in
+which the telescope pointing was significantly in error (\ie\ high
+winds).  {\tt DPARM(1)} should be set to 0 for 12m data taken after 5
+May 1997 and to 2 for data taken before that date.  The task {\tt
+\Tndx{VTEST}} was written to help you evaluate the magnitude of this
+effect.\iodx{Doppler}\iodx{OTF}\Iodx{single-dish}
+
+\Subsections{Using {\tt SDMOD} and {\tt BSMOD} to model your
+data}{sdmod}
+
+     It is sometimes useful to replace your actual data with a source
+model or, if your continuum levels are well calibrated, to add or
+subtract a model from your data.  The task to do this is called {\tt
+\tndx{SDMOD}} and allows up to four spatially elliptical Gaussians (or
+an image) to replace the data, or to be added to the data, with either
+a Gaussian or no frequency dependence.  When the data are replaced, a
+random noise may also be added.  {\tt SDMOD} has options for modeling
+beam-switched continuum data (set {\tt BPARM(1) = 1}) as well as for
+spectral-line data.  For example, to see what a modestly noisy point
+source at the origin would look like after all of the imaging steps:
+\dispt{TASK\qs 'SDMOD' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{BCHAN\qs {\it n\/} ; ECHAN\qs {\it n\/} \CR}{to get one channel
+         only.}
+\dispt{NGAUSS\qs 1 ; APARM\qs 0\CR}{to get one Gaussian with no
+         frequency dependence.}
+\dispt{GWIDTH\qs 0 ; GPOS \qs 0 \CR}{to do a point source (convolved
+         with the single-dish beamwidth in the header) at the
+         coordinate center.}
+\dispt{GMAX\qs 1, 0 ; FLUX\qs 0.05 \CR}{to do a 1 K object with rms
+         noise of 0.05 K.}
+\dispt{GO\qs \CR}{to run the task.}
+\dispe{The output file from {\tt SDMOD} can then be fed to {\tt
+SDGRD}, {\tt BSGRD}, or any other appropriate task as if it were
+regular data.  The input model is convolved with the single-dish
+beamwidth given in the \uv\ data header before being used to replace
+or add to the input data. The history file will show in detail what
+was done.\iodx{modeling}}
+
+Beam-switched observations may be modeled with task {\tt
+\tndx{BSMOD}}\@.  No input data set is needed.  Instead two regular
+grids of switched data are constructed from a specified model plus
+noise and a variety of instrumental defects.
+
+\sects{Imaging single-dish data in \AIPS}
+
+\subsections{Normal single-dish imaging}
+
+     The process of imaging in \Indx{single-dish} is a process of
+convolving the ``randomly distributed'' observations with some
+convolving function and then resampling the result on a regular image
+grid.  Tasks {\tt \Tndx{SDGRD}} and {\tt \Tndx{SDIMG}} combine the
+data calibration, selection, projection, sorting, and gridding in one
+task capable of imaging all spectral channels into one output data
+``cube.''  They are relatively easy to run, but selecting the correct
+input adverb values is more difficult.  Choose {\tt SDGRD} for most
+single-dish applications; {\tt SDIMG} is very similar but can handle
+larger output images at the cost of making a sorted copy of the entire
+input data set (which can be very large).  Type:
+\dispt{TASK\qs 'SDGRD' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.}
+\dispt{TIMERA\qs 0 ; FLAGVER\qs 1 \CR}{to do all times and apply any
+         flagging.}
+\dispt{BCHAN\qs 1 ; ECHAN\qs 0 \CR}{to get all channels.}
+\dispt{DOCAL\qs FALSE \CR}{to apply no calibration.}
+\dispt{OPTYPE\qs '-GLS' \CR}{to make the image on a ``global
+         sinusoidal'' kind of projection.}
+\dispt{APARM\qs 0 \CR}{to use the observed right ascension and
+         declination given in the header as the center of the image.
+         For concatenated data sets, use {\tt APARM} to specify a more
+         appropriate center.}
+\dispt{REWEIGHT\qs 0, 0.05 \CR}{to have an ``interpolated'' or
+         best-estimate image for output, cutting off any cells with
+         convolved weight $< 0.05$ of the maximum convolved weight.}
+\dispt{CELLSIZE\qs {\it c\/} \CR}{to set the image cells to be {\it
+         c\/} arc seconds on a side.}
+\dispt{IMSIZE\qs $N_x$ , $N_y$ \CR}{to make the image of each channel
+         be $N_x$ by $N_y$ pixels centered on the coordinate selected
+         by {\tt APARM}.}
+\dispt{XTYPE\qs 16 ; XPARM\qs 0,0,0,0,50 \CR}{to select convolution
+         function type 16 (a round Bessel function times Gaussian)
+         with default parameters and 50 samples of the function per
+         pixel.  The default of 20 samples/cell is probably adequate.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the task.}
+\dispe{{\tt \Tndx{SDGRD}} begins by reading the data selecting only
+those samples which will fit fully on the image grid.  It reports how
+many were read and how many selected.  If you have made the image too
+small, with {\tt IMSIZE} or {\tt CELLSIZE}, then data will be
+discarded.  Use {\tt PRTSD} with a substantial {\tt XINC} to determine
+the full spatial distribution of your data.  It does not hurt to have
+the output image be a bit bigger than absolutely necessary.  If you
+are uncertain about the parameters to use, try running {\tt SDGRD} on
+a single channel to begin with since it will be much faster.}
+
+     A number of these parameters require more discussion.  {\tt
+REWEIGHT(1)} selects the type of output image.  The data are
+multiplied by their weights (which depend on the system temperature),
+convolved by the sampled convolving function and then summed at each
+image pixel.  {\tt REWEIGHT(1) = 1} selects the result, which is not
+calibrated in any way since its scaling depends on the scaling of the
+data weights and the convolving function and on the distribution of
+data.  While the program ``grids'' the actual data it also does the
+same process on the data replaced by 1.0.  That result, the convolved
+weights may be obtained with {\tt REWEIGHT(1) = 2}.  The most
+meaningful image, which is obtained with {\tt REWEIGHT(1) = 0}, is the
+ratio of the former to the latter.  This is the interpolated or
+best-estimate image and will be similar to the convolved image in
+well-sampled regions except for having retained the calibration.  {\tt
+REWEIGHT(1) = 3} tells {\tt SDGRD} to compute an image of the expected
+noise (actually $1 / \sigma^2$) in the output image of type 0; see {\tt
+WTSUM} below (\Sec{sdcomb}) for its use.
+
+     {\tt REWEIGHT(2)} controls which pixels are retained in the
+output image and which are blanked by specifying a cutoff as a
+fraction of the maximum convolved weight.  It is important to blank
+pixels which are either simple extrapolations of single samples or,
+worse, extrapolations of only a couple noisy samples.  In the latter
+case, it is possible to get very large image values. Thus, if the
+output is $(W_1D_1 + W_2D_2) / (W_1 + W_2)$ where the {\it D\/}'s are
+data and the {\it W\/}'s are convolved weights and if, say $W_1 =
+0.1001, D_1 = 1.0, W_2 = -0.1000, D_2 = -1.0$, then the output would
+be 2001.  Such large and erroneous values will be obvious, but will
+confuse software which must deal with the whole image and will also
+confuse people to whom you may show the image.  In simple cases, in
+which all data have roughly the same data weights (system
+temperatures), setting {\tt REWEIGHT(2) = 0.2} or even more is
+probably wise.  However, if some portions of the data have
+significantly lower weights than others, then you may have to set a
+lower value in order to keep the low-weight regions from being
+completely blanked.
+
+     The choices of {\tt CELLSIZE} and the widths of the convolving
+function are related to the spatial resolution inherent in your data,
+\ie\ to the \Indx{single-dish} beamwidth.  If the pixels and function
+are too small, then data samples which are really from the same point
+in the sky will appear as if different in the output image. If,
+however, they are too large, then too much data will be smoothed
+together and spatial resolution will be lost.  The latter may be
+desirable to improve signal-to-noise, but image smoothing can be done
+at a later stage as well.  You may wish to experiment with these
+parameters, but it is usually good to start with a {\tt CELLSIZE}
+about one-third of the beamwidth (fwhm) of your telescope.  The
+default parameters ({\tt XPARM}s) of all convolving functions may be
+used with this cell size.  You may vary these parameters in units of
+cells or in units of arc seconds; enter {\us HELP\qs UV{\it n\/}TYPE
+\CR} to look at the parameters for type {\it n\/} ($n = 1$ through 6).
+If you give {\tt XTYPE = $n+10$}, then you get a round rather than
+square function which is perhaps better suited to this type of data.
+If you wish to change the cell size, but retain the same convolving
+function in angular measure on the sky, you may give {\tt XTYPE $< 0$}
+and specify the {\tt XPARM}s in arc seconds rather than cells.
+
+     The choice of convolving function affects the noise levels and
+actual spatial resolution in the output image.  In effect, the Fourier
+transform of the convolving function acts to modify the illumination
+pattern of the feed horn onto the aperture.  \Rfig{FFTconvl} shows
+slices through the Fourier transforms of six of the available
+convolving functions.  The ideal function would be flat all the way
+across and then suddenly zero at the edges.  Type 14 is the widest,
+but has a deep dip in the middle.  This leaves out the center portion
+of the dish and illuminates the outer portions, effectively improving
+the spatial resolution of the image over that of the normal telescope,
+but with a noticeable loss of signal-to-noise ratio.  The spheroidal
+functions, on the other hand, illuminate the center fully and leave
+out the outer portions.  This degrades the spatial resolution, but
+noticeably improves the noise levels.  Types 4 and 16 seem to be the
+best compromise.  Type 16 is preferred since it is zero at the edges.
+Round functions require more computer memory than square ones, so type
+4 would be preferred on computers with small memories.
+
+     Images may be built up from observations taken at significantly
+different times.  The simplest way to do this is to concatenate the
+two ``\uv'' data sets on disk with {\tt OTFUV} or {\tt DBCON}
+(\Sec{otfuv}) and then use {\tt SDGRD} once to make the image.  Some
+single-dish data sets are so large --- or the time interval so
+great --- that this is not practical.  {\tt \Tndx{SDGRD}} combines
+observations taking into account the data weights which are based on
+the measured system temperatures.  You can get the same weighted
+averaging in the image plane if you first compute a ``weight'' image
+and then use the task {\tt \tndx{WTSUM}} to do the averaging.  To get
+a weight image:
+\dispt{TGET\qs SDGRD \CR}{to get the inputs used for the actual image
+             cube.}
+\dispt{REWEIGHT(1)\qs 3 \CR}{to get the weight image which is
+             proportional to $1/\sigma^2$ expected from the actual
+             gridding done on the data whose weights are assumed
+             proportional to their $1/\sigma^2$.}
+\dispt{BCHAN\qs {\it n\/} ; ECHAN\qs BCHAN \CR}{to image a single
+             channel when there is no channel-dependent data weights
+             and flagging.}
+\dispt{GO \CR}{to get the weight image.}
+\dispe{See \Sec{sdcomb} for details about \hbox{{\tt WTSUM}}.}
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.5in}{\gname{SDfunc}}
+\resizebox{!}{3.5in}{\gbb{521,540}{SDfunc}}
+\caption[Convolving function Fourier transforms.]{Slices through the
+Fourier transforms of six convolving functions using the {\tt XTYPE}
+numbers shown on the plot with default values of the {\tt
+XPARM}s.\todx{SDGRD}}
+\label{fig:FFTconvl}
+\end{figure}
+
+\subsections{Beam-switched continuum imaging}
+
+     The construction of images from beam-switched \indx{on-the-fly}
+continuum observations is more properly a research question than one
+of production software.  Observers in this mode should be aware that
+the optimal methods of data reduction are probably not yet known and
+that the methods currently provided require the user to determine
+three critical correction parameters.  In this mode, the telescope is
+moved in a raster of offsets in azimuth and elevation with respect to
+the central coordinate.  The beam is switched rapidly from a ``plus''
+position to a ``minus'' position at constant elevation.  On the 12m,
+there are four plus samples and four minus samples taken each second,
+all taken while the telescope is being driven rapidly in azimuth at a
+constant (relative to the central source) elevation.  In principle,
+each pair of plus and minus points contain the same instrumental bias
+but different celestial signals.  It is then the job of the software
+to disentangle the time variable bias from the two beams' estimates of
+the sky brightness.\Iodx{single-dish}\Iodx{beam-switched continuum}
+
+     A technique for doing the disentangling was first described by
+Emerson, Klein, and Haslam (Astronomy and Astrophysics, 76, 92--105,
+1979).  The plus and minus samples are differenced removing the
+instrumental bias and creating two images of the sky, one positive and
+one negative.  Problems arise because the two images potentially can
+overlap and because, in the \indx{OTF} mode of observing, the
+telescope positioning is not exactly along rows of the output image
+and the relative positioning of the plus and minus beams varies both
+due to the wobbles in the telescope pointing and due to the reversing
+of the direction of telescope movement.  The Emerson {\it et al.}
+technique involves a convolution of each row in the differenced image
+with a function which is a set of positive and negative delta
+functions (or ${\sin x}\over{x}$ functions when the total beam throw
+is not an integer number of image cells).  It turns out that the
+problem of image overlap is largely solved by this technique.
+Unfortunately, differences in the position of the plus and minus beam
+with respect to the source and to the image cells appear to limit the
+quality of the images produced with this technique.
+
+     The principal task used to produce images from
+\Iodx{beam-switched continuum} data is called \hbox{{\tt
+\Tndx{BSGRD}}}.  It makes two images from the two ``uv'' data sets
+written by {\tt OTFBS}, gridding each sample at the coordinate at
+which it was observed (neglecting the throw but not the telescope
+movement between plus and minus).  If the beam throw was not exactly
+along constant elevation, it then shifts the two images.  Then it
+applies the Emerson {\it et al.} technique, fitting and removing
+baselines, differencing the two images, and convolving the difference
+image with an appropriate ${\sin x}\over{x}$ function.  Finally, {\tt
+BSGRD} regrids the data from relative azimuth-elevation coordinates
+onto a grid in normal celestial coordinates.  This task is a
+combination of four tasks, {\tt \tndx{SDGRD}} described above to make
+the images, {\tt \tndx{OGEOM}} to do the rotation correction, {\tt
+\Tndx{BSCOR}} to apply the Emerson {\it et al.} technique, and {\tt
+\Tndx{BSGEO}} to regrid the data onto normal celestial coordinates.
+\Iodx{single-dish}\iodx{OTF}\iodx{on-the-fly}
+
+     To use {\tt BSGRD}, type
+\dispt{TASK\qs 'BSGRD' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the data set.  Note that the class name
+         is assumed to have a plus sign in the sixth character for the
+         plus throw data set and a minus sign in that character for
+         the minus throw data set.}
+\dispt{TIMERA\qs 0 ; FLAGVER\qs 1 \CR}{to do all times and apply any
+         flagging.}
+\dispt{DOCAL\qs FALSE \CR}{to apply no calibration.}
+\dispt{OPTYPE\qs '-GLS' \CR}{to make the image on a ``global
+         sinusoidal'' kind of projection.}
+\dispt{APARM\qs 0 \CR}{to use the observed right ascension and
+         declination given in the header as the center of the image.
+         For concatenated data sets, use {\tt APARM} to specify a more
+         appropriate center.}
+\dispt{REWEIGHT\qs 0, 0.05 \CR}{to have an ``interpolated'' or
+         best-estimate image for output, cutting off any cells with
+         convolved weight $< 0.05$ of the maximum convolved weight.}
+\dispt{CELLSIZE\qs {\it c\/} \CR}{to set the image cells to be {\it
+         c\/} arc seconds on a side.}
+\dispt{IMSIZE\qs $N_x$ , $N_y$ \CR}{to make the image of each throw
+         be $N_x$ by $N_y$ pixels centered on the coordinate selected
+         by {\tt APARM}.}
+\dispt{XTYPE\qs 16 ; XPARM\qs 0,0,0,0,50 \CR}{to select convolution
+         function type 16 (a round Bessel function times Gaussian)
+         with default parameters and 50 samples of the function per
+         pixel.  The same function is used in both convolutions.}
+\dispt{FACTOR\qs {\it f\/} \CR}{to multiply the recorded throw lengths
+         by {\it f\/} in doing the Emerson {\it et al.} correction.}
+\dispt{ROTATE\qs $\rho$ \CR}{to correct the throws for being $\rho$
+         degrees off from horizontal.}
+\dispt{DPARM\qs $ 1 , 1 , x_1, x_2, x_3, x_4$ \CR}{to specify that
+         the two beams have the same relative amplitude and to give
+         the pixel numbers to be used to fit baselines in {\it both\/}
+         images.}
+\dispt{ORDER\qs 1 \CR}{to fit a slope as well as a constant in the
+         horizontal baseline in each row.}
+\dispt{DOCAT\qs -1 \CR}{to delete the intermediate images created by
+         \hbox{{\tt BSGRD}}.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to run the task.}
+\pd
+
+     {\tt \Tndx{BSGRD}} takes three correction parameters which you
+must supply: the throw length error {\tt FACTOR}, the throw angle
+error {\tt ROTATE}, and the relative beam gain error {\tt DPARM(1)}.
+To estimate these, you will need data on a relatively strong point
+source.  Use {\tt SDGRD} to make an image of each throw of these data,
+setting {\tt ROTATE = 0} since rotation {\it must\/} be done later and
+setting {\tt ECHAN = 1} to eliminate the coordinate information which
+is confusing to {\tt MCUBE} and used only by \hbox{{\tt
+\Tndx{BSGEO}}}.  The tasks {\tt IMFIT} and/or {\tt JMFIT}
+(\Sec{imfit}) may be useful in fitting the location and peak of the
+two beams.  Since there is likely to be a significant offset from zero
+in these images, be sure to fit for the offset using a second
+component of {\tt CTYPE = 4}.  For reasons that are not clear, these
+tasks may not provide sufficiently accurate positions.  Another
+approach then is to take the two images produced by {\tt SDGRD} and
+then run {\tt OGEOM} and {\tt BSCOR} for a range of rotations and
+factors.  Find the image that is most pleasing and put its parameters
+into {\tt BSGRD} for the program source.  Of course, it is not clear
+that these correction factors are constant with time or pointing, so
+this could all be bologna.\iodx{OTF}\iodx{on-the-fly}
+\iodx{beam-switched continuum}\Iodx{single-dish}
+
+     For example,
+\dispt{TASK\qs '\Tndx{OGEOM}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs $ctn_+$ \CR}{to select the disk and
+         catalog entry of the plus image.}
+\dispt{APARM\qs 0 \CR}{to do no shifts or rescaling.}
+\dispt{DOWAIT 1 \CR}{to wait for a task to finish before resuming
+         \hbox{{\tt AIPS}}.}
+\dispt{OUTCLA\qs 'OGEOM+' \CR}{to set the output class to show the
+         throw sign.}
+\displ{FOR APARM(3) = -2 , 2.01 BY 0.1 ; GO; END \CR}{to produce 41
+         plus images each with a slightly different rotation.}
+\dispt{GETN\qs $ctn_-$ ; OUTCLA\qs 'OGEOM-' \CR}{to select the
+         minus image as input and specify the output class.}
+\displ{FOR APARM(3) = -2 , 2.01 BY 0.1 ; GO; END \CR}{to produce 41
+         minus images each with a slightly different rotation.}
+\dispe{Then apply the Emerson {\it et al.} corrections to each of the
+41 with}
+\dispt{TASK\qs '\Tndx{BSCOR}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs $ctn_+$ \CR}{to select the disk and
+         catalog entry of one of the rotated plus images.}
+\dispt{IN2DI\qs{\it n\/} ; GET2N\qs $ctn_-$ \CR}{to select the disk
+         and catalog entry of one of the rotated minus images.}
+\dispt{FACTOR\qs {\it f\/} \CR}{to multiply the recorded throw lengths
+         by {\it f\/} in doing the Emerson {\it et al.} correction.
+         Use 1.0 as an initial guess.}
+\dispt{DPARM\qs $ 1 , 1 , x_1, x_2, x_3, x_4$ \CR}{to specify that
+         the two beams have the same relative amplitude and to give
+         the pixel numbers to be used to fit baselines in {\it both\/}
+         images.  The choice of the $x_n$ is significant.}
+\dispt{ORDER\qs 1 \CR}{to fit a slope as well as a constant in the
+         horizontal baseline in each row.}
+\displ{FOR INSEQ = 1 : 41; IN2SEQ = INSEQ ; GO ; END \CR}{to produce 41
+         ``corrected'' images.}
+\dispe{It is convenient to look at the images with tools such as {\tt
+TVMOVIE} (\Sec{dispcube}) and {\tt KNTR} (\Sec{sdKNTR}).  To build the
+``cube'', use {\tt \tndx{MCUBE}} as:}
+\dispt{TASK\qs 'MCUBE' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the first of the corrected images.}
+\dispt{IN2SEQ\qs 41 ; IN3SEQ\qs 1  \CR}{to set the sequence number
+         loop limit and increment.}
+\dispt{AXREF\qs 0 ; AX2REF\qs 41 ; NPOINTS\qs 41 \CR}{to set the
+         locations of the images in the cube explicitly.}
+\dispt{DOALIGN\qs -2 \CR}{to have {\tt MCUBE} ignore the differing
+         image rotations.}
+\dispt{DOWAIT\qs -1 ; GO \CR}{to resume normal task functioning and to
+         build the data cube.}
+\dispe{Examine the cube to find the ``best'' plane and use the
+rotation of that plane to run similar tests varying the throw length
+correction factor.  One of these cubes, testing rotation, is
+illustrated in \Rfig{bsrotate}.\Iodx{single-dish}}
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.0in}{\gname{bscorSD1}}
+\resizebox{!}{3.0in}{\gbb{532,483}{bscorSD1}}
+\caption[Images at various beam throw rotations.]{Images at selected
+rotations from 2.0 to -2.0 by -0.5 degrees.  Rotations between -0.5
+and -1.0 appear to minimize the artifacts due to the incomplete
+cancellation of the plus and minus beams.\iodx{beam-switched
+continuum}}
+\label{fig:bsrotate}
+\end{figure}
+
+     The determination of throw length is similar:
+\dispt{TASK\qs '\Tndx{BSCOR}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs $ctn_+$ \CR}{to select the disk and
+         catalog entry of the plus image at the best rotation.}
+\dispt{IN2DI\qs{\it n\/} ; GET2N\qs $ctn_-$ \CR}{to select the disk and
+         catalog entry of one of the corresponding rotated minus
+         image.}
+\dispt{OUTNA\qs 'ROTATE TEST' \CR}{to assign a new output name.}
+\dispt{DPARM\qs $ 1 , 1 , x_1, x_2, x_3, x_4$ \CR}{to specify that
+         the two beams have the same relative amplitude and to give
+         the pixel numbers to be used to fit baselines in {\it both\/}
+         images.  The choice of the $x_n$ is significant.}
+\dispt{ORDER\qs 1 \CR}{to fit a slope as well as a constant in the
+         horizontal baseline in each row.}
+\dispt{DOWAIT\qs 1 \CR}{to run the task in wait mode.}
+\displ{FOR FACTOR = 0.9 ; 1.101 BY 0.005; GO ; END \CR}{to produce 41
+         ``corrected'' images.}
+\dispe{It is convenient to look at the images with tools such as {\tt
+TVMOVIE} (\Sec{dispcube}) and {\tt KNTR} (\Sec{sdKNTR}).  To build the
+``cube'', use {\tt \tndx{MCUBE}} as:}
+\dispt{TASK\qs 'MCUBE' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs{\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the disk
+         and catalog entry of the first of the new corrected images.}
+\dispt{IN2SEQ\qs 41 ; IN3SEQ\qs 1  \CR}{to set the sequence number
+         loop limit and increment.}
+\dispt{AXREF\qs 0 ; AX2REF\qs 41 ; NPOINTS\qs 41 \CR}{to set the
+         locations of the images in the cube explicitly.}
+\dispt{DOWAIT\qs -1 ; GO \CR}{to resume normal task functioning and to
+         build the data cube.}
+\dispe{Examine the cube to find the ``best'' plane and use the
+scaling factor of that plane in later imaging.  One of these cubes,
+testing throw length, is illustrated in \Rfig{bscorrect}.}
+
+\begin{figure}
+\centering
+%\resizebox{!}{3.0in}{\gname{bscorSD2}}
+\resizebox{!}{3.0in}{\gbb{531,482}{bscorSD2}}
+\caption[Images at various beam throw corrections.]{Images at selected
+beam throw corrections from 0.9 to 1.1 by -0.5.  Note that rotation
+errors cause vertical separations of the plus and minus images while
+throw length errors cause horizontal separations (and hence incomplete
+cancellation) of the beams.\iodx{beam-switched continuum}}
+\label{fig:bscorrect}
+\end{figure}
+
+{\tt BSGRD} is in fact a deconvolution algorithm to remove the
+plus-minus beam from the difference image.  An experimental Clean
+algorithm has been made available in {\tt \tndx{BSCLN}}\@.  Although
+initial tests seemed promising, it appears to converge to the EKH
+solution after very many iterations and to have systematic problems
+before that point.  The one-dimensional display task {\tt
+\tndx{BSTST}} will allow you to evaluate and compare the two
+algorithms on model (one-dimensional) data.
+
+\sects{Analysis and display of single-dish data}
+
+     The \indx{analysis} and display of images produced from
+\Indx{single-dish} data are not, in general, different from those
+produced by interferometers.  See \Rchap{plot} for a discussion of
+display tools, \Rchap{anal} for a variety of analysis tasks, and
+\Sec{cubes} and \Sec{lineanal} for spectral-line analysis and display.
+Some matters of particular interest to single-dish users will be
+discussed below.
+
+\Subsections{Spectral baseline removal}{sdbaseline}
+
+     As the {\tt SPFLG} display in \Sec{spflg} shows, one of the first
+things most users will want to do is remove a spectral baseline at
+each pixel in the their image.  This is frequently done with {\tt
+SDLSF} (\Sec{sdcorr}).  To do this in the image plane, you must first
+transpose the data cube to make the frequency axis be first:
+\iodx{spectral-line}
+\dispt{TASK\qs '\tndx{TRANS}' ; INP \CR}{to review the task's
+           parameters.}
+\dispt{INDI\qs $n_1$ ; GETN\qs $ctn_1$ \CR}{to select the input image
+           from disk $n_1$ catalog slot $ctn_1$.}
+\dispt{TRANSCOD\qs '312' ; OUTCL\qs 'VXY' \CR}{to move the frequency
+           axis from $3^{\urd}$ to $1^{\ust}$.}
+\dispt{GO \CR}{to transpose the cube.}
+\dispe{You must also determine, using this input image if needed,
+which spectral channels are completely free of real emission or
+absorption.  {\tt TVMOVIE} is often useful; see \Sec{dispcube}.
+Then:}
+\dispt{TASK\qs '\tndx{IMLIN}' ; INP \CR}{to review the task's
+           parameters.}
+\dispt{INDI\qs $n_2$ ; GETN\qs $ctn_2$ \CR}{to select the input image
+           (output from {\tt TRANS}) from disk $n_2$ catalog slot
+           $ctn_2$.}
+\dispt{ORDER\qs 1 \CR}{to subtract linear baselines; up to $4^{\uth}$
+           are allowed.}
+\dispt{NBOXES\qs {\it n\/} \CR}{to select {\it n\/} contiguous regions
+           along the spectral axis to be used in fitting the channels.}
+\dispt{BOX\qs $c_{11}$, $c_{12}$,  $c_{21}$, $c_{22}$, $\ldots$
+           $c_{n1}$, $c_{n2}$  \CR}{to use spectral channels
+           $c_{11}$ -- $c_{12}$, $c_{21}$ -- $c_{22}$, up to
+           $c_{n1}$ -- $c_{n2}$ to fit the baselines at each pixel.}
+\dispt{INP\qs \CR}{to review the inputs.}
+\dispt{GO \CR}{to fit the baselines, writing a new data cube.}
+\dispe{It is sometimes useful to specify {\tt DOOUT\qs TRUE} to obtain
+images of the fit parameters and of their uncertainties.  The
+uncertainty in the DC offset is a good measure of the uncertainty in
+the image.\iodx{analysis}\iodx{spectral-line}
+\Iodx{single-dish}}
+
+     The output from {\tt IMLIN} is the baseline-corrected image in
+the familiar position-velocity form, with a third axis giving multiple
+positions on the second celestial coordinate.  To go back to sky
+images as a function of frequency:
+\dispt{TASK\qs '\tndx{TRANS}' ; INP \CR}{to review the task's
+           parameters.}
+\dispt{INDI\qs $n_3$ ; GETN\qs $ctn_3$ \CR}{to select the input image
+           (output from {\tt IMLIN}) from disk $n_3$ catalog slot
+           $ctn_3$.}
+\dispt{TRANSCOD\qs '231' ; OUTCL\qs 'XYV' \CR}{to move the frequency
+           axis from $1^{\ust}$ to $3^{\urd}$.}
+\dispt{GO \CR}{to transpose the cube back again.}
+\pd
+
+\Subsections{Using {\tt WTSUM} and {\tt BSAVG} to combine
+images}{sdcomb}
+
+To do a weighted average of multiple images of the same field, be sure
+to make all images with the same geometry type, the same cell size,
+and the same center coordinate.  If you have two images,
+\dispt{TASK\qs '\tndx{WTSUM}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs $n_1$ ; GETN\qs $ctn_1$ \CR}{to select the first
+            input image from disk $n_1$ catalog slot $ctn_1$.}
+\dispt{INDI\qs $n_2$ ; GET2N\qs $ctn_2$ \CR}{to select the second
+            input image from disk $n_1$ catalog slot $ctn_2$.}
+\dispt{INDI\qs $n_3$ ; GET3N\qs $ctn_3$ \CR}{to select the first
+            weight image from disk $n_3$ catalog slot $ctn_3$.}
+\dispt{INDI\qs $n_4$ ; GET4N\qs $ctn_4$ \CR}{to select the second
+            weight image from disk $n_4$ catalog slot $ctn_4$.}
+\dispt{DOINVER\qs FALSE \CR}{to state that the weight images are
+            weights rather than rms's.}
+\dispt{GO \CR}{to compute an averaged image cube and a new weight
+            image.}
+\dispe{The weight images can be either a single plane or a cube that
+matches the corresponding image cube.  All must be on the same
+spectral and celestial coordinate system.}
+
+If you have more than two images of the same field, then all images
+must have the same name parameters, differing only by having
+consecutive sequence numbers.  All weight images must have the same
+name parameters with corresponding consecutive sequence numbers.  The
+verb {\tt \tndx{RENAME}} may be used to correct problems in naming.
+Then
+\dispt{TASK\qs '\tndx{WTSUM}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs $n_1$ ; GETN\qs $ctn_1$ \CR}{to select the first
+            input image from disk $n_1$ catalog slot $ctn_1$.}
+\dispt{CLR2NAME ; IN2SEQ\qs $m_2$ \CR}{to select the looping mode
+            and set the highest image sequence number.}
+\dispt{INDI\qs $n_3$ ; GET3N\qs $ctn_3$ \CR}{to select the first
+            weight image from disk $n_3$ catalog slot $ctn_3$.}
+\dispt{CLR4NAME \CR}{to clear the unused fourth name set.}
+\dispt{DOINVER\qs FALSE \CR}{to state that the weight images are
+            weights rather than rms's.}
+\dispt{GO \CR}{to compute an averaged image cube and a new weight
+            image.}
+\dispe{If $m_1$ is the sequence number of the first image (in $ctn_1$)
+and $w_1$ is the sequence number of the first weight image (in
+$ctn_3$), then images of sequence numbers $m_1$ through $m_2$ will be
+weighted with corresponding weight images of sequence number $w_1$
+through $w_1 + m_2 - m_1$.  All weight images must be a single plane
+or all weight images must be a full cube matching the images.}
+
+     {\tt \Tndx{BSAVG}} is a special task written to average
+\indx{beam-switched continuum} images.  Each image is Fourier
+transformed and weighted to give no weight to Fourier components at
+the beam switching spatial frequency and direction (since the images
+lack any non-noise information at these lines in the Fourier domain).
+Images made at different parallactic angles (\ie\ different hour
+angles) have these zero-weight lines at different angles while images
+made with different throw lengths have these zero-weight lines at
+different spatial frequencies.  Thus, averaging images in this way
+(and Fourier transforming them back) should produce images with less
+noise and more information content.  This algorithm works only on
+images that are made very quickly.  If there is a significant rotation
+of the parallactic angle during the observation of one image, then the
+zero-weight ``line'' is actually curved and smeared away from the
+center (in Fourier space).  The failure of this algorithm when
+observations are made with constant-elevation throws is one reason why
+some telescopes are designed to beam-switch in celestial coordinates.
+
+\subsections{Spectral moment analysis}
+
+     A data cube may be reduced to a line-sum and a
+predominant-velocity image when the spectral shape is fairly simple at
+all points of the image.  The simplest task to do this is:
+\dispt{TASK\qs '\tndx{XMOM}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the
+           input image from disk {\it n\/} catalog slot {\it ctn\/}
+           --- use the output from {\tt IMLIN} with velocity as the
+           first axis.}
+\dispt{FLUX\qs {\it x\/} \CR}{to include only pixels $> x$ in brightness
+           when computing the moments.}
+\dispt{GO \CR}{to compute images of the $o^{\uth}$ through $3^{\urd}$
+           moments plus an image of the number of pixels used at each
+           position.}
+\dispe{This simple prescription will produce a result which should
+tell you whether this mode of analysis is interesting.  If it is, then
+the regions of signal should be separated from regions of no signal so
+that the latter do not contribute to the noise in the moment images.
+See the discussions in \Sec{analblank} and \Sec{lineanal} for methods
+of doing this.  After the non-signal regions are blanked, the moments
+should be recomputed.\iodx{analysis}\iodx{spectral-line}
+\Iodx{single-dish}}
+
+\Subsections{Source modeling and fitting}{sdmodel}
+
+     \indx{Gaussian} fitting of images is discussed in some detail in
+\Sec{analfit} while source \indx{modeling} may be done in the ``\uv''
+data domain with {\tt SDMOD} (\Sec{sdmod}) and in the image domain
+with \hbox{{\tt IMMOD}}.  The task {\tt \tndx{SAD}} will find, and
+fit Gaussians to, sources in your image.  Although it works on a plane
+of the image at a time, it records the plane number in its output
+model-fit ({\tt MF}) table.  This will allow you to examine the fits
+to your sources as a function of frequency.  To run {\tt SAD} on a
+number of image planes:
+\dispt{TASK\qs 'SAD' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the
+           image cube from disk {\it n\/} catalog slot {\it ctn\/}}
+\dispt{BLC\qs 0 ; TRC\qs 0 \CR}{to search for sources over the full
+           plane.}
+\dispt{DORESID\qs FALSE \CR}{to delete the residual image after
+           fitting; the fit results are kept in an {\tt MF} file
+           attached to the input image.}
+\dispt{NGAUSS\qs 10 \CR}{to allow up to 10 possible sources to be fit;
+           make this enough to allow for a noise spike or two.}
+\dispt{CUTOFF\qs {\it x\/} \CR}{to fit ``islands'' of flux $> x$ only ---
+           this is probably the most important parameter.}
+\dispt{DOCRT\qs 132 \CR}{to display results on your workstation rather
+           than the line printer.}
+\dispt{DOALL\qs 1 ; DOWIDTH\qs 1 \CR}{to allow the task to fit
+           multiple sources to an island and to fit the source
+           widths.}
+\dispt{OUTVERS\qs -1 \CR}{to suppress writing of {\tt CC} files.}
+\dispt{INVERS\qs 1 \CR}{to use one {\tt MF} file for all fits.}
+\dispt{DOWAIT\qs TRUE \CR}{to resume {\tt AIPS} only when the task
+           finishes; this allows looping without tripping over
+           ourselves.}
+\dispt{INP \CR}{to recheck the inputs.}
+\dispt{FOR\qs BLC(3) = $c_1$ TO $c_2$ ; GO; END \CR}{to fit channels
+           $c_1$ through $c_2$.}
+\dispe{{\tt SAD} will reject dubious solutions for a variety of
+reasons.  The {\tt DPARM} adverb allows you to control these reasons
+and {\tt PRTLEV} controls how much of an explanation you get.}
+
+     {\tt \tndx{SAD}} offers a printer option to provide a detailed
+account of each execution.  To view a simpler summary of the current
+contents of one or more {\tt MF} files, use
+\dispt{TASK\qs '\tndx{MFPRT}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs {\it n\/} ; GETN\qs {\it ctn\/} \CR}{to select the
+           image cube from disk {\it n\/} catalog slot {\it ctn\/} as
+           input to {\tt SAD}.}
+\dispt{INVER\qs $n_1$ ; IN2VER\qs $n_2$ ; XINC\qs 1\CR}{to view {\tt
+           MF} file versions $n_1$ through $n_2$.}
+\dispt{DOCRT\qs 132 \CR}{to see the display on your monitor.}
+\dispt{FLUX\qs 0 ; IMSIZE\qs 0 \CR}{to see all components.}
+\dispt{SORT\qs 'C' \CR}{to see the file in channel number order.}
+\dispt{GO \CR}{to run the task.}
+\dispe{Setting {\tt DOCRT FALSE} and specifying {\tt OUTPRINT} will
+produce a file suitable for some non-\AIPS\ modeling programs.
+\iodx{analysis}\iodx{Gaussian}\iodx{modeling}\Iodx{single-dish}}
+
+\Subsections{Image displays}{sdKNTR}
+
+     The subject of displays in \AIPS\ has been treated extensively in
+earlier chapters.  To make a printer representation of your image, see
+\Sec{printim} for a discussion of {\tt PRTIM}\@.  See \Sec{plotimag}
+for a discussion of plotter displays of images including tasks {\tt
+CNTR}, {\tt PCNTR}, {\tt GREYS}, {\tt PLROW}, {\tt PROFL}, {\tt
+IMVIM}, and {\tt IMEAN}\@.  Spectral-line displays are described in
+some detail in \Sec{dispcube} including tasks {\tt KNTR} and {\tt
+PLCUB} and the TV-movie display verbs {\tt TVMOVI} and {\tt TVCUBE}\@.
+The use of the TV for display, image enhancement, parameter setting,
+data examination, image comparison, and the like is described in
+detail in \Secs{TVinter}.
+
+     For tutorial purposes, we will include one example here.  The
+contouring task of choice is now {\tt KNTR} since it can display
+images in grey-scales and/or contours with one or more planes per
+display and with an optional beam display.  It also can plot
+polarization and has several ``coloring'' options.  For example, to
+display several spectral channels as contours with the
+$0^{\uth}$-moment (total CO) image as a grey scale on each display,
+enter
+\dispt{TASK\qs '\Tndx{KNTR}' ; INP \CR}{to review the inputs.}
+\dispt{INDI\qs $n_1$ ; GETN\qs $ctn_1$ \CR}{to select the image cube
+           from disk $n_1$ catalog slot $ctn_1$.}
+\dispt{IN2DI\qs $n_2$ ; GET2N\qs $ctn_2$ \CR}{to select the
+           $0^{\uth}$-moment image plane from disk $n_2$ catalog slot
+           $ctn_2$.}
+\dispt{DOCONT\qs 1 ; DOGREY\qs 2 ; DOVECT\qs -1 \CR}{to have contours
+           drawn of the first image, grey-scale of the second image,
+           and no polarization.}
+\dispt{BLC 0 , 0 , $c_1$ ; TRC 0 , 0 , $c_1$ \CR}{to draw the full
+           plane from channels $c_1$ through $c_2$.}
+\dispt{ZINC\qs $\Delta c$ \CR}{to display every $\Delta c\,^{\uth}$
+           channel.}
+\dispt{PIXRANGE\qs $B_1$, $B_2$ \CR}{to do grey scales from $B_1$ through
+           $B_2$ only, clipping the most negative and positive values
+           if desired.  The default is the full range of image
+           {\tt DOGREY}\@.}
+\dispt{FUNCTYPE\qs 'SQ' \CR}{to use a square-root transfer function on
+           the grey scales to emphasize the lower levels.}
+\dispt{OFMFILE\qs ' ' \CR}{to do no pseudo-coloring in {\tt KNTR}\@.}
+\dispt{DOWEDGE\qs 1 \CR}{to plot a step wedge along the top.}
+\dispt{CLEV\qs 0.1 \CR}{to plot 0.1 K as the basic contour level.}
+\dispt{LEVS\qs 2.7, 7.4, 20.1, 54.6, 148.4, 403.4 \CR}{to do
+           logarithmic contours, starting at 0.27 \hbox{K}.}
+\dispt{CBPLOT\qs 18 \CR}{to plot a half-power beam contour in the
+           upper right corner and fill it in.}
+\dispt{LABEL\qs 1 \CR}{to label each pane with its coordinate
+           (velocity usually).}
+\dispt{DOTV\qs -1 ; INP}{to make a plot file and to review the
+            inputs.}
+\dispt{GO \CR}{to run the task.}
+\dispe{The contour lines will be drawn in a contrasting color when the
+background grey-scale intensity is high.  When {\tt \Tndx{KNTR}} has
+finished:}
+\dispt{PLVER\qs 0 \CR}{to plot the most recent \indx{plot file} for
+            the image.}
+\dispt{OUTFILE\qs '\qs' \CR}{to print the plot immediately rather
+            than saving it in a file.}
+\dispt{GO\qs \tndx{LWPLA} \CR}{to translate the plot file into
+            PostScript on a suitable printer.}
+\dispe{{\tt LWPLA} offers additional control over fonts, paper size,
+line width, the grey-scale plotting (if {\tt PIXRANGE} was not quite
+right), image pseudo-coloring, coloring of lines and backgrounds, and
+number of copies.  It can make an ``encapsulated'' \indx{PostScript}
+file for inclusion in other documents, such as this \Cookbook.
+See {\tt HELP POSTSCRIPT} for information on other things that can be
+done with PostScript plot files.}
+
+\subsections{Backing up your data}
+
+     The next chapter describes how to help the \AIPS\ programming
+team (with ``{\tt GRIPE}s''), to exit {\tt AIPS} (with {\tt EXIT}), to
+delete your data (with {\tt ZAP} and {\tt ALLDEST}), and, most
+importantly, to back up your data.  Do not assume that data on disk is
+permanent.  Disks can fail and users can make mistakes, so it
+it is wise to make backups to some demountable medium.
+
+\Sects{Combining single-dish and interferometer data}{sdinter}
+
+     We add this section to this chapter with some trepidation since
+the combination of single-dish data into interferometric imaging is
+still an area more suited to research than to production.  In
+principle, the problem is fairly simple.  You begin by observing a
+region of sky with a single-dish telescope rather larger than the
+individual telescopes of the interferometer.  From these observations,
+you make an image which you correct if necessary (\eg\ by removing
+spectral baselines).  Then you deconvolve the image removing the
+convolution of the sky with the beam of the large single-dish
+telescope.  The ``sky'' observed with the interferometer is the
+product of the real sky (estimated by your deconvolved image) and the
+beam of the individual telescopes of the interferometer.  Therefore,
+you multiply your deconvolved image with an image of the single-dish
+beam and Fourier transform the result.  Adjusting the flux scales
+(usually of the single-dish data), you append or ``feather in'' the
+``visibilities'' produced by the Fourier transform.
+
+     This is a lot of steps and contains several dangers, namely
+pointing, image alignment, the deconvolution, and the flux
+re-calibration.  \AIPS\ can provide you with some help.  The imaging
+and image correction software is described earlier in this chapter.
+The deconvolution is tricky.  Try {\tt \tndx{DCONV}} first.  It
+attempts an iterative solution of the deconvolution problem in the
+image plane. If that is not acceptable, try {\tt \tndx{CONVL}} with
+{\tt OPCODE\qs'DCON'} (in {\tt 15JAN96} and later releases).  This is
+a brute force deconvolution that will be very noisy at high spatial
+frequencies, but these frequencies will be tapered or truncated away
+later.  A third approach is to use {\tt \tndx{PATGN}} ({\tt
+OPCODE\qs'GAUS'}) to make an image of the single-dish beam of the
+large telescope.  {\tt APCLN} (\Sec{apcln}) can then be persuaded to
+do a Clark image-based Clean; use a small restoring beam.  Remember
+that this image will be tapered in the \uv\ plane.  It does not
+have to be beautiful in detail in the image plane.
+
+     The next step is to make an image of the interferometer
+\Indx{single-dish} beam on the same cell size and center as your
+deconvolved image.  Use {\tt \tndx{PATGN}} with {\tt OPCODE\qs'BEAM'}
+for this.  Then multiply the result by the deconvolved image with {\tt
+\tndx{COMB}} using {\tt OPCODE\qs'MULT'} (\Sec{comb}).  If this
+produces an image with any blanked pixels, run {\tt \tndx{REMAG}} to
+convert the blanks to zeros.  Then start trying {\tt \tndx{IM2UV}} to
+produce a \uv\ data set.  Use {\tt UVTAPER} to weight down longer
+spacings, {\tt FLUX} to scale the visibilities, and {\tt UVRANGE} to
+omit the outer spacings.  (The first two options appear only in {\tt
+15JAN96} and later releases.) You should use {\tt PRTUV}, {\tt UVPLT},
+and even {\tt UVFLG} on the output of {\tt IM2UV} to make sure that
+the visibility phases and amplitudes of your single-dish and
+interferometer data are in reasonable agreement.  Finally, combine the
+two data sets with {\tt \tndx{DBCON}} and have fun with {\tt IMAGR}
+(\Rchap{image}).
+
+\vfill\eject

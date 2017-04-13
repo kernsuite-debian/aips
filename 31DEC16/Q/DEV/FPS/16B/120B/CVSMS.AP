@@ -1,0 +1,160 @@
+"CVSMS
+         $TITLE CVSMS
+         $ENTRY CVSMS,9.
+"
+"-----------------------------------------------------------------------
+";  Copyright (C) 1995
+";  Associated Universities, Inc. Washington DC, USA.
+";
+";  This program is free software; you can redistribute it and/or
+";  modify it under the terms of the GNU General Public License as
+";  published by the Free Software Foundation; either version 2 of
+";  the License, or (at your option) any later version.
+";
+";  This program is distributed in the hope that it will be useful,
+";  but WITHOUT ANY WARRANTY; without even the implied warranty of
+";  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+";  GNU General Public License for more details.
+";
+";  You should have received a copy of the GNU General Public
+";  License along with this program; if not, write to the Free
+";  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+";  MA 02139, USA.
+";
+";  Correspondence concerning AIPS should be addressed as follows:
+";         Internet email: aipsmail@nrao.edu.
+";         Postal address: AIPS Project Office
+";                         National Radio Astronomy Observatory
+";                         520 Edgemont Road
+";                         Charlottesville, VA 22903-2475 USA
+"-----------------------------------------------------------------------
+"     MICROCODE ROUTINE FOR FPS AP 120-B ARRAY PROCESSOR
+"
+"     CVSMS subtracts a real vector times a complex scalar from
+"     a complex vector, alternately i (SQRT(-1)) times the real
+"     vector times the complex scalar is subtracted from the 
+"     complex vector.
+"     Since the element count is expected to be small the looping
+"     is not very efficient.
+"
+"     CALLING SEQUENCE - CALL CVSMS(A,I,B,C,J,D,K,N,FLAG)
+"                A = Source vector base address.
+"                I = Increment of A (at least 3)
+"                B = Complex scalar
+"                C = Real vector
+"                J = Increment of C
+"                D = Destination vector base address
+"                K = Increment of D
+"                N = Element count.
+"                FLAG = flag, if < 0 multiply complex scalar by i
+"
+"     IF FLAG > 0
+"     D(mK) = A(mI) - B(1) * C(mJ)
+"     D(mK+1) = A(mI+1) - B(2) * C(mJ)  for m=0, N-1
+"
+"     IF FLAG < 0
+"     D(mK) = A(mI) - i * B(1) * C(mJ)
+"     D(mK+1) = A(mI+1) - i * B(2) * C(mJ)  for m=0, N-1
+"
+"     Timing = 2.8 + (N-1)*1.7 microsecond
+"     Should work for both fast and slow memory.
+"
+"         SET SPAD ASSIGNMENTS
+"
+A         $EQU  0
+I         $EQU  1
+B         $EQU  2
+C         $EQU  3
+J         $EQU  4
+D         $EQU  5
+K         $EQU  6
+N         $EQU  7
+FLAG      $EQU  8.
+"
+"         SET DATA PAD ASSIGNMENTS
+B1        $EQU 3     "DPX(B1) = B(1)
+B2        $EQU 3     "DPY(B2) = B(2)
+CC        $EQU 2     "DPX(CC) = C
+"
+"         SETUP
+"
+CVSMS:    MOV C,C; SETMA               "FETCH FIRST C
+          MOV FLAG,FLAG                "CHECK FLAG
+          BGT .+2                      "BRANCH ON FLAG
+          JMP COMPLEX                  "JUMP TO COMPLEX SECTION
+          MOV B,B; SETMA               "FETCH B(1)
+          DPX(CC)<MD                   "SAVE C
+          INCMA                        "FETCH B(2)
+          FMUL DPX(CC),MD;             "B(1)*C
+               DPX(B1)<MD              "SAVE B1
+          MOV A,A; SETMA;              "FETCH 1ST A(1)
+               FMUL                    "PUSH
+          FMUL DPX(CC),MD;             "B(2)*C
+               DPY(B2)<MD              "SAVE B2
+          INCMA                        "FETCH 1ST A(2)
+          FSUBR FM, MD;                "A(1) - B(1)*C
+             SUB K,D;                  "PREPARE D FOR LOOP
+             FMUL                      "PUSH
+          ADD J, C; SETMA;             "FETCH NEXT C
+             FMUL
+          FSUBR FM, MD;                "A(2) - B(1)*C
+             DEC N                     "PRE-DECREMENT LOOP COUNT
+" 
+"         BEGIN LOOP
+"
+LOOP:     ADD K,D; SETMA; MI<FA        "SAVE D(1)
+          FMUL DPX(B1),MD;             "B1*C
+               FADD                    "PUSH
+          INCMA; MI<FA;                "SAVE D(2)
+               FMUL DPY(B2),MD;        "B2*C
+               DEC N                   "DEC LOOP COUNT
+          BGE .+2                      "CHECK IF FINISHED
+          JMP S999                     "FINISHED
+          ADD I,A; SETMA               "FETCH A(1)
+          FMUL                         "PUSH
+          INCMA                        "FETCH A(2)
+          FSUBR FM, MD                 "A(1)-B(1)*C
+          ADD J,C; SETMA;              "FETCH NEXT C
+               FMUL                    "PUSH
+          FSUBR FM, MD;                "A(2)-B(2)*C
+               BR LOOP                 "LOOP
+"
+"         I TIMES COMPLEX SCALAR PART
+"
+COMPLEX:  INC B; SETMA                 "FETCH -REAL(I*B)
+          DPX(CC)<MD                   "SAVE C
+          DECMA                        "FETCH IMAG(I*B)
+          FMUL DPX(CC),MD;             "-REAL(I*B)*C
+               DPX(B1)<MD              "SAVE -REAL(I*B)
+          MOV A,A; SETMA;              "FETCH 1ST A(1)
+               FMUL                    "PUSH
+          FMUL DPX(CC),MD;             "C * IMAG(I*B)
+               DPY(B2)<MD              "SAVE IMAG(I*B)
+          INCMA                        "FETCH 1ST A(2)
+          FADD FM, MD;                 "A(1) - C*REAL(I*B)
+             SUB K,D;                  "PREPARE D FOR LOOP
+             FMUL                      "PUSH
+          ADD J, C; SETMA;             "FETCH NEXT C
+             FMUL
+          FSUBR FM, MD;                "A(2) - C*IMAG(I*B)
+             DEC N                     "PRE-DECREMENT LOOP COUNT
+" 
+"         BEGIN LOOP
+"
+LOOPI:    ADD K,D; SETMA; MI<FA        "SAVE D(1)
+          FMUL DPX(B1),MD;             "-C*REAL(I*B)
+               FADD                    "PUSH
+          INCMA; MI<FA;                "SAVE D(2)
+               FMUL DPY(B2),MD;        "C*IMAG(I*B)
+               DEC N                   "DEC LOOP COUNT
+          BLT S999                     "CHECK IF FINISHED
+          ADD I,A; SETMA               "FETCH A(1)
+          FMUL                         "PUSH
+          INCMA                        "FETCH A(2)
+          FADD FM, MD                  "A(1)-C*REAL(I*B)
+          ADD J,C; SETMA;              "FETCH NEXT C
+               FMUL                    "PUSH
+          FSUBR FM, MD;                "A(2)-C*IMAG(I*B)
+               BR LOOPI                "LOOP
+S999:     RETURN
+          $END

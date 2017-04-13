@@ -1,0 +1,170 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995, 1999, 2001
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+LOGFILE=INSTEP4.LOG
+export LOGFILE
+say() {
+   echo "INSTEP4    : $*" | tee -a $LOGFILE
+}
+#                                       Clean up signals 1 2 3 and 15.
+trap 'say "Dies from cruel interrupt!"; exit 1' 1 2 3 15
+say "Begins at `date`"
+#                                       Sanity checks.  Make sure
+#                                       programming variables are
+#                                       defined and that directories
+#                                       for binary files exist.
+if [ "$LIBR" = "" ] ; then
+#                                       Environment variables undefined.
+   say "Programming variables are not defined?"
+   say "Did you forgot to type \$CDTST?"
+   say "Stopping at `date`"
+   exit 1
+fi
+#                                       Create lists (*.LIS) of program
+#                                       source pathnames, compile them,
+#                                       then link them with appropriate
+#                                       object libraries.  Store the
+#                                       resulting binaries in $LOAD
+say ""
+say "Compile and Link all programs (may take a while)"
+say ""
+#                                       Set argument list to major
+#                                       program source code areas.
+
+#                                       Loop through the major
+#                                       program source code areas.
+
+LIST="AIPPGM AIPGUNIX APLPGM APGNOT APGOOP AIPNOT QPGM QPGNOT QYPGM"
+LIST="$LIST QYPGNOT QPGOOP YPGM YPGNOT"
+
+for AREA in $LIST ; do
+   say "Processing \$$AREA/..."
+   say "programs."
+#                                       Get definition of $AREA in
+#                                       envirnoment.
+   ENV=\$$AREA
+   ENV=`eval echo $ENV`
+   if [ "$ENV" = "" ] ; then
+      say "Area      $AREA"
+      say "not defined in the environment?"
+      say "Dies of total confusion at `date`"
+      exit 1
+   fi
+#                                       Otherwise, compile/link all
+#                                       programs in directory
+#                                       $AREA and below as defined
+#                                       in $SYSLOCAL/LIBR.DAT.
+#                                       First, is the file zero size?
+   if [ -f $AREA.LIS -a ! -s $AREA.LIS ] ; then
+      say "Found zero length $AREA.LIS"
+      say "... deleting it."
+      rm -f $AREA.LIS
+   fi
+   if [ ! -f $AREA.LIS ] ; then
+#                                       Need to generate LISt file.
+      if MAKEAT $ENV | tee -a $LOGFILE
+      then
+         say "Begin      \$$AREA/..."
+         say "compiling/linking of"
+      else
+         say "Failure in $AREA.LIS"
+         say "creation."
+         say "Dies of unnatural causes on `date`"
+         exit 1
+      fi
+   else
+#                                       Already exists.  Use it.
+      say "File       `pwd`/$AREA.LIS"
+      say "already exists (no need to create)."
+      if grep '^[^-]' $AREA.LIS > /dev/null
+      then
+         say "Resume     \$$AREA/..."
+         say "compiling/linking at"
+      else
+         say "All        \$$AREA/..."
+         say "compiling/linking marked as done (yippee!)"
+         continue
+      fi
+   fi
+#                                       Use $AREA.LIS to drive COMLNK.
+#                                       '-' in first column means
+#                                       that the module is already
+#                                       done.
+   sed -n -e 's/^[^-].*/INSTEP4   : &/p' $AREA.LIS | tee -a $LOGFILE
+#                                       Mass compilation via COMLNK.
+   if COMLNK @$AREA.LIS $LOGFILE
+   then
+      say "End of     \$$AREA/..."
+      say "compiling/linking."
+   else
+      say "Failure in \$$AREA/..."
+      say "compiling/linking."
+      say "Dies of unnatural causes at `date`"
+      exit 1
+   fi
+done
+#                                       See if there are any left
+say "Checking .LIS files for completeness..."
+good=yes
+for AREA in $LIST ; do
+   if [ ! -f $AREA.LIS ] ; then
+      say "$AREA.LIS not found"
+      good=no
+   elif [ ! -s $AREA.LIS ] ; then
+      say "$AREA.LIS is empty"
+      good=no
+   else
+      n=`grep -v '^-' $AREA.LIS | wc -l`
+      if [ $n -ne 0 ] ; then
+         say "$AREA.LIS has $n failed entries"
+         good=no
+      fi
+   fi
+done
+if [ $good = yes ] ; then
+   say "All .LIS files have been completely processed."
+else
+   say "There seems to be a problem.  Please investigate."
+   say "Dies of unnatural causes at `date`"
+   exit 1
+fi
+#                                       Make TPMON, etc. links
+cd $LOAD
+if [ ! -f TPMON.EXE ] ; then
+   say "TPMON.EXE not found in $LOAD"
+   say " - something is NOT RIGHT"
+   exit 1
+fi
+for i in 1 2 3 4 5 ; do
+   if [ ! -f TPMON$i ] ; then
+      ln TPMON.EXE TPMON$i
+   fi
+done
+say "TPMON hard links made (just 5 for now)"
+#                                       The end
+say "Ends   at `date`"
+exit 0

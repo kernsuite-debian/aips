@@ -1,0 +1,571 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! Get the binaries for a given architecture from anonymous ftp
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1996-1999, 2003
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Probably needs some cleanup so that it assumes all binary files are
+# gzipped, not just the EXE's and XAS.  Some of those DA00 files would
+# compress very, very nicely...
+#                                       Where we get stuff from
+ftpsite="aips.nrao.edu"
+#                                       ping uses -c -s or not...
+pingstyle="flags"
+#                                       and it's in lots of paces :-(
+pingloc="/usr/sbin"
+ei1="echo FTPGET: "
+#                                       Shell functions won't work on
+#                                       old Ultrix or Convex /bin/sh,
+#                                       hence the contortions above.  If
+#                                       your system doesn't like this
+#                                       next line, change this script to
+#                                       a korn or bash script.
+#                                       Do an echo without <return>
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "FTPGET: $1"
+  else
+    echo "FTPGET: $1\c"
+  fi
+}
+spc="echo "
+#                                       Assume we have a uname command
+case `uname -s` in
+  AIX)
+    ARCH=IBM;;
+  FreeBSD)
+    ARCH=FREEBSD
+    pingloc="/sbin";;
+  HP-UX)
+    ARCH=HP
+    case `uname -r` in
+       B.10*)
+         case `uname -m` in
+            */7[0-3]*) ;;
+            */7[89]*) ARCH=HP2;;
+            *) echo "What sort of HP are you on???"
+               echo "(Model number `uname -m` unfamiliar)"
+               exit 1;;
+            esac
+        ;;
+        esac
+    pingloc="/etc"
+    pingstyle="args";;
+  IRIX*)
+    ARCH=SGI
+    pingloc="/usr/etc";;
+  Linux)
+    ARCH=LINUX
+    [ `uname -m` = alpha ] && ARCH=AXLINUX
+    pingloc="/bin";;
+  OSF1)
+    ARCH=ALPHA;;
+  SunOS)
+    case `uname -r` in
+      5*)
+	case `uname -i` in
+	      *Ultra*) ARCH="SUL";;
+	      *)       ARCH="SOL";;
+        esac
+        pingstyle="args";;
+      4*)
+        ARCH=SUN4
+        pingloc="/usr/etc"
+        pingstyle="args";;
+      *) $ei1 "Very old or very new SunOS detected: `uname -r`"
+         $ei1 "Sorry, this script cannot handle this SunOS revision!"
+         exit 1
+        ;;
+    esac
+    ;;
+  "")
+    $ei1 "The 'uname' command did not work.  FTPGET does not know about"
+    $ei1 "your system and needs work (where ping is, how to call it, to"
+    $ei1 "make sure $ftpsite is reachable)."
+    exit 1
+    ;;
+  *)
+    $ei1 "FTPGET does not know about the `uname -s` Operating System"
+    $ei1 "Most likely the $ftpsite ftp site does not have AIPS binaries"
+    $ei1 "for it either.  Sorry..."
+    exit 1
+    ;;
+esac
+#                                       Figure out which style of ping
+#                                       command to use.
+cmdline="${pingloc}/ping -c 5 -s 64 $ftpsite"
+[ "$pingstyle" = "args" ] && cmdline="${pingloc}/ping $ftpsite 64 5"
+#                                       See if it's reachable...
+$ei1 "Checking if $ftpsite is currently reachable... "
+if $cmdline >/dev/null 2>/dev/null ; then
+  $ei1 "Yes, it is.  Proceeding."
+else
+  $spc
+  $ei1 "Sorry, but $ftpsite does not seem to be reachable right now."
+  $ei1 "Trying it again: $cmdline"; $cmdline; $spc
+  $ei1 "Either there is a network problem between here and there, or"
+  $ei1 "you are not fully connected to the internet."
+  $spc
+  $ei1 "If you KNOW that $ftpsite IS reachable and you want to go ahead"
+  ni1 "with trying to get the binaries, enter YES: "
+  read yn; $spc
+  yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+  if [ "$yn" = "Y" ] ; then
+    $ei1 "Very well, will proceed.  Batten down the hatches..."
+  else
+    $ei1 "Very well, abandoning attempt to retrieve AIPS binaries."
+    exit 1
+  fi
+fi
+#                                       Do we have gunzip?
+gunzip=""
+OLDIFS=$IFS
+IFS=$IFS:
+for i in $PATH ; do
+   if [ -f $i/gunzip ] ; then
+      gunzip=$i/gunzip
+      break
+   fi
+done
+IFS=$OLDIFS
+if [ "$gunzip" = "" ] ; then
+   $spc
+   $ei1 "WARNING: gunzip not found in your path.  The binaries on the"
+   $ei1 "         ftp server are GNU zipped, to conserve bandwidth."
+   $ei1 "         There is a version of gunzip for $ARCH in the LOAD"
+   $ei1 "         area ($VERS/$ARCH/LOAD/) that will be"
+   $ei1 "         copied in this ftp transaction, and it *MAY* work."
+   $ei1 "         However, we cannot guarantee that it will; your"
+   $ei1 "         system may be incompatible with ours..."
+   $spc
+   $ei1 "NOTE: if you have gunzip on your system, but not in your PATH,"
+   $ei1 "      you may want to stop this procedure NOW, redefine your"
+   $ei1 "      PATH environment variable, and restart."
+   $spc
+fi
+#                                       On with the show...
+if [ "$VERS" = "" ] ; then
+  if [ "$VERSION" != "" ] ; then
+    if [ -f LOGIN.SH ] ; then
+      $ei1 "Trying to find AIPS version via your LOGIN.SH file..."
+      VERS=`(. ./LOGIN.SH; echo $AIPS_VERSION | awk -F/ '{print $NF}')`
+      if [ "$VERS" = "" ] ; then
+        $ei1 "Cannot determine the AIPS version string (e.g. 15APR97)."
+        $ei1 "If you know which version you want to get, simply define"
+        $ei1 "the VERS environment variable to that string and restart"
+        $ei1 "this procedure."
+        exit 1
+      else
+        case $VERS in
+          15[A-Z][A-Z][A-Z][0-9][0-9]) ;;
+          31[A-Z][A-Z][A-Z][0-9][0-9]) ;;
+          *) $ei1 "Version \"$VERS\" does not seem valid; giving up!"
+             exit 1;;
+        esac
+        $ei1 "Found version $VERS, will try to fetch binaries for it."
+      fi
+    else
+      $ei1 "Cannot proceed, no LOGIN.SH file found here, your AIPS"
+      $ei1 "installation is incomplete; please finish it before trying"
+      $ei1 "to run FTPGET again!"
+      exit 1
+    fi
+  else
+    VERS=`echo $AIPS_VERSION | awk -F/ '{print $NF}'`
+    $ei1 "Found version $VERS, will try to fetch binaries for it."
+  fi
+fi
+if [ ! -d "$VERS" ] ; then
+  $ei1 "I cannot find the $VERS directory here.  Please cd to your"
+  $ei1 "AIPS_ROOT area (where you unpacked AIPS) and try again."
+  exit 1
+fi
+if [ "$1" != "" -a "$ARCH" = "" ] ; then
+  arch="`echo $1 | tr '[a-z]' '[A-Z]'`"
+  case "$arch" in
+    SUN4|SOL|SUL|IBM|LINUX|AXLINUX|ALPHA|HP|HP2|SGI) ARCH=$arch;;
+  esac
+fi
+$ei1 "You can get binaries for AIPS that were built on:"
+$spc
+$ei1 "    ALPHA   - Alpha AXP, Digital Unix (OSF/1) 4.0D"
+$ei1 "  AXLINUX   - Alpha AXP, Linux 2.0.34"
+$ei1 "       HP   - HP 9000/7xx, (xx up to 735; may be unavailable)"
+$ei1 "      HP2   - HP 9000/7xx, (xx 780 and up, may be unavailable)"
+$ei1 "      IBM   - IBM RS/6000, AIX 3.2.5"
+$ei1 "    LINUX   - Intel 386/486/Pentium, Linux 2.0.34 (glibc/ELF)"
+$ei1 "      SGI   - Silicon Graphics, Irix 6.4.1"
+$ei1 "      SOL   - Sparc, Solaris 2.5 (=SunOS 5.5)"
+$ei1 "      SUL   - Sparc ULTRA, Solaris 2.6 (=SunOS 5.6)"
+$ei1 "     SUN4   - Sparc, SunOS 4.1.2 (=Solaris 1.2)"
+$spc
+tmp=""
+while [ "$tmp" = "" ] ; do
+  $ei1 "Please enter, from the above list, which Architecture you want"
+  $ei1 "or type QUIT to abandon this attempt to ftp the AIPS binaries."
+  if [ "$ARCH" != "" ] ; then
+    $ei1 "(Your system seems to be of type $ARCH; this is the default)"
+  fi
+  ni1 "Architecture: "; read tmp; $spc
+  [ \( "$tmp" = "" \) -a \( "$ARCH" != "" \) ] && tmp=$ARCH
+#                                       Validate the selection
+  case "$tmp" in
+    QUIT|quit) $ei1 "Very well, bailing out NOW."; exit 1;;
+    SUN4|SOL|SUL|IBM|LINUX|AXLINUX|ALPHA|HP|HP2|SGI)
+       ARCH=$tmp
+       ;;
+    *) $ei1 "Sorry, $tmp is not a valid selection for architecture."
+       $ei1 "Valid: ALPHA AXLINUX HP HP2 IBM LINUX SGI SOL SUL or SUN4"
+       tmp=""
+       ;;
+  esac
+done
+ARCH=$tmp
+#                                       Create temporary script file
+tmpfile="/tmp/FTPGET.$$"
+[ -f $tmpfile ] && rm -f $tmpfile
+while [ "$LOGNAME" = "" ] ; do
+  ni1 "Please enter your username: "; read LOGNAME; $spc
+done
+passwd="${LOGNAME}@"
+if [ ! -d $VERS/$ARCH/LOAD ] ; then
+  if mkdir -p $VERS/$ARCH/LOAD ; then
+    $ei1 "Made directory $VERS/$ARCH/LOAD"
+  else
+    $ei1 "Failed to make directory $VERS/$ARCH/LOAD, cannot proceed!"
+    exit 1
+  fi
+fi
+if [ ! -d $VERS/$ARCH/LIBR ] ; then
+  if mkdir -p $VERS/$ARCH/LIBR ; then
+    $ei1 "Made directory $VERS/$ARCH/LIBR"
+  else
+    $ei1 "Failed to make directory $VERS/$ARCH/LIBR, cannot proceed!"
+    exit 1
+  fi
+fi
+#                                       Map ARCH to Z-routine directory
+case $ARCH in
+#                                       This is just silly!
+  ALPHA) archlib="APLDEC";;
+  AXLINUX) archlib="APLAXLIN";;
+  DEC) archlib="APLULTRX";;
+  HP2) archlib="APLHP";;
+  IBM3090) archlib="APL3090";;
+  SUL) archlib="APLSOL";;
+  SUN*) archlib="APLSUN";;
+#                                       Watch this for new ports!
+  *) archlib=APL$ARCH;;
+esac
+#                                       If we have Q library other than
+#                                       QPSAP, and Y library other than
+#                                       YSS, this fails.
+liblist="AIPSUB APLSUB APLOOP $archlib YSS YSUB YNOT APLNOT"
+liblist="$liblist QPSAP QSUB QNOT QOOP GNU"
+for i in $liblist ; do
+  if [ ! -d $VERS/$ARCH/LIBR/$i ] ; then
+    if mkdir -p $VERS/$ARCH/LIBR/$i ; then
+      $ei1 "  Made directory $VERS/$ARCH/LIBR/$i"
+    else
+      $ei1 "Failed to make dir. $VERS/$ARCH/LIBR/$i, cannot proceed!"
+      exit 1
+    fi
+  fi
+done
+if [ ! -d $VERS/$ARCH/MEMORY ] ; then
+  if mkdir -p $VERS/$ARCH/MEMORY ; then
+    $ei1 "Made directory $VERS/$ARCH/MEMORY"
+  else
+    $ei1 "Failed to make directory $VERS/$ARCH/MEMORY, cannot proceed!"
+    exit 1
+  fi
+fi
+if [ ! -d BIN/$ARCH ] ; then
+  if mkdir -p BIN/$ARCH ; then
+    $ei1 "Made temporary installation directory BIN/$ARCH"
+  else
+    $ei1 "Failed to make temporary directory BIN/$ARCH, cannot proceed!"
+    exit 1
+  fi
+fi
+if [ ! -d DA00/$ARCH ] ; then
+  if mkdir -p DA00/$ARCH ; then
+    $ei1 "Made temporary installation directory DA00/$ARCH"
+  else
+    $ei1 "Failed to make temporary directory DA00/$ARCH, cannot proceed"
+    exit 1
+  fi
+fi
+
+$ei1 "About to connect to $ftpsite and retrieve files.  This could take"
+$ei1 "a VERY long time depending on the aggregate bandwidth between"
+$ei1 "here and $ftpsite."
+$spc
+#                                       Create temporary file w/ftp cmds
+echo "user anonymous -$passwd" >$tmpfile
+echo "bin" >>$tmpfile
+#                                       LOAD area: files gzipped
+echo "cd /aips/$VERS/$ARCH/LOAD" >>$tmpfile
+echo "lcd $VERS/$ARCH/LOAD" >>$tmpfile
+echo "mget *" >>$tmpfile
+#                                       LIBR area: need list of subdirs
+echo "cd ../LIBR" >>$tmpfile
+echo "lcd ../LIBR" >>$tmpfile
+for i in $liblist ; do
+  echo "cd $i" >>$tmpfile
+  echo "lcd $i" >>$tmpfile
+  case $i in
+#                                       they're all SUBLIB except this:
+    GNU) echo "get libreadline.a" >>$tmpfile;;
+    *)   echo "get SUBLIB" >>$tmpfile;;
+  esac
+  echo "cd .." >>$tmpfile
+  echo "lcd .." >>$tmpfile
+done
+#                                       Memory file (global)
+echo "cd ../MEMORY" >>$tmpfile
+echo "lcd ../MEMORY" >>$tmpfile
+echo "mget *" >>$tmpfile
+#                                       Stuff for $SYSUNIX
+echo "cd ../../../BIN/$ARCH" >>$tmpfile
+echo "lcd ../../../BIN/$ARCH" >>$tmpfile
+echo "mget *" >>$tmpfile
+#                                       System files for $DA00
+echo "cd ../../DA00/$ARCH" >>$tmpfile
+echo "lcd ../../DA00/$ARCH" >>$tmpfile
+echo "mget *" >>$tmpfile
+#                                       Architecture-specific stuff
+case $ARCH in
+   SUN4)
+       echo "cd ../..SUN4/lib" >>$tmpfile
+       echo "lcd ../.." >>$tmpfile
+       echo "get libF77.so.2.0" >>$tmpfile
+       $ei1 "NOTE: You may need libF77.so.2.0 in your LD_LIBRARY_PATH"
+       $ei1 "for these binaries to work.  It will be left in AIPS_ROOT"
+       $ei1 "and you should arrange to have it put in a better place"
+       $ei1 "after INSTEP1 concludes, such as $VERS/$ARCH/SYSTEM/$SITE"
+       $ei1 "and then add this area to your LD_LIBRARY_PATH variable."
+       $spc
+       ;;
+   SOL)
+       echo "cd ../../SOL/lib" >>$tmpfile
+       echo "lcd ../.." >>$tmpfile
+       echo "get libF77.so.3" >>$tmpfile
+       echo "get libsunmath.so.1" >>$tmpfile
+       $ei1 "NOTE: You may need two extra libraries, namely libF77.so.3"
+       $ei1 "and libsunmath.so.1, in your LD_LIBRARY_PATH for these"
+       $ei1 "binaries to work.  They will be left in AIPS_ROOT,"
+       $ei1 "and you should arrange to have them put in a better place"
+       $ei1 "after INSTEP1 concludes, such as $VERS/$ARCH/SYSTEM/$SITE"
+       $ei1 "and then add this area to your LD_LIBRARY_PATH variable."
+       $spc
+       ;;
+   SUL)
+       echo "cd ../../SUL/lib" >>$tmpfile
+       echo "lcd ../.." >>$tmpfile
+       echo "get libF77.so.3" >>$tmpfile
+       echo "get libsunmath.so.1" >>$tmpfile
+       $ei1 "NOTE: You may need two extra libraries, namely libF77.so.3"
+       $ei1 "and libsunmath.so.1, in your LD_LIBRARY_PATH for these"
+       $ei1 "binaries to work.  They will be left in AIPS_ROOT,"
+       $ei1 "and you should arrange to have them put in a better place"
+       $ei1 "after INSTEP1 concludes, such as $VERS/$ARCH/SYSTEM/$SITE"
+       $ei1 "and then add this area to your LD_LIBRARY_PATH variable."
+       $spc
+       ;;
+esac
+#                                       That should do it.
+echo "quit" >>$tmpfile
+#                                       Now fire up ftp w/that file...
+ftp -n -i $ftpsite <$tmpfile
+$spc
+$ei1 "FTP session concluded.  The commands used are in $tmpfile"
+$spc
+#                                       they WILL be gzipped, so unzipem
+if [ "$gunzip" = "" ] ; then
+   if [ -f $VERS/$ARCH/LOAD/gunzip ] ; then
+      gunzip="$AIPS_ROOT/$VERS/$ARCH/LOAD/gunzip"
+      $ei1 "No gunzip found in PATH, will ASSUME I can use the one"
+      $ei1 "in $gunzip on this host... caveat emptor"
+      chmod +x $gunzip
+   else
+      $ei1 "ERROR: cannot find GNU gunzip program!  You will have to"
+      $ei1 "       get a version of gunzip to unpack the binaries.  "
+      $ei1 "       There is a copy in the /aips/$VERS/$ARCH/LOAD/ area"
+      $ei1 "       on the aips.nrao.edu ftp site, but it did not get"
+      $ei1 "       copied over for some odd reason..."
+      exit 1
+   fi
+fi
+#                                       We MUST have gunzip to get here.
+badg=0
+$ei1 "About to gunzip the binaries... this may take a while."
+(cd $VERS/$ARCH/LOAD; for i in *.EXE.gz XAS.gz ; do
+   if $gunzip -v $i ; then
+      : whoopie
+   else
+      $ei1 "WARNING: $gunzip $i failed!!!!"
+      badg=`expr $badg + 1`
+   fi
+done
+)
+if [ $badg -gt 0 ] ; then
+   $spc
+   $ei1 "ERROR: $badg file(s) in $VERS/$ARCH/LOAD failed to"
+   $ei1 "       unzip with $gunzip."
+fi
+#                                       Now check some files...
+#                                       MAKE SURE nl IS SET RIGHT!!
+$ei1 "Checking if everything made it in one piece..."
+globalfound=yes
+#                                       !!!!!@@@@@ Right for 15APR99
+#                                       Will need updated for 15OCT99
+nl=398
+nfiles=`(cd $VERS/$ARCH/LOAD; ls *.EXE XAS | wc -l | awk '{print $1}')`
+if [ $nfiles -eq $nl ] ; then
+  $ei1 "The LOAD area has $nfiles files which is the right number"
+elif [ $nfiles -gt $nl ] ; then
+  $ei1 "There are TOO MANY files in the $VERS/$ARCH/LOAD area?????!!!!"
+  $ei1 "Counting all the *.EXE files and XAS, there should be $nl..."
+  $ei1 "Either the author of this script miscounted, or something went"
+  $ei1 "a little, er, wrong somewhere.  Please investigate!"
+else
+  nrem=`expr $nl - $nfiles`
+  $ei1 "Not all the binaries got downloaded to $VERS/$ARCH/LOAD/"
+  $ei1 "(found $nfiles, should be $nl).  You will probably have to get"
+  $ei1 "the rest by hand.  You can ftp to $ftpsite, cd to the directory"
+  $ei1 "/aips/$VERS/$ARCH/LOAD, use 'dir' to list the files, compare to"
+  $ei1 "what you have, figure out the missing $nrem file(s), and then"
+  $ei1 "retrieve them via 'get' commands (remember to give the 'binary'"
+  $ei1 "command first).  The files are GNU-zipped (*.EXE.gz) and need"
+  $ei1 "to be run through gunzip after being transferred."
+  globalfound=no
+fi
+chmod +x $VERS/$ARCH/LOAD/*
+#                                       And the sublibs..
+allfound=yes
+#                                       Treat GNU area differently
+for i in $liblist ; do
+  case $i in
+    GNU)
+      if [ ! -f $VERS/$ARCH/LIBR/$i/libreadline.a ] ; then
+        allfound=no
+        $ei1 "Library $VERS/$ARCH/LIBR/$i/libreadline.a is missing"
+      fi
+    ;;
+    *)
+      if [ ! -f $VERS/$ARCH/LIBR/$i/SUBLIB ] ; then
+        allfound=no
+        $ei1 "Library $VERS/$ARCH/LIBR/$i/SUBLIB is missing"
+      fi
+    ;;
+  esac
+done
+[ "$allfound" = "no" ] && globalfound=no
+if [ ! -f $VERS/$ARCH/MEMORY/MED000000\; ] ; then
+  globalfound=no
+  $ei1 "The $VERS/$ARCH/MEMORY/MED000000\; file did not get downloaded."
+fi
+if [ ! -f $VERS/$ARCH/MEMORY/SPACE ] ; then
+  touch $VERS/$ARCH/MEMORY/SPACE
+fi
+things="F2PS F2TEXT NEWEST PP.EXE PRINTENV AIPWD REVENV"
+allfound=yes
+for i in MSD001000.001\; $things ; do
+  if [ ! -f "BIN/$ARCH/$i" ] ; then
+    case $i in
+      PRINTENV)
+        case $allfound in
+          yes) $ei1 "When FTPGET was being updated for $VERS, a binary"
+               $ei1 "for PRINTENV was expected in BIN/$ARCH, but either"
+               $ei1 "there is no such file on the ftp server, or it"
+               $ei1 "failed to copy.  This may not be serious; at worst"
+               $ei1 "you may have to place a symbolic link to your"
+               $ei1 "'printenv' command called PRINTENV in SYSLOCAL,"
+               $ei1 "(e.g., ln -s /usr/ucb/printenv $SYSLOCAL/PRINTENV)"
+               $ei1 "or build the PRINTENV.C in the SYSUNIX area."
+               $ei1 "Proceeding, assuming all is well..."
+        ;;
+          no)  $ei1 "the BIN/$ARCH/PRINTENV file did not get downloaded."
+        ;;
+        esac
+      ;;
+      *) $ei1 "The BIN/$ARCH/$i file did not get downloaded."
+         allfound=no
+    ;;
+    esac
+  else
+    case $i in
+      MSD*) ;;
+      *) chmod +x BIN/$ARCH/$i;;
+    esac
+  fi
+done
+[ "$allfound" = "no" ] && globalfound=no
+#                                       This is only a subset; the exact
+#                                       quantity of various files
+#                                       depends on the input to FILAIP.
+things="ACD000000 BAD001001 BQD000000 GRD000000 ICD000000 MED000001"
+things="$things PWD000000 SPD000000 TCD000001 TDD000004 TPD001001"
+allfound=yes
+for i in $things ; do
+  if [ ! -f "DA00/$ARCH/$i;" ] ; then
+    $ei1 "The DA00/$ARCH/$i file did not get downloaded."
+    allfound=no
+  fi
+done
+[ "$allfound" = "no" ] && globalfound=no
+if [ "$ARCH" = "SUN4" -a ! -f libF77.so.2.0 ] ; then
+   globalfound=no
+   $ei1 "For SUN4, the libF77.so.2.0 did not get copied."
+   $ei1 "(it resides in aips.nrao.edu:/aips/SUN4/lib/)"
+fi
+if [ "$ARCH" = "SOL" -a ! -f libF77.so.3 ] ; then
+   globalfound=no
+   $ei1 "For SOL, the libF77.so.3 did not get copied."
+   $ei1 "(it resides in aips.nrao.edu:/aips/SOL/lib/)"
+fi
+if [ "$ARCH" = "SUL" -a ! -f libF77.so.3 ] ; then
+   globalfound=no
+   $ei1 "For SUL, the libF77.so.3 did not get copied."
+   $ei1 "(it resides in aips.nrao.edu:/aips/SUL/lib/)"
+fi
+
+if [ "$globalfound" = "no" ] ; then
+  $ei1 "You will have to get these by hand (ftp to $ftpsite, cd to"
+  $ei1 "/aips/ and get the files mentioned above with appropriate"
+  $ei1 "'cd', 'lcd', and 'get' commands (don't forget to change to"
+  $ei1 "binary mode before starting any transfers!)"
+  [ "$ARCH" = "LINUX" -o "$ARCH" = "AXLINUX" ] && \
+   $ei1 "Also, if you have ncftp, it is highly recommended over ftp."
+else
+  $ei1 "All files APPEAR to have been downloaded correctly.  However,"
+  $ei1 "this script does not check every single file, especially in"
+  $ei1 "the LOAD and DA00 areas mentioned above.  If you are in ANY"
+  $ei1 "doubt about missing files, ftp to $ftpsite by hand, and check"
+  $ei1 "the various directories, seeing if there are any missing files."
+fi

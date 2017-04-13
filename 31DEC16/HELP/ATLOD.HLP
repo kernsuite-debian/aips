@@ -1,0 +1,884 @@
+; ATLOD
+;---------------------------------------------------------------
+;! Reads ATCA data in RPFITS dormat into AIPS
+;# TASK UV TAPE
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2009
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  Copyright (C) 1988-2009
+;;  Australia Telescope National Facility, CSIRO, Epping, Australia
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+ATLOD     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+ATLOD:  Task which reads RPFITS format uv data into AIPS.
+INTAPE            0.0       9.0    Tape drive number (0 -> 1)
+                                   No REMOTE capability
+NSKIP    *        0.0              Number of tape files to
+                                   skip (0 -> 0)
+NFILES   *        0.0    1000.0    Number of tape files to
+                                   load (0 -> 1)
+BCOUNT   *        0.0              First scan to read (0 -> 1)
+NCOUNT   *        0.0              No. scans to read (0 -> all)
+DATAIN                             Disk file name
+OUTNAME                            Output uv file name (name)
+                                     blank -> source name
+OUTCLASS                           Output uv file name (class)
+                                     blank -> UVDATA
+OUTSEQ            0.0    9999.0    Output uv sequence number
+                                     0 -> highest unique AND a
+                                     new file for EACH pass
+OUTDISK           0.0       9.0    Output disk drive number
+OPTYPE                               'LOAD' load data (default)
+                                     'LIST' scan summary
+                                     'SUMM' file summary
+                                     'SYSC' dump syscal info
+                                       see CPARM(9)
+SOURCES  *                         Source selection list
+TIMERANG *                         Time range selection
+FREQSEL  *                         Frequencies to select (MHz)
+IFSEL    *                         IFs to select
+CHANSEL           0.0     8192.    Channel selection array:
+                                     (1,n) start channel group n
+                                     (2,n) end channel group n
+                                     (3,n) incr. channel group n
+IFMAP                              True to map on-line IF chain
+                                   to AIPS IF axis.
+NIF               0.0        4.0   Length of IF axis,
+                                   0 => ATLOD decides.
+DOUVCOMP         -1.0       1.0    Use compressed data?
+APARM                              1) If > 0, convert to Stokes
+                                      if < 0, kludge RR,LL,RL,LR
+                                      if = 0, don't change the
+                                              polarizations
+                                   2) If true, keep flagged data
+                                   3) If true, retain
+                                      autocorrelations
+                                   4) Shadowing diameter (m)
+                                   5) max NX time gap (min)
+                                       0 -> 10 min
+                                   6) max NX scan length (min)
+                                       0 -> 60 min
+                                   7) CL entry interval (min)
+                                       0 -> 5 min
+                                   8) Number of integrations
+                                      over which to average Tsys
+                                       0 -> 1  See HELP/EXPLAIN
+                                   9) Number of integrations
+                                      over which to average XY
+                                      phase diff if APARM(1) = 1
+                                       0 -> 1  See HELP/EXPLAIN
+                                   10) If non-zero drop data on
+                                      quality of XY phase diff.
+                                      See HELP/EXPLAIN
+BPARM                              Baselines to be rejected,
+                                   (see HELP)
+CPARM                              Further control parameters:
+                                   1) System cal. info. print
+                                      level. See HELP/EXPLAIN
+                                   2) If true negate system XY
+                                      cal phase difference
+                                   3) If true, negate phases
+                                   4) If true, use XYPHASE array
+                                      instead of on-line values
+                                   5) If true, apply XY phase to
+                                      the Y gain
+                                   6) If 1, report antennas for
+                                      which sampler stats bad
+                                      If 2, drop baselines with
+                                      bad sampler statistics
+                                      If 3, do 1 and 2
+                                      If 4, correct data for
+                                      bad statistics.
+                                   7) Sampler tolerance
+                                   8) If true, DATAIN will be
+                                      read as lower case.  This
+                                      is intended for reading
+                                      from VAX disks mounted
+                                      under unix via multinet.
+                                   9) If OPTYPE='SYSC' then the
+                                      3 text files contain:
+                                     1 => XY phase, Tx & Ty
+                                     2 => X sampler stats
+                                     3 => Y sampler stats
+                                     0 => 1
+                                   10) If 1, Tsys from IF 1 is
+                                     applied to IF 2, if
+                                     APARM(8) is > 0
+XYPHASE                            Enter XY phase difference for
+                                   each antenna & FQID (degrees)
+DPARM                              1)  If > 0, then the scan
+                                     based source number of all
+                                     sources is set to 1.
+                                   2) If > 0, the spectra are
+                                     3-point Hanning smoothed.
+                                   3) If > 0 -> set weights to
+                                     D(3) instead of integration
+                                     time in units of 15s
+----------------------------------------------------------------
+ATLOD
+Type:  Task
+Use:   To read and load or list a summary of an RPFITS format uv
+       data file into AIPS.  The RPFITS file can be on tape or
+       disk.  If OUTNAME, OUTCLASS, and OUTSEQ specify an
+       existing file the data will be appended to it.
+
+Adverbs:
+INTAPE.....Tape drive number.  0 -> 1  Note that ATLOD does not
+           function with the AIPS remote tape system.
+NSKIP......Number of tape files to skip from current tape
+           position before starting to load data.
+NFILES.....The number of tape files to load (see OUTSEQ)
+BCOUNT.....The first scan to read (same in each file).  0 -> 1
+NCOUNT.....The number of scans to read (same in each file).
+           0 -> read all scans from file
+DATAIN.....Name of an RPFITS format uv data disk file to be
+           loaded into AIPS.  If this name is blank, ATLOD
+           assumes that input is to come from tape as
+           specified by INTAPE, and NFILES. If DATAIN is not
+           blank, INTAPE and NCOUNT are ignored.
+OUTNAME....Output uv file name (name).  Standard behavior with
+           default is source name.
+OUTCLASS...Output uv file name (class).  Standard behavior
+           with default is 'UVDATA'.
+OUTSEQ.....Output uv file name (sequence number).
+           0 -> highest unique.  If NFILES > 1, all the tape
+           files go into one output file.  To make different
+           tape files go into different  AIPS files, use
+           successive applications of ATLOD and NFILES=1.
+OUTDISK....Output uv file disk drive number.
+OPTYPE.....'LOAD' to read the data into an AIPS file (default)
+           'LIST' to list a summary of each scan
+           'SUMM' to list a summary of each file (very brief)
+           'SYSC' to write XY phases and Tsys values into text
+                  files in the FITS area
+SOURCES....List of sources to select.  ' ' -> all.  A "-" before
+           ANY source name means ALL EXCEPT any source named.
+TIMERANG...Time range selection, 0 -> all.
+FREQSEL....Frequencies of data to be selected (MHz), 0 -> all.
+IFSEL......IFs of data to be selected, 0 -> all.
+CHANSEL....Channel selection array: 0 => Load all channels
+           Up to 10 groups of channels may be selected.
+           CHANSEL(1,n) selects the begin channel, CHANSEL(2,n)
+           selects the end channel, and CHANSEL(3,n) selects the
+           channel increment for group n.  Generally, unselected
+           channels are loaded but flagged.   However, if only
+           one group of channels is specified, channels are
+           dropped rather than flagged.
+IFMAP......If true, then the IF chain number defined by the on-line
+           system is mapped to the AIPS IF axis value one-to-one
+NIF........Length of IF axis.  0 -> ATLOD chooses
+DOUVCOMP...If true (DOUVCOMP >= 0) the output data is written
+           in compressed format which can result in a
+           substantial reduction - about a factor of 3 - in disk
+           space needed, but some tasks may not be able to
+           handle this format.  Data are stored as 16-bit
+           integers with a different scaling for each visibility
+           spectrum.  ATLOD will warn you if there is a loss of
+           accuracy due to some channels (interference?) being
+           much higher than the average.
+APARM......Control parameters:
+           1) If > 0, convert XX,YY,XY,YX to Stokes IQUV.
+              If < 0, ignore the actual polarization order and
+                      type and call them RR,LL,RL,LR.
+              If = 0, don't change the polarizations.
+           2) If true, retain data flagged on-line as bad.
+           3) If true, retain autocorrelations in the output
+              uv file.
+           4) Antenna diameter to adopt when rejecting data due
+              to shadowing effects.  The physical diameter of
+              the AT antennas is 22 meters, so setting APARM(7)
+              smaller than 22 relaxes the shadowing constraint,
+              while making it larger tightens it.
+              The default is 22m.
+           5) Start a new index entry if a gap longer than
+              APARM(5) minutes occurs in the scan.
+              The default is 10 min., mininum 1 min.
+           6) Start a new index entry if an uninterrupted
+              section of data on the same source longer than
+              APARM(6) minutes occurs in the scan.
+              The default is 60 min., mininum 1 min.
+           7) A new CL (calibration) table will be created with
+              empty entries every APARM(7) minutes.
+              The default is 5 min., mininum 1 min.
+           8) If = -1 Undo the on-line correction and redo with
+                      nominal 50 K system
+              If = 0  No additional corrections
+              If > 0  Undo the on-line correction and redo with
+                      a Tsys correction averaged over APARM(8)
+                      integrations
+           9) If APARM(1) = 1 then Stokes conversion is
+              requested and the XY phase difference per antenna
+              is used.
+              If A(9) = 0 no averaging of  XY phases us done
+              If A(9) > 1 average XY phases for A(9)
+                          integrations
+          10) If A(10) > 0, drop visibilities if one of the
+              antennas has a bad XY phase differences.
+              If A(10) < 0, apply additional absolute XY phase
+              tolerance as well as usual clipping algorithm.
+              See EXPLAIN for clear explanation!
+BPARM......Baselines to be rejected, specified as 10*I + J
+           where I and J are the antenna numbers, order
+           being irrelevant unless the value is negative.
+           If I is 0 all baselines containing antenna J will
+           be dropped.  Examples
+              12  Drop baselines 1-2 and 2-1
+             -31  Drop baseline  3-1 (but not 1-3)
+               4  Drop all baselines involving antenna 4
+CPARM......Control parameters for experts only.
+           1) If = 1 list system calibration information
+              If = 2, you are told when the XY phases or Tsys
+              values appear to have drifted or jumped.
+              If = 3, then the information from 1 + 2 is printed
+           2) If true negate the system XY phase difference
+           3) If true, negate the visibilty phase as it is
+              read in (to fix data taken in 1989).
+           4) If true, use the XYPHASE array rather than the
+              on-line values
+           5) If true, apply the XY phases to the Y gains.
+           6) If 1, report antennas for which the sampler
+                statistics are out of range
+              If 2, drop baselines involving antennas with
+                bad sampler statistics
+              If 3, do 1 & 2
+              If 4, correct data for bad sampler statistics.
+           7) If > 0, use this as the sampler statistics
+              tolerance instead of the internal default
+              (5% for C(6)=1,2,3  12% for C(6)=4)
+           8) If true, DATAIN will be read as lower case.
+              This is intended for reading from VAX disks
+              mounted under unix via multinet.
+           9) If OPTYPE='SYSC' then the text files contain:
+               1 => XY phase, Tx & Ty
+               2 => X sampler stats
+               3 => Y sampler stats
+               0 => 1
+           10) Apply Tsys from IF 1 to IF 2 if (A8) > 0
+XYPHASE....Array of XY phases (degrees) for each antenna
+           and FREQID.  See EXPLAIN
+DPARM......1) If > 0, all sources are given source number 1.
+              This is for mislabelled single source per scan
+              data taken in March 1992 following intial
+              mosaicing experiments.
+           2) If > 0, the spectra are 3-point Hanning smoothed
+           3) By default, the weight of each visibility is set
+              to the integration time in units of 15 sec.
+              If DPARM(3)>0 then the weight for each visibility
+              is set to DPARM(3)
+----------------------------------------------------------------
+ATLOD: Task to read RPFITS format uv data into AIPS.
+DOCUMENTERS:  Mark Calabretta and Neil Killeen
+RELATED PROGRAMS:  FILLM, FILLR, UVLOD, IMLOD, FITTP
+
+   The uv file produced by ATLOD is in the multi-source format,
+that is, it includes the SOURCE and FREQSEL random parameters,
+and has SU, FQ, and NX extension files associated with it.  The
+SU extension file contains information which associates each
+source with a set of identifiers (name, ra, dec, etc.), and
+other information.  The FQ extension file records information
+for each IF used (frequency, bandwidth, sideband, etc).  The NX
+file records the index of visibility records associated with
+each scan.
+
+BCOUNT,NCOUNT    Each RPFITS file has multiple scans.  These
+   specify the first scan and number of scans to read.  If
+   reading from tape, then these numbers are the same for each
+   file.  Thus, they probably useful only for single file input.
+
+DATAIN   If blank, ATLOD assumes that input is to come from
+   tape as specified by INTAPE, and NFILES.  Use the AIPS verb
+   AVFIL to skip files on the tape to reach the one of interest.
+   If DATAIN is not blank, INTAPE and NCOUNT are ignored. The
+   DATAIN, when used for disk file input, must be of two forms:
+
+   1) 'AREA:FILENAME'  where AREA is an upper case environment
+      variable (e.g., %setenv AREA /scratch/data) pointing
+      to the location of the file called FILENAME. The file
+      name must also be upper case.
+
+   2) 'FITS:MYDIR/FILENAME'  FITS is a pre-defined environment
+      variable and MYDIR is a directory (upper case) below the
+      FITS area.  This can be shortened to 'MYDIR/FILENAME'
+      and the FITS area will be assumed as the route.  Note
+      if you use DATAIN='SCRATCH/FILENAME' then the files are
+      assumed to reside in /scratch/aips which is symbolically
+      linked to the directory FITS/SCRATCH.
+
+   3) We recommend that you simply put your data in the FITS
+      area, and then DATAIN='FILENAME' will work by default.
+
+OUTNAME, OUTCLASS, OUTSEQ, OUTDISK  Specify the output file
+   name.  If they specify a file that already exists, then the
+   new data are appended to it.
+
+OPTYPE
+   'LOAD' means load the specified data into an AIPS UV file
+   'LIST' resticts ATLOD to reporting summaries of the contents
+          of each scan
+   'SUMM' restricts ATLOD to reporting summaries of each file
+   'SYSC' causes ATLOD to write text files in the FITS area
+          The contents depend upon what value you give
+          CPARM(9).  By default, you get files containing
+          the XY phases (degrees) for each antenna  (XYPHS_UID)
+          and the system temperatures (TSYSX_UID) and TSYSY_UID)
+          where UID is your AIPS user number in decimal.
+
+          The first column in each file is the UT in days.
+          The second column is the frequency.
+          An integer follows each quantity for each antenna.
+          A zero indicates that value is good, anything else
+          indicates that that value was flagged by the on-line
+          system (e.g. if the telescope was not on source).
+
+          If you have multiple frequencies in the data, you can
+          use FREQSEL and IFSEL to select only one, otherwise data
+          from all frequencies will be put into the one file.
+          Note however, that the utility program ``pltsys''
+          provided at the ATNF for plotting the text files
+          produced by the 'SYSC' option, has frequency selection,
+          and it is quicker to load all frequencies with ATLOD and
+          then select the ones you want to plot with ``pltsys''.
+
+          Use SOURCES to select the desired sources (note that
+          Tsys will vary from source to source).
+
+          Use TIMERANG to select by time.
+
+          All other selection parameters are inactive in this mode
+
+          See CPARM(9) for more details of other possible
+          output files.
+
+FREQSEL   Allows you to select a number of frequencies. They
+   should be specified in MHz.   This apples to simultaneous
+   and time cycled frequencies. They are matched to the actual
+   frequencies in the data with a 1 KHz tolerance.
+
+   If you select frequencies that come from data with different
+   numbers of channels or polarizations, they cannot all go in
+   the one AIPS file. ATLOD will discard any frequencies that
+   are inconsistent with the attributes of the AIPS uv file.
+   You will be notified as this happens.  You will have to run
+   ATLOD as many times as you need output files to deal with
+   this sort of data.
+
+
+IFSEL     Allows you to select a number of IFs. The combination of
+   FREQSEL and IFSEL should offer sufficiently flexible selection criteria
+   to deal with all cases.    The ATCA produces one or two IFs.
+   Generally, spectral-line observers will use 1 IF, and continuum
+   observers two.    It is possible, although not recommended, to
+   observe both IFs at the same frequency.  If your correlator setup
+   was such that you had different numbers of channels in the two
+   IFs, then the two IFs would need to go into separate AIPS files.
+   In this case, FREQSEL would be insufficient to discriminate between
+   the two IFs and you would need IFSEL to pick out one or the other.
+
+   It may also be useful if you are time switching frequencies
+   but only want one IF to be loaded.  With just FREQSEL you
+   would need to list all the desired frequencies, with IFSEL
+   you just select the IF number, 1 or 2.
+
+   Data are selected accroding to FREQSEL *and* IFSEL.
+
+
+CHANSEL   Channel selection array: 0 => Load all channels. Up to
+   10 groups of channels may be selected.  CHANSEL(1,n) selects
+   the begin channel, CHANSEL(2,n)  selects the end channel, and
+   CHANSEL(3,n) selects the  channel increment for group n.  If
+   all of CHANSEL(1:3,n) are 0, then no more groups are accepted.
+   Otherwise, the defaults are CHANSEL(1,n)=0 -> 1, CHANSEL(2,n)=0
+   -> NCHAN, CHANSEL(3,n)=0 -> 1.
+
+   Generally, unselected channels are LOADED but FLAGGED.
+
+   An important case in point  is when you also set DOUVCOMP = 1
+   which means the visibilties are stored as scaled 16 bit integers.
+   If you have a strong birdie in a certain channel, you can deselect
+   it with the CHANSEL array.  E.g., the bad channel is 10.  Set
+   CHANSEL=1,9,1,11,33,1 to load channels 1-9  and 11-33. What this
+   really means is that all channels are loaded but channel 10 is
+   flagged.  In addition, channel 10 is not used to work out the scale
+   factors for the visibilty on conversion to 16 bit integers, so that
+   your dynamic range is not compromised in the good channels.
+
+   Note that if only one group of channels is specified, channels
+   are actually  dropped rather than flagged.  Thus, CHANSEL=7,29,2
+   would load only the odd channels from 7 to 29.   In the FQ table,
+   you would see that the channel increment has been doubled to
+   reflect this selection. However, the total bandwidth would reflect
+   only the actual channels that were loaded.  Really, there should
+   be a channel separation AND a channel increment, but AIPS does
+   not support this.   You will also note in the header (IMHEAD)
+   that the frequency reference pixel will also have changed
+   to reflect the new size of the frequency increment.
+
+
+IFMAP     AT data may have up to four simultaneous frequencies, but
+   generally you will see only two.  Let us call these ``IF chains''.
+   Contemporaneous data is located within the AIPS uv file on the
+   IF axis (if the number of channels and polarizations is equal).
+   When IFMAP is true, (+1) then IF chain 1 will ALWAYS turn up on
+   the IF axis in location 1, and IF chain 2 at location 2.  However,
+   you might select, with FREQSEL,  only the IF chain 2 frequencies.
+   In this case, you would want them to go to IF axis location 1,
+   otherwise you would waste a lot of disk space by having an empty
+   IF axis location 1,  followed by your data in IF axis location 2.
+   When IFMAP is false (-1), then ATLOD will put the next frequecy
+   it encounters in the next available IF axis location, regardless
+   of the on-line IF chain that it came from.
+
+   I suggest generally you leave IFMAP as false (-1).   See the
+   example after the discussion of NIF below for an example
+   where you might set it to true (+1).
+
+
+NIF      Normally, ATLOD will work out the length of the IF axis
+   based upon the information present in the first scan header that
+   is consistent with the user's selection crteria.   However, it
+   may be you know more than ATLOD and need to tell it the length
+   of the IF axis.
+
+   Consider the case where you have an observation such as
+
+               IF chain 1       IF chain 2
+   Scan 1:        4700              8300
+   Scan 2:        4600              8000
+
+   Let us say you set FREQSEL=4700,4600,8000, thus omitting
+   the 8300 frequency on IF chain 2.  Now, you MUST set NIF=2
+   to get all these frequencies loaded.  ATLOD notes that you
+   want one frequency from the first scan, and that it would
+   go to IF axis location 1.  But this is the only information
+   it has when it reads the header for the first scan, which
+   is when it must build the attributes for the output file.
+   It doesn't know that the other specified frequencies are
+   is succeeding scans and that they will need an IF axis of
+   length 2.   Thus, you must set NIF=2.   IF axis location
+   2 for the first scan will get filled with dummy visibilities
+   of zeros.
+
+   Note, that if you set FREQSEL=8300,4600,8000 instead, and
+   IFMAP=-1, then the 8300 frequency would be put onto IF axis
+   location 1.   However, if IFMAP=1 then it would go to
+   location 2, and location 1 would be zero filled instead.
+
+
+DOUVCOMP   For large data sets, you may wish to compress the
+   data format.  This saves disk space, but loses dynamic range.
+   The task UVCMP can switch between compressed and uncompressed
+   formats.  Uncompressing compressed data does NOT recover
+   that lost dynamic range.
+
+APARM(1)  If > 0, convert XX,YY,XY,YX polarizations to Stokes
+   IQUV.  The format of raw AT data is linear polarizations.
+   At some stage this must be converted to the Stokes parameters
+   IQUV for imaging.  Because AIPS does not deal very well with
+   XX,YY,XY,YX data at present, and for other reasons too,
+   we encourage you to use this option and convert to IQUV.
+
+   Note that the XX and YY gains must be roughly equal (< 10%)
+   for this to work properly if any of your sources are
+   polarized.  Check this by loading an unpolarized and strong
+   source (e.g. 1934-63) with no Stokes conversion and compare
+   plots of XX and YY for individual baselines (to do this you
+   need APARM(1)=-1.  See below.
+
+   If < 0, ignore actual polarization order and type and call
+   them RR,LL,RL,LR.  This is for cases where you actually want
+   to load the data in their raw form, but in order to get many
+   of the plotting functions in AIPS to work, we need to trick
+   AIPS and call them something it knows how to recognize.
+   Calibrating XX and YY independently assumes that the
+   calibratirs are unpolarized.
+
+   APARM(1)=0 means load the data as they are with no Stokes
+   conversions or naming tricks.
+
+   See also APARM(10) for a bit more fiddling about.
+
+APARM(2)  If > 0 then retain all visibilites that the on-line
+   system flagged as bad.  These usually occur for data taken
+   when the system is not yet on source, or for errors detected
+   by the correlator.  You would want to be desperate for
+   visibilites to turn this one on.
+
+APARM(3)  If > 0 then autocorrelations are retained.  At
+   present, these contain nothing useful and there is no point
+   to hanging on to them.  When they become useful, the default
+   will be change to retain them.
+
+APARM(4)  The shadowing criterion is currently fairly simple and
+   is a geometric calculation for sources at the pointing
+   centre.  For a given shadowed baseline, the shadowed antenna
+   is found, and all visibilities involving that antenna
+   dropped.  Note the EW nature of the ATCA is used for
+   the shadowing calculation, so you must disable the shadowing
+   check for LBA data (see below).
+
+   If = 0 the shadowing is computed for 22 m diameter dishes
+
+   If > 0 the shadowing is computed for A(4) m diameter dishes
+
+   If < 0 the shadowing check is disabled
+
+   Increasing A(4) above 22 provides as more conservative
+   criterion.
+
+APARM(5)  The index (NX) table contains information about
+   where scans begin and end (times and visibility numbers).
+   This allows rapid access to the data base.  A new index
+   record is always started for a source change.
+
+   If = 0 then begin a new index entry if a gap longer than
+   10 minutes occurs in the data.
+
+   If > 0 then then begin a new index entry if a gap longer than
+   A(5) minutes occurs in the data.  Minimum allowed is 1
+   minute.
+
+APARM(6)   If = 0 then start a new index entry if an
+   uninterrupted section of data on the same source is longer
+   than 60 minutes.
+
+   If > 0 then start a new index entry if an uninterrupted
+   section of data on the same source is longer than A(6)
+   minutes.  Minimum is 1 minute.
+
+APARM(7)   ATLOD will also create the pristine calibration (CL)
+   table.  It consists of 1s (Real part of gain) and 0s
+   (imaginary part of gain).  Later, as the calibration
+   procedes, new CL tables will be created by applying
+   corrections to CL table 1.  The frequency of CL table entries
+   sets the fundamental time scale on which you can make gain
+   corrections, when you work entirely within multi-source
+   files.  That is, when doing self-calibration, it would be
+   pointless having solution intervals smaller than the CL table
+   entry interval.  If you split off single source files, the
+   fundamental gain change time scale that you can add is the
+   integration time (10 seconds).  Self-cal is often done on
+   time scales of a couple of minutes or maybe less (depends on
+   the S/N), so you should bear this in mind.
+
+   If = 0 then a new CL table entry will be created every 3
+   minutes.
+
+   If > 0 then a new CL table entry will be created every
+   APARM(7) minutes.  The minimum is 1 minute.
+
+APARM(8)  The Tsys correction attempts to correct for gain
+   changes that occur faster than you observe calibrators.  It
+   is measured every integration by comparing the switched noise
+   source of known power with the total power for each X and Y
+   feed on each antenna.  It is this number that is used to
+   normalize the signals before they are transformed into
+   digital signals in the samplers -- the samplers require input
+   signal levels that are steady.  The correlation function is
+   the rescaled by Tsys.  Since Tsys is worked out from a single
+   integration it is noisy.  It is preferable to apply a less
+   noisy Tsys correction.
+
+   If APARM(8) = -1, the the on-line correction, if any, is
+   undone, and the Tsys correction is redone with a nominal
+   50 K system.  This is the same as no on-line Tsys correction
+
+   If APARM(8) = 0, no additional changes are made to the Tsys
+   corrections.
+
+   If APARM(8) > 1, then APARM(8) integrations will be used to
+   determine the running Tsys mean.
+
+   Some data are too old for the offline Tsys correction
+   (earlier than 13-Aug-90), you will be warned if this is the
+   case.  The algorithm attempts to deal with frequency and
+   source changes (Tsys may jump if the source is bright enough)
+   as well as unexpected drifts or jumps.
+
+APARM(9)  If you have requested Stokes conversion (APARM(1)=1)
+   then the phase difference between the X and Y feeds on each
+   antenna is used.  Essentially, XX and YY must be summed in
+   phase to form Stokes I.  These XY phases are noisy and
+   APARM(9) allows an averaged value to be used.
+
+   If APARM(9) = 0  then no averaging of the XY phases is done
+                    and no checks for bad values are made
+   If APARM(9) > 1  then the XY phases are averaged over APARM(9)
+                    integrations
+
+APARM(10)  The XY phase differences for each antenna are
+   measured from a noise diode every integration.  Dropouts in
+   normal AT visibilities generally correlate with dropouts in
+   the XY phase difference for at least one of the antennas
+   involved in the baseline.  If your source is very weak you
+   cannot detect these dropouts by visual inspection.  However,
+   the XY phase difference is always measured.
+
+
+   If > 0 then visibilities are dropped when the XY phase
+   difference is bad. The XY phase is deemed bad by comparing
+   it with the running mean and the width of a stack of
+   accumulated phases (see APARM(9)).
+
+   If < 0, then in addition to first being marked as bad by the
+   algorithm which compares the  current point with the stack
+   mean and width (see above), the point is finally only called
+   bad if it is greater than ABS(APARM(10)) DEGREES from the
+   stack mean as well.   Note that if you are using the XYPHASE
+   array (CPARM(4)=1), then the values in it are used as the
+   stack mean instead of the on-line values.  This provides for
+   a simple means of flagging on the basis of XY phases if you
+   have gone to the trouble of plotting them up.
+
+   If = 0 then no dropping of visibilities is done.  If you have
+   also selected to convert to Stokes, ATLOD will replace what
+   it thinks are bad XY phases with the stack average (see
+   APARM(9) and below).  However, visibilities involving the
+   antenna with the bad XY phase are likely to be bad.
+
+CPARM(1)  If = 1 then lots of information can be printed that
+   is used in the conversion to IQUV.  XY phase difference,
+   Tsys and parallactic angles are listed.
+
+   If = 2, then the user is told when the XY phases or Tsys
+   values appear to have drifted since the last freq
+   or source/freq combination, respectively, was observed.
+   The accumulations of these quantities are reset when this
+   happens.  Otherwise, the current accumulations would reflect
+   the wrong values.
+
+   If = 3, then the information from 1 + 2 is printed
+
+CPARM(2)  If the conversion to IQUV does not look correct, try
+   turning this on AND come and talk to me (NEBK).
+
+CPARM(3)  If true, negate the visibilty phase as it is read in.
+   There was a problem with early AT data sets which produced
+   inverted images.  The phase had the wrong sign, so you can
+   change it here.  Only data from 1989 is likely to be
+   affected.
+
+CPARM(4) Use the XYPHASE array rather than the on-line values.
+
+CPARM(5) When not converting to Stokes IQUV, you can optionally
+   apply the XY phase to the Y gains.  Thus, the YY phases would
+   be rotated to those of XX
+
+                     ******* NB ********
+
+   A trap here is that applying XYPHASEs of zero degrees, is different
+   from NOT applying any XYPHASE.  Thus, let us say you use the 'SYSC'
+   option to plot up your XYPHASEs, and you see that they are all
+   close to zero.  However, because, internally, ATLOD adds pi to the
+   XYPHASEs (to bring them to the same convention as Miriad), applying
+   an XYPHASE of zero is different from  not applying them.   If you
+   want to apply the XYPHASEs, you should ALWAYS do it, even if they
+   are apparently close to zero.
+
+
+
+CPARM(6) The sampler statistics for each antenna have well
+   defined ideal values.   The correct values are 50% for the
+   zero level statistic.   For the positive and negative level
+   statistics, they should be 17.1% for data taken before
+   21/8/93, and 17.3% thereafter.
+
+   If the samplers are out of range, it indicates that the
+   data will be scaled incorrectly, although the spectrum
+   may look fine.  A tolerance of about 5% is about all that
+   one should tolerate on these statistics.
+
+   A particular case is that of interference, which may drive
+   the samplers to their rails.  This would produce
+   uncalibratable data but would be hard to flag otherwise.
+
+   If = 1, then when the sampler statistics are out of
+     range, a warning is issued to the user.  The default
+     is that the samplers must be within 5% of the correct
+     value.
+
+   If = 2, then baselines involving antennas with out of range
+     sampler statistics are dropped.  The default is that
+     the samplers must be within 5% of the correct value.
+
+   If = 3, then 1 and 2 above are done.
+
+   If = 4, then the data are CORRECTED for the error in the
+     sampler statistics when they are within the tolerance
+     of the correct value.    The default is that the sampler
+     statistics must be within 12% of the correct value in order
+     that the correction can be made.   Any visibilities outside
+     of this range will be dropped.   In addition, the correction
+     can only be made of the zero statistic is within  5% of 50%
+     and if the difference of the positive and negative statistic
+     is within 5%.  Data outside of this range will again be
+     dropped.   Note also that the sampler correction is for
+     small correlation coefficients only.   Thus, autocorrelations,
+     if loaded, are not corrected. Similarly, if you have visibility
+     amplitudes of the order of 50 Jy, they should not be corrected
+     either.
+
+CPARM(7)  The internal setting for the acceptable tolerance in
+   the sampler statistics is 5% if C(6)=1,2 or 3 and 12% if
+   C(6) = 4.   If you want a different TOLERANCE,  set CPARM(7)
+   to this value.
+
+CPARM(8)  AIPS normally converts adverbs to upper-case, so
+   reading files with lower-case names is impossible. Files on
+   VAX disks, available to unix via multinet, are seen by
+   default on a unix system as lower-case. If CPARM(8) is set
+   true, ATLOD converts the string in DATAIN back to lower-case,
+   before reading the file.
+
+CPARM(9)  If you set OPTYPE='SYSC' then information from
+   the SYSCAL group is written into three text files for
+   you to examine it (3 is the maximum number of text files
+   that can be open at one time in AIPS).These files go
+   to the $FITS area.  Each file contains 14 columns, the
+   first is the time, the second the frequency, and the
+   next 12 are the quantity and a flag for each antenna.
+   A flagf of 0 means the data are good, a flag > 0 means
+   the on-line system flagged it bad (e.g. not on source
+   for Tsys)
+
+   If C(9) = 1  the files contain the XY phase differences
+     (XYPHS_UID), the X (TSYSX_UID) and the Y (TSYSY_UID)
+      feed system temperatures.
+
+   If C(9) = 2  the files contain the X sampler statistics.
+     The negative (XSSNEG_UID), zero (XSSZER_UID) and
+     positive (XSSPOS_UID) statistics are each put into
+     a separate file.
+
+   If C(9) = 3 the files contain the Y sampler statistics
+     (YSSNEG_UID, YSSZER_UID, YSSPOS_UID).
+
+   Any other value => 1   UID is your AIPS user number
+
+XYPHASE  The on-line XY phases for each antenna, are still quite
+   often very poor, especially at 13 and 20 cm.  We believe that
+   these phases shoudl be constant over the observation.   If
+   you have a better estimate of the XY phase than the on-line
+   value, you can put it in here, and set CPARM(5)=1.
+
+   You might use OPTYP='SYSC' to write the XY Phases to a text
+   file and examine them.  Then input into the XYPHASE array,
+   the mean value for each antenna.   If you have more than one
+   frequenciy in the file, then you can input 6 XYPHASEs for
+   the first frequency and then the next 6 for the second
+   frequency.
+
+   We need to associate the correct XYPHASE with the correct.
+   frequency. The order in which to input the XYPHASEs is the
+   order in which they list in the FQ table.
+   Thus,   first 6 phases for IF 1, FREQID 1, then IF 2 FREQID 1,
+   and so on to IF n FREQID 1.  Then start on FREQID 2 and so on.
+   Note that if IFMAP=-1 the location of a frequency on the IF
+   axis does not necssarily reflect its on-line IF chain value.
+   You should know what you are doing here in the more complicated
+   cases.  See me if unsure (NEBK).
+
+   You must always specify 6 values if you are going to specify
+   values for more than one frequency. This is true even if
+   antenna 6 is not in use for your observation.
+
+   SPace for up to 6 frequencies is provided.  This would require
+   thirty numbers
+
+
+
+DPARM(2)  If > 0, then the spectra are three point Hanning smoothed.
+   The real and imaginary spectra are smoothed separately.   The
+   smoothing occurs before channel selection, so that you can
+   smooth the data, and then drop every second channel say.  This
+   is appropriate for spectral-line observations where adjacent
+   channels in the spectrum are intiially independent, but the
+   raw spectrum is still convolved by a SinC function which will
+   cause sidelobes about narrow spectral features.
+
+
+DPARM(3)  ATLOD has always written the weights for each visibility
+   as 1.0.  However, as of ATLOD version 03/mar/94, and for data
+   taken after 22/feb/04, it now by default sets the weights
+   to the integration time divide by 15 sec.  This includes
+   allowing for time losses such as the blank and hold times.
+
+   If DPARM(3) > 0 then the weights will be set to DPARM(3).
+   So if you wish the weights to still be unity, set DPARM(3)=1
+
+   If you wish to concatenate with some old data with weights=1,
+   you should use the REWEIGHT adverb of DBCON accordingly
+
+
+
+
+SHOW and TELL are implemented for ATLOD.  Type
+
+AIPS> SHOW ATLOD
+
+to see which adverbs you can change while ATLOD is running.
+Set their values appropriately, and then type
+
+AIPS> TELL ATLOD
+
+to inform ATLOD of your intentions.  ATLOD receives TELL
+information in two places.  The first is after each specified file
+has been skipped (NSKIP).  Thus you could change NSKIP if
+you wish.   The second is after each scan has been read into
+AIPS.   ATLOD will inform you when it receives a TELL command.
+
+Here are the adverbs you can change.
+
+OPTELL           Operation ('CHAN', 'QUIT', 'ABOR')
+NSKIP            Number of tape files to  skip
+NFILES           Number of tape files to load
+BCOUNT           First scan to read
+NCOUNT           No. scans to read
+SOURCES          Source selection list
+TIMERANG         Time range selection
+FREQSEL          Frequencies to select (MHz)
+IFSEL            IFs to select
+
+set OPTELL='CHAN'  to change them.
+set OPTELL='QUIT'  to have ATLOD finish cleanly at the next
+                   available opportunity.    VERY useful if
+                   you suddenly find you asked ATLOD to read
+                   many files from tape, but that you have not
+                   selected any data from the last 10 and don't
+                   want to wait while it finds this out.
+set OPTELL='ABOR'  to have ATLOD abort
+
+The only one that can run you into trouble is IFSEL.  Consider
+loading data where you have set IFSEL=0 and IFMAP=-1.  Let
+us say IF 1 goes to IF axis 1, and IF 2 goes to IF axis 2.
+
+Now, with TELL, you change IFSEL=2,0   ATLOD then finds on the
+next scan that you don't want IF 1 any more, but that you do want
+IF 2.  It sees that IFMAP=-1, which means put the data on the
+first available IF axis location.  Thus, IF 2 will now arrive
+in IF axis 1.   Ths would be a bit of a mess.
+
+However, if you set IFMAP=1 in this case, IF 2 would still go to
+IF axis 2 and all would be well.
+----------------------------------------------------------------
