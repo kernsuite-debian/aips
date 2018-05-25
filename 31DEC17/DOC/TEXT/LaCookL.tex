@@ -1,0 +1,855 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2013-2014, 2016-2017
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\setcounter{chapter}{11}
+\APPEN{Handling EVLA P-band Data in \AIPS}{Special Considerations for EVLA
+      P-band Data Processing in \AIPS}{EVLAlowband}
+\renewcommand{\Chapt}{26}
+
+\renewcommand{\titlea}{31-December-2017 (revised 18-December-2017)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+The \Indx{EVLA} has been equipped with new, wide-band receivers in the
+range 230 MHz to 470 MHz, known as P-band.  Most of the data reduction
+and imaging at this band are similar to those at other bands, so the
+following will assume some degree of familiarity with the rest of the
+\Cookbook, particularly \Rappen{EVLAdata}\@.  This guide was initially
+prepared by Minnie Mao from an earlier guide written by Susan Neff.
+Enough has changed with the P-band system that a thorough revision of
+the Appendix has been done.
+
+{\bf Note that the choice of file names, disk assignments, catalog
+numbers, and the like depends on your circumstances and will almost
+certainly not be the same as those shown in the examples below.  Note
+also that experienced (but still reasonable) EVLA users disagree on
+the details of data reduction.  Some compromise in these details has
+been attempted below.}
+
+RFI, especially in spectral-line observations, has tended to
+accumulate at the phase center for reasons not well understood.  It
+may be best to observe your sources somewhat offset from the phase
+center.
+
+\sects{P-band calibration and editing in \AIPS}
+
+\begin{enumerate}
+\item\ Download your data set from the archive found at\\
+\hphantom{MMMMMMM}{\tt https://archive.nrao.edu/archive/ArchiveQuery}\\
+making sure that you select SDM-BDF data set (all files) as the
+download data format.
+
+\item\ Before starting {\tt AIPS} and while in the terminal window you
+  intend to use for {\tt AIPS}, enter
+\dispi{cd {\it my\_data\_directory} \CR}{to change to the data
+             directory containing the top-level directory of your
+             data set.}
+\dispi{export MYAREA=`pwd` \CR}{for bash shells, or}
+\dispi{setenv MYAREA `pwd` \CR}{for tcsh and c shells.}
+\dispe{Note the back ticks around {\tt pwd} which cause the output of
+{\tt pwd} to appear in the typed line.}
+
+\item\ Start {\tt AIPS} with, for example,
+\dispi{aips tv=local pr=3 \CR}{to use Unix sockets for the TV and
+       printer 3}
+\dispe{and enter your user number when prompted.}
+
+\item\ Look at the SDM-BDF file contents with {\tt BDFLIST} --- make
+  sure you do {\it not} have a quote at the end of the file name, or
+  else the lower case characters get changed into upper case and the
+  file won't be found.\todx{BDFLIST}
+\dispi{default bdflist \CR}{initialize all adverbs}
+\dispi{dowait 1; docrt 1 \CR}{to get output on terminal as well as log
+       file.}
+\dispi{asdmfile(1) = 'MYAREA: \CR}{two parts are concatenated.}
+\dispil{asdmfile(2) = 'TSUB0001.sb23643640.eb23666175.56454.14034020834
+       \CR}{}
+\dispi{bdflist \CR}{to examine file contents.}
+\dispe{Pay particular attention to the configuration numbers and
+  number of spectral channels.  These refer to each unique correlator
+  {\it and} antenna setup, not just the size of the current VLA\@.
+  Each configuration and number of channels that you want will need to
+  be loaded individually.}
+\vfill\eject
+
+\item\ Load data into \AIPS\ with {\tt BDF2AIPS} --- I'm doing
+  everything on disk $d$ because that's where there's more room.
+  Note, do not use {\tt DEFAULT} to retain the adverbs from the
+  previous step.  Loading data may take a while depending on the size
+  of your data.\todx{BDF2AIPS}\iodx{EVLA}
+\dispi{outn 'my-name' \CR}{to select a meaningful file name.}
+\dispi{config $c$ \CR}{to select configuration $c$.}
+\dispi{outdi $d$ \CR}{to select the disk.}
+\dispi{bdf2aips \CR}{to translate the data into \AIPS.}
+\dispi{nchan $N$ \CR}{to limit to data with $N$ spectral channels;
+  some spectral-line configurations can contain more than one number
+  of channels but {\tt AIPS} can only load one number at a time.}
+\dispe{Do this as often as needed to load all desired configurations.
+Spectral-line set-ups can have spectral windows with different numbers
+of channels within the same configuration.  \AIPS\ can only handle one
+at a time, so specity {\tt nchan $N$ \CR} to load the data with $N$
+channels and repeat as needed.}
+
+\item\ Look at header of the \AIPS\ file written by {\tt BDF2AIPS}
+\dispi{indi $d$; getn 1 \CR}{to select disk and catalog number,
+       assuming you had no files on disk $d$ previously.}
+\dispi{imh \CR}{to see the details of the $uv$-data set header.}
+
+\item\ look at where the telescopes were during your observation with
+     {\tt \tndx{PRTAN}}
+\dispi{default prtan \CR}{ }
+\dispi{indi $d$; getn 1 \CR}{ }
+\dispi{docrt = -1 \CR}{to make a printer listing to keep at your
+       terminal.}
+\dispi{go prtan \CR}{ }
+
+\item\ Look at the observation summary with {\tt \tndx{LISTR}}
+\dispi{default listr \CR}{ }
+\dispi{indi $d$; getn 1 \CR}{ }
+\dispi{opty 'scan' \CR}{to list scans and sources.}
+\dispi{docrt = -1 \CR}{to make a printer listing to keep at your
+       terminal.}
+\dispi{go \CR}{ }
+
+At this stage, Minnie's summary recommends separating P-band from
+4-band data.  At present, only P-band is recorded so that step is not
+needed.  Then, Minnie recommends using {\tt POSSM} to find dead
+antennas plus those with crossed polarization.  Then she recommends
+{\tt UVFLG} to flag the dead ones and {\tt FIXRL} to uncross the
+mis-wired ones.  These problems have been essentially eliminated.
+In addition, P-band data are now delivered by default in a number of
+relatively narrow spectral windows (called IFs in \AIPS) which helps
+minimize data lost to RFI and eliminates the {\tt NOIFS} and {\tt
+  MORIF} steps from Minnie's guide.
+
+\item\ However, the requantizer gains are now allowed to vary and must
+  be corrected.\todx{TYAPL}
+\dispi{default tyapl \CR}{to select the needed task}
+\dispi{indi $d$; getn 1 \CR}{to select the input file.}
+\dispi{inext 'SY' ; optype 'PGN' \CR}{to select requantizer gain
+       correction.}
+\dispi{inext 'SY' ; in2ver = 1 \CR}{to apply the SysPower table, the
+       version number is not defaulted.}
+\dispi{outdis $d$ ; go \CR}{to stay on one disk.}
+
+\vfill\eject
+\item\ Narrow-band RFI will normally cause ringing in P-band data.
+  Use {\tt POSSM} to examine some baselines from a calibration source
+  to check this if you want to be careful.  The default setup delivers
+  data from outer IFs for which the sensitivity of the P-band receiver
+  is poor.  Use \todx{SPLAT} to drop the insensitive IFs and to do
+  Hanning smoothing to reduce the ringing.
+\dispi{default splat \CR}{to select the needed task}
+\dispi{indi $d$; getn 2 \CR}{to select the (new) input file.}
+\dispi{flagver 1 \CR}{to apply the on-line flags.}
+\dispi{smooth = 1, 0 \CR}{to do Hanning smoothing once and for all.}
+\dispi{bif = 3; eif = 15 \CR}{to select the more sensitive IFs.}
+\dispi{outdis $d$ ; go \CR}{to put the output on the same disk.}
+
+\item\ Edit UV data with {\tt \tndx{EDITA}} and the {\tt SY} table.
+  {\it The {\tt SY} table $P_{\rm sum}$ parameter is sensitive to the
+    occasional bursts of RFI which render the data useless.  Flag all
+    seriously discrepant points but do not flag really tightly since
+    some noise in this parameter is normal and ``correct.''}
+\dispi{default edita \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{inext 'SY' \CR}{ }
+\dispi{go \CR}{ }
+
+\item\ At this time, it is best to identify those spectral channels
+  affected by RFI throughout the run and to flag them once and for
+  all.  {\tt \tndx{FTFLG}} will display the data combining all
+  included baselines in a single display (per polarization), while the
+  very similar {\tt SPFLG} allows much better discrimination (and more
+  work) by displaying the baselines separately.  Be sure to flag all
+  sources if you flag channels over all times.\iodx{EVLA}
+\dispi{default ftflg \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{calcode '*' \CR}{to examine calibrators only}
+\dispi{dparm(6) = $x$ \CR}{to specify the basic integration time in
+       the data in seconds.}
+\dispi{go \CR}{ }
+\dispe{If you use {\tt SPFLG}, you should limit the times, sources,
+       and/or baselines examined.  The flagging then is best done with
+       {\tt \tndx{UVFLG}} from notes made while you study the data
+       with {\tt SPFLG}\@.}
+\dispi{default uvflg \CR}{}
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{bif = $bi$ ; eif = $ei$ \CR}{to set range of spectral windows.}
+\dispi{bchan = $bc$ ; echan = $ec$ \CR}{to set range of spectral
+       channels.}
+\dispi{antennas = $a1, a2, a3$ \CR}{to select antennas to flag.}
+\dispi{baseline = $b1, b2, b3, b4$ \CR}{to limit flags to the
+       baselines from the pairs $a1$ through $a3$ with $b1$ through
+       $b4$.}
+ \dispi{reason 'bad channels' \CR}{to set a reason in the flag
+       table.}
+\dispi{go \CR}{and repeat as needed with different IFs, channels,
+       antennas, etc.}
+
+\vfill\eject
+\item\ This step is optional and should be considered only if you have
+  several P-band data sets to reduce.  There is a special capability
+  in \AIPS\ developed for lowband data.  The task {\tt \tndx{FGTAB}}
+  was written to read a flag table and write to a text file those
+  flags that apply to all times, sources, antennas, subarrays, and
+  frequency IDs.  The channel specifications are written in frequency
+  units which enables {\tt \tndx{UVFLG}} to read the text file and
+  apply the same flags to the channels to which they pertain in the
+  second data set.  Of course, if the two data sets have identical
+  frequency structure, then one could simply copy the {\tt FG} table
+  from one data set to the other.  Task {\tt \tndx{TACOP}} would be
+  used if you want the flag file by itself.  {\tt \tndx{TAPPE}} would
+  be used if you want to append the flag table of the first file to
+  one of the second.  Note that these two tasks transfer all flags in
+  the input table, not just those that flag the general RFI
+  environment.
+
+\item\ Calibrate for the delay errors with {\tt \tndx{FRING}}\@.
+  Choose a time range in the middle of the observation where you know
+  the antennas have settled down.  A short time range is all you need
+  --- look at {\tt LISTR} --- because you don't want time variations
+  to come into play.  This is also why you should choose something
+  bright --- like 3C286, which is used here as the name for the
+  generic fringe- and baseline-fitting calibration source..
+\dispi{default fring \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{calso '3C286' ' \CR}{to select the primary calibration source.}
+\dispi{timerang 0 3 40 0 0 3 40 55 \CR}{to select $< 1$ minute of good
+       data from the calibration source.}
+\dispi{solint 1 \CR}{to average over all included times.}
+\dispi{aparm(5) 1 ; aparm(6) 1 \CR}{to fit a single delay over all IFs
+       and to print some extra detail in the fitting.}
+\dispi{dparm(9) 1 \CR}{to avoid any fitting for rates --- important.}
+\dispi{refant 22 \CR}{to set a reference antenna, if one is known to
+       be better than others.}
+\dispi{go \CR}{ }
+\dispe{This print level will display the delays found, which should
+       all be a few nano-seconds although larger (correct) delays
+       sometimes arise.}
+
+\item\ Apply these delay solutions to the calibration ({\tt CL}) table
+with {\tt \tndx{CLCAL}}
+\dispi{default clcal \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{calso '3C286','' \CR}{ }
+\dispi{snver 1 \CR}{to specify the {\tt SN} table version written by
+       {\tt FRING}\@.}
+\dispi{go \CR}{to copy {\tt CL} table 1 to version 2 adding the delay
+       correction, taken to be constant in time.}
+
+\item\ You should flag out any bad data on your bandpass calibrator.
+  Some users feel that a quick-and-dirty flagging is enough at this
+  stage.  Use {\tt CLIP} with a carefully chosen, perhaps
+  IF-dependent, cutoff level.  A more detailed editing is done by
+  other users.  Here are options to use {\tt RFLAG} and {\tt SPFLG}.
+  Maybe you'd like to {\tt \tndx{RFLAG}} first and then eyeball with
+  {\tt SPFLG}\@.  The options are endless!  The first execution of
+  {\tt RFLAG} determines flagging level parameters and makes plots on
+  the TV for you to be sure that they are reasonable,  The second
+  execution applies these levels and determines new levels in case you
+  want to run {\tt RFLAG} even more
+  times.\label{it:beginbpass}\iodx{EVLA}
+\dispi{default rflag \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{sources(1) '3C286' \CR}{ }
+\dispi{docal 1 \CR}{to correct delays and a-priori gains.}
+\dispi{avgchan 11 \CR}{to set the width of the median-window filter
+       run across the spectral channels in each IF\@}
+\dispi{fparm = 3, $x$, -1, -1 \CR}{to do a small rolling time buffer,
+       set the sample interval, and to have {\tt NOISE} and {\tt
+         SCUTOFF} set IF-dependent cutoff levels.}
+\dispi{fparm(13) = 1000 \CR}{to clip amplitudes at 1000 Jy.  There are
+       many more {\tt FPARM} options you may choose also.}
+\dispi{doplot 8 ; dotv 1 \CR}{to do the 2 most useful plots on the
+       TV.}
+\dispi{go \CR}{ }
+\dispe{{\tt RFLAG} will return cutoff levels to the appropriate
+adverbs.  Therefore, to apply the flags using the flagging levels
+found above, do {\em not} do a {\tt tget rflag} which will reset the
+levels to zero.  Instead, simply do}
+\dispi{doplot = -8 \CR}{to apply the cutoff levels and determine new
+       ones, plotting on the TV.}
+\dispi{go \CR}{ }
+\dispe{{\tt RFLAG} will make a new flag table each time it determines
+flags ({\tt DOPLOT} $\leq 0$).  {\tt RFLAG} has numerous {\tt FPARM}
+options you may choose.  {\tt FPARM(9)} and {\tt FPARM(10)} scale the
+rms for {\tt NOISE} and {\tt SCUTOFF} that {\tt RFLAG} computes.  If
+the fraction of a channel that is flagged exceed {\tt FPARM(7)}, the
+entire channel is flagged. {\tt FPARM(6)} is especially useful at
+P-band as it allows channels adjacent to an RFI peak to be flagged.
+Similarly, {\tt FPARM(8)} allows channels between strong RFI peaks to
+be flagged.  Read the help file for detailed information.  Flagging
+calibrator scans aggressively is recommended especially for
+spectral-line observations.}
+
+Check the results with
+\dispi{default spflg \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{sources(1)  '3C286' \CR}{to examine only the bandpass calibrator.}
+\dispi{dparm(6) $x$ \CR}{to set sampling time in seconds}
+\dispi{docal 1 \CR}{to correct delays and a-priori gains.}
+\dispi{go \CR}{ }
+
+It is at this point that experienced users differ significantly in
+their approach.  If you have only one bandpass-calibration scan and the
+ionosphere was reasonably behaved (phases nearly constant through that
+scan), then you should run {\tt BPASS} on the calibration source in
+place.  However, when one has multiple bandpass scans and/or a badly
+behaved ionosphere, it may be best to split the calibration scans out
+and self-calibrate them on a short time interval.  The addition of
+multiple scans where the source has been phased up, but the remaining
+RFI has not, will reduce the effect of that RFI substantially.  This
+scheme is described next.
+
+\item\ Split off your calibrator for bandpass calibration --- this is
+  only necessary for self-calibrating the BP calibrator.
+\dispi{default split \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{outdi indi ; source '3C286' ' \CR}{to select calibrator and stay
+       on the same disk.}
+\dispi{outcl 'bpspl' \CR}{to indicate the use for this file.}
+\dispi{docalib 1 \CR}{to apply delay and a-priori calibration.}
+\dispi{go \CR}{To make a single-source file.}
+
+\vfill\eject
+\item\ Self-cal on your bandpass cal with {\tt \tndx{CALIB}} to solve
+  for wiggles in phase as a function of time.\iodx{EVLA}
+\dispi{default calib \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{refant 22 \CR}{to stay with the chosen reference antenna.}
+\dispi{solint $y$ \CR}{to average $n$ records in each solution
+       interval, set $y = n x$. }
+\dispi{solty 'L1R' ; solmode 'P' \CR}{to do phase-only solutions.}
+\dispi{aparm(6) 1 \CR}{to get some diagnostic messages.}
+\dispi{go \CR}{to write a new {\tt SN} table.}
+
+Eyeball this new table with {\tt \tndx{SNPLT}} --- should be flat, not
+all over the place.  But {\tt \tndx{EDITA}} lets you look at more
+things at once.
+\dispi{default edita \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{inext 'sn' ; dotwo 1 \CR}{to plot the phases in the new table.}
+\dispi{crowded 1 ; do3col 1 \CR}{to combine all IFs in each colorful
+       plot.}
+\dispi{go \CR}{ }
+\dispe{If these plots are too crowded, you can interactively select
+  individual IFs and polarizations.  This task will let you flag data
+  if desired.  If you do, then you should re-run {\tt CALIB}\@.o}
+
+\item\ Use {\tt \tndx{BPASS}} to calibrate the bandpass shape ---
+  corrects for wiggles in phase and amplitude as a function of
+  frequency \label{it:endbpass}
+\dispi{default bpass \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{docalib 1 \CR}{to apply the new {\tt SN} table phases.}
+\dispi{refant 22 \CR}{ }
+\dispi{solty 'l1r' ; solint = -1 \CR}{to average the entire time range.}
+\dispi{bpassprm(5) = 1; bpassprm(10) = 3 \CR}{to normalize the
+       solutions at the end rather than the data record-by-record.}
+\dispi{go \CR}{To generate a new {\tt BP} table containing one record
+per antenna.}
+
+\item\ Eyeball the resulting bandpass ({\tt BP}) table --- {\tt
+    APARM(8) = 2} plots the {\tt BP} table in {\tt \tndx{POSSM}}\@.
+    If you see odd bandpass shapes or spikes in the bandpass, you may
+    need to edit your data more extensively and repeat steps
+    \ref{it:beginbpass} through \ref{it:endbpass}.
+\dispi{tget possm \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{solint = -1 \CR}{ }
+\dispi{aparm(8) 2 ; aparm(9) 1 \CR}{to plot all IFs together for each
+       bandpass.}
+\dispi{nplots 2 \CR}{2 per page is enough here.}
+\dispi{go \CR}{ }
+
+Alternatively, {\tt \tndx{BPEDT}} lets you use the bandpass table to
+guide additional flagging of the bandpass calibrator(s).  It is
+similar to {\tt EDITA} in that it lets you look at multiple antennas
+at the same time for comparison.
+\dispi{default bpedt \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{inext 'bp' ; GO \CR}{ }
+
+\item\ Copy the bandpass table back to your main data with {\tt
+    \tndx{TACOP}}\@.
+\dispi{default tacop \CR}{ }
+\dispi{indi $d$; getn 4 \CR}{ }
+\dispi{inext 'bp' \CR}{ }
+\dispi{outdi indi ; geton 3 \CR}{to select output name parameters}
+\dispi{go \CR}{ }
+
+\item\ Since {\tt RFLAG} probably made a large number of flags, let us
+  copy the data file with {\tt \tndx{UVCOP}} and apply the
+  flags.\iodx{EVLA}
+\dispi{default uvcop \CR}{ }
+\dispi{indi $d$; getn 3 \CR}{ }
+\dispi{outdi indi ; outn inna \CR}{to stay on $d$.}
+\dispi{outcl 'fixcp' \CR}{with a meaningful class name}
+\dispi{flagver $n$ \CR}{to apply the highest flag table ($n$); use
+       {\tt IMHEAD} if unsure.  Version 0 means no flagging here.}
+\dispi{go \CR}{ }
+
+\item\ Use {\tt \tndx{SETJY}} to compute the flux for the primary flux
+calibrator (3C286), storing it in the {\tt SU} table.
+\dispi{default setjy \CR}{ }
+\dispi{indi $d$; getn 5 \CR}{ }
+\dispi{source '3C286' ' \CR}{specify all ``known'' calibrator sources.}
+\dispi{opty 'calc' \CR}{to calculate and display fluxes from the
+       frequencies plus tables of known sources.}
+\dispi{go \CR}{}
+
+\item\ Go through all of your calibration sources, one at a time, to
+  check for RFI with {\tt \tndx{POSSM}} and, if present, to address it
+  with {\tt SPFLG} and/or {\tt RFLAG}
+\dispi{tget possm \CR}{ }
+\dispi{source '${\rm calsrc}_i$' '  \CR}{to examine the $i^{\rm th}$
+       calibration source.}
+\dispi{indi $d$; getn 5 \CR}{ }
+\dispi{docal 1 ; doband 1 \CR}{apply our hard-won calibration.}
+\dispi{solint 0 \CR}{to look at the average over all time.}
+\dispi{aparm(9) 1 \CR}{to plot all IFs together.}
+\dispi{nplots 2 \CR}{2 per page is enough here.}
+\dispi{go \CR}{ }
+\dispe{If RFI is present (it almost certainly will be), decide whether
+  {\tt \tndx{SPFLG}} might be worth the work.  If so}
+\dispi{default spflg \CR}{ }
+\dispi{indi $d$; getn 5 \CR}{ }
+\dispi{source '${\rm calsrc}_i$' '  \CR}{to examine the $i^{\rm th}$
+       calibration source.}
+\dispi{dparm(6) $x$ \CR}{ }
+\dispi{docal 1 ; doband 1 \CR}{apply the calibration.}
+\dispi{go \CR}{ }
+\dispe{Two rounds or more of {\tt \tndx{RFLAG}} may also be needed.
+  Check with {\tt POSSM} to be sure.}
+\dispi{default rflag \CR}{ }
+\dispi{indi $d$; getn 5 \CR}{ }
+\dispi{source '${\rm calsrc}_i$' '  \CR}{to examine the $i^{\rm th}$
+       calibration source.}
+\dispi{docal 1 ; doband 1 \CR}{apply the calibration.}
+\dispi{avgchan 11 \CR}{to set the width of the median-window filter
+       run across the spectral channels in each IF\@}
+\dispi{fparm = 3, $x$, -1, -1 \CR}{to do a small rolling time buffer,
+       set the sample interval, and to have {\tt NOISE} and {\tt
+         SCUTOFF} set IF-dependent cutoff levels.}
+\dispi{fparm(13) = 1000 \CR}{to clip amplitudes at 1000 Jy.  There are
+       many more {\tt FPARM} options you may choose also.}
+\dispi{doplot 8 ; dotv 1 \CR}{to do the 2 most useful plots on the
+       TV.}
+\dispi{go \CR}{ }
+\dispe{{\tt RFLAG} will return cutoff levels to the appropriate
+adverbs.  Therefore, to apply the flags using the flagging levels
+found above, do {\em not} do a {\tt tget rflag} which will reset the
+levels to zero.  Instead, simply do}
+\dispi{doplot = -8 \CR}{to apply the cutoff levels and determine new
+       ones, plotting on the TV.}
+\dispi{go \CR}{ }
+\dispe{{\tt RFLAG} will make a new flag table each time it determines
+flags ({\tt DOPLOT} $\leq 0$).}
+
+\item\ Since {\tt RFLAG} probably made a large number of flags, let us
+  copy the data file once again with {\tt \tndx{UVCOP}} and apply the
+  flags. \iodx{EVLA}
+\dispi{default uvcop \CR}{ }
+\dispi{indi $d$; getn 5 \CR}{ }
+\dispi{outdi indi ; outn inna \CR}{to stay on $d$.}
+\dispi{outcl 'flaged' \CR}{with a meaningful class name}
+\dispi{flagver $n$ \CR}{to apply the highest flag table ($n$); use
+       {\tt IMHEAD} if unsure.  Version 0 means no flagging here.}
+\dispi{go \CR}{ }
+
+\item\ Since all flag tables $< n$ were already merged into table $n$
+  which we have applied, delete all flag tables in the output file.
+  \todx{EXTDEST}
+\dispi{default extdest \CR}{}
+\dispi{indi $d$; getn 6 \CR}{}
+\dispi{inext 'fg' ; invers = -1 \CR}{to delete all remaining versions
+       of flag table.}
+\dispi{extdest \CR}{}
+
+\item\ Find the amplitude and phase calibration as a function of {\it
+    time} using {\tt \tndx{CALIB}}
+\dispi{default calib \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{calcode '*' \CR}{to select all calibration sources}
+\dispi{docalib 1 ; doband 1 \CR}{to apply all existing calibration.}
+\dispi{refant 22 \CR}{to keep our reference antenna.}
+\dispi{solint 0 \CR}{One solution per calibrator scan is okay with
+       good short-term phase stability.  Otherwise, set to the longest
+       time in minutes over which phase is stable.}
+\dispi{solty 'L1R' ; solmode 'a\&p' \CR}{to solve for amplitude and
+       phase with an L1 method iterated robustly.}
+\dispi{aparm(6) 1 \CR}{to print closure error statistics.}
+\dispi{go \CR}{ }
+\dispe{Pay attention to the fraction of failed solutions.  If the
+  fraction is large, try adjusting parameters such as {\tt SOLINT},
+  etc.}
+
+\item\ The solution table ({\tt SN}) produced by the previous step
+  will contain amplitude gains at multiple levels, correct ones for
+  those sources with fluxes in the source table (3C286) and incorrect
+  ones for those which {\tt CALIB} was forced to call 1 Jy.  To solve
+  for the unknown fluxes of the secondary calibrators \todx{GETJY}
+\dispi{default getjy \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{source '${\rm calsrc}_1$', '${\rm calsrc}_2$', '${\rm
+    calsrc}_3$', $\ldots$ \CR}{to list the secondary calibrators.}
+\dispi{calsour = '3c286' ' \CR}{to list the known calibrator(s).}
+\dispi{snver = $n$ \CR}{to select only the {\tt SN} table just written
+       by {\tt CALIB}\@.  Use {\tt IMHEADER} to find the maximum
+       version number $n$.}
+\dispi{go \CR}{to solve for the secondary fluxes as functions of IF.}
+\dispe{Check the values displayed carefully to make sure that they are
+sensible.  {\tt SOUSP} offers tools to examine and adjust the fluxes
+and {\tt SN} table $n$.}
+
+\item\ Look at both amplitude and phase solutions with {\tt
+    \tndx{EDITA}} or {\tt \tndx{SNPLT}}.\iodx{EVLA}
+\dispi{tvini \CR}{ }
+\dispi{default snplt \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{inext 'sn' ; opty 'amp' \CR}{to plot amplitudes.}
+\dispi{nplots 4 ; dotv 1 \CR}{to plot 4 panels on each TV page.}
+\dispi{opco 'alif' ; do3col 1 \CR}{to plot all IFs in each panel using
+       color to distinguish them.}
+\dispi{go \CR}{ }
+\dispe{One can also plot IFs in separate panels or one at a time if
+  these plots are too crowded.  Then}
+\dispi{opty 'ph'; go \CR}{To check the phases.}
+\dispe{To use {\tt EDITA} to look at both amplitude and phase at the
+  same time for multiple antennas}
+\dispi{default edita \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{inext 'sn' ; dotwo 1 \CR}{to plot the phases in the new table.}
+\dispi{crowded 1 ; do3col 1 \CR}{to combine all IFs in each colorful
+       plot.}
+\dispi{go \CR}{ }
+\dispe{If these plots are too crowded, you can interactively select
+  individual IFs and polarizations.  This task will let you flag data
+  if desired.  If you do, you should then re-run {\tt CALIB}\@.}
+
+\item\ Apply the solutions to the calibration table with {\tt
+    \tndx{CLCAL}}
+\dispi{default clcal \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{calcode '*' \CR}{to select all calibration sources}
+\dispi{sampty 'box' ; bparm 0.3, 0.3 \CR}{To smooth the {\tt SN} table
+       if you used {\tt SOLINT} less than full scans.  Leave this out
+       if you used scan averages.}
+\dispi{refant 22 \CR}{ }
+\dispi{go \CR}{ }
+
+\vfill\eject
+\item\ Use {\tt SNPLT} to check that the solutions have been
+   interpolated between calibrators.
+\dispi{tget snplt \CR}{ }
+\dispi{inext 'cl' \CR}{ }
+\dispi{go \CR}{ }
+
+\item\ Make an image of 3C286 as a sanity check using {\tt \tndx{IMAGR}}
+\dispi{default imagr \CR}{ }
+\dispi{indi $d$; getn 6 ; outdi indi \CR}{ }
+\dispi{docal 1 ; doband 1 \CR}{to apply the calibration.}
+\dispi{source = '3c286' ' \CR}{to select only the primary calibrator.}
+\dispi{bchan 5; echan = $n-4$ \CR}{to omit edge channels in each IF,
+       where $n$ is the number of channels in an IF, now usually 128.}
+\dispi{nchav = echan-bchan+1; chinc nchav \CR}{to average all spectral
+       channels into the image.}
+\dispi{cellsize 1.\CR}{to set the image cell spacing --- depends on
+       configuration.}
+\dispi{imsi  1024 \CR}{to make a largish image to see sources around
+       3C286.}
+\dispi{outn '3C286\_quick' \CR}{ }
+\dispi{niter 100 ; dotv 1 \CR}{to do some Cleaning and guide the
+       progress with the TV}
+\dispi{go \CR}{ }
+
+\item\ At this point, it may be simpler to {\tt \tndx{SPLIT}} the data
+  set and apply calibration to the target sources which we then can
+  work with one at a time.\iodx{EVLA}
+\dispi{defsult split \CR}{ }
+\dispi{indi $d$; getn 6 \CR}{ }
+\dispi{outdi indi \CR}{ }
+\dispi{docal 1 ; doband 1 \CR}{ }
+\dispi{sources = '${\rm target}_1$', '${\rm target}_2$', $\ldots$
+      \CR}{to select only target sources.}
+\dispi{go \CR}{ }
+\dispe{To create a number of separate, single-source $uv$ data sets
+  each with separate target source.}
+
+\item\ Flag RFI and bad data out of the target data set with {\tt
+  \tndx{SPFLG}}, which can be tedious.
+\dispi{default spflg \CR}{ }
+\dispi{indi $d$; getn 9 \CR}{to select the first of the split target
+       data sets.}
+\dispi{dparm(6) $x$ \CR}{to set integration time.}
+\dispi{go \CR}{ }
+\dispe{Then do two or more rounds of {\tt \tndx{RFLAG}}.}
+\dispi{default rflag \CR}{ }
+\dispi{indi $d$; getn 9 \CR}{ }
+\dispi{avgchan 11 \CR}{Median window width on spectra.}
+\dispi{fparm = 3, $x$, -1, -1 \CR}{to do a small rolling time buffer,
+       set the sample interval, and to have {\tt NOISE} and {\tt
+         SCUTOFF} set IF-dependent cutoff levels.}
+\dispi{doplot 8 ; dotv 1 \CR}{To examine the two important plots on
+       the TV.}
+\dispi{go \CR}{ }
+\vfill\eject
+\dispe{and then apply the flags levels and determine new ones}
+\dispi{doplot -8  ; go \CR}{ }
+\dispe{and perhaps repeat this line for more flagging.  {\it NOTE:
+  for flagging spectral-line target sources, you should set {\tt
+    FPARM(4)=0} since you should not flag in the spectral domain.}}
+
+\item\ Because we used {\tt TYAPL} only to apply the re-quantizer
+  gains, your data weights simply reflect integration time.  For
+  better imaging, weights should reflect the actual data
+  uncertainties.  So re-weight your data with {\tt \tndx{REWAY}}
+\dispi{default reway \CR}{ }
+\dispi{indi $d$; getn 9 \CR}{ }
+\dispi{outdi indi \CR}{ }
+\dispi{aparm 31,0,500 \CR}{to find rmses from rolling buffers 31 time
+       intervals long on a baseline basis and then smooth them over
+       500 seconds.}
+\dispi{go \CR}{ }
+\dispe{Note that this applies the final {\tt SPFLG}-{\tt RFLAG} flag
+       table.  Delete the other flag table versions with}
+\dispi{default extdest \CR}{}
+\dispi{indi $d$; getn 10 \CR}{}
+\dispi{inext 'fg' ; invers = -1 \CR}{to delete all remaining versions
+       of flag table.}
+\dispi{extdest \CR}{}
+
+\sects{P-band imaging in \AIPS}
+
+\item\ The following steps relate to imaging your calibrated data. As
+  the aim of this appendix is calibration, the imaging will be
+  discussed only briefly here.  The following items refer to continuum
+  imaging.  Make a dirty image of the center with {\tt
+    \tndx{IMAGR}}\iodx{EVLA}
+\dispi{default imagr \CR}{ }
+\dispi{indi $d$; getn 10; outdi indi \CR}{ }
+\dispi{bchan 5; echan = $n-4$ \CR}{to omit edge channels in each IF,
+       where $n$ is the number of channels in an IF.}
+\dispi{nchav = echan-bchan+1; chinc nchav \CR}{to average all spectral
+       channels into the image.}
+\dispi{cellsize 10 \CR}{to set a cell size which will depend on the
+       VLA configuration.}
+\dispi{imsi 1024,1024 \CR}{ }
+\dispi{niter 0 \CR}{to do no Cleaning}
+\dispi{go \CR}{ }
+
+\item\ Clean image with faceting, auto-boxing, and TV display; we use
+{\tt DEFAULT IMAGR} here to initialize all of {\tt IMAGR}'s many
+parameters  \label{it:imagr}\todx{SETFC}
+\dispi{default imagr \CR}{ }
+\dispi{indi $d$; getn 10; outdi indi \CR}{ }
+\dispi{task 'setfc' \CR}{ }
+\dispi{cellsize  0 ; imsize  0 \CR}{to have {\tt SETFC} determine the
+       correct cell and image size for these data.}
+\dispi{bparm  2.2, 5, 2, 8, 0.3 \CR}{to image fully out to a radius of
+       2 degrees and to include 0.3 Jy NVSS sources out to a radius
+       of 8 degrees.}
+\dispi{flux 1 \CR}{to include exterior sources above 1 Jy only.}
+\dispi{boxfile 'MYAREA:Target1.box \CR}{to list the facets found.}
+\dispi{go \CR}{ }
+\dispe{The following does not use default since we need adverbs set
+  for, and by, {\tt SETFC}, such as inname, imsize, and cellsize
+  \todx{IMAGR}}
+\dispi{task 'IMAGR' \CR}{ }
+\dispi{flux  0 \CR}{ }
+\dispi{bchan 5; echan = $n-4$ \CR}{to omit edge channels in each IF,
+       where $n$ is the number of channels in an IF.}
+\dispi{nchav = echan-bchan+1; chinc nchav \CR}{to average all spectral
+       channels into the image.}
+\dispi{niter 5000 \CR}{to Clean 5000 iterations.}
+\dispi{do3dim true ; overlap 2 \CR}{to use true 3-D geometry, Cleaning
+       one facet at a time in each cycle (recommended).}
+\dispi{dotv true \CR}{to control the imaging with the TV.}
+\dispi{oboxfile boxfile \CR}{to save all changes to Clean boxes.}
+\dispi{im2parm=2,0 \CR}{to allow up to 2 Clean boxes to be created
+       automatically at each cycle.}
+\dispi{go \CR}{ }
+\dispe{Note, the field may have enough spectral index variation to
+  require imaging (and self-calibration) of each spectral window (IF)
+  individually.}
+
+\item\ There is normally enough flux in a P-band field to do
+  phase self-calibration and we recommend that you now do that.  Use
+  {\tt CALIB} with the output of step~\ref{it:imagr} as the model
+  including all {\tt NFIELD} facets as the {\tt NMAPS} images.
+  \label{it:selfcal}\todx{CALIB}\iodx{EVLA}
+\dispi{default calib \CR}{}
+\dispi{indi $d$; getn 10; outdi indi \CR}{ }
+\dispi{nmaps = nfield \CR}{to include all facets}
+\dispi{in2d = indisk; get2n $M$ \CR}{to set the $2^{\rm nd}$ file name
+       to the output image of class {\tt ICL001} (catalog number
+       $M$).}
+\dispi{soltyp 'l1r' ; solmode 'p' \CR}{to start with phase-only
+       solutions.}
+\dispi{solint = $n x$ \CR}{to set a short integration time as $n$
+       times the sampling interval.}
+\dispi{go \CR}{}
+
+\item\ Examine the output {\tt SN} table with {\tt EDITA} to see if
+  there are times with bad solutions.  If not, repeat steps
+  \ref{it:imagr} and \ref{it:selfcal} using
+\dispi{tget imagr; docal = 1; go \CR}{to make new images.}
+\dispi{tget calib; in2seq = 2 \CR}{to point at the second set of
+       images.}
+\dispi{solmode 'a\&p' \CR}{to do amplitude as well {\it if there is
+       enough flux in the field}.}
+\dispi{go \CR}{}
+\dispe{Re-examine the new {\tt SN} table with {\tt EDITA}.  In
+  particular, watch for periods of time when the amplitude gain of an
+  antenna gets rather larger than normal.  It has been found that the
+  ionosphere can defocus sources on scales as small as the antenna
+  diameter.  It is best to delete such data.}
+
+\vfill\eject
+\item\ Spectral-line imaging is both simpler and more complicated.
+  One may image each spectral channel individually.  However, even for
+  absorption experiments, it may be best to image all channels free of
+  the spectral line together to make a continuum image and model.
+  This will almost certainly require multiple facets and extensive
+  cleaning but it will produce a single continuum model that can be
+  applied to all spectral channels with {\tt \tndx{UVSUB}}\@.
+  Spectral index in the continuum may force you to do this one
+  spectral window at a time.  You can add the continuum image back to
+  the cube with {\tt COMB}\@.
+
+  At this point, run {\tt IMAGR} on the output of {\tt UVSUB} one
+  spectral window at a time over all spectral channels of interest
+  with {\tt NCHAV=1; CHINC=1}\@.  You may be able to limit the field
+  of view imaged to one facet surrounding the target source.
+
+\item\ The task {\tt \tndx{TVSPC}} is a lovely way to explore the
+  output image cube.  To run this task, we must first transpose the
+  cube
+\dispi{default trans \CR}{ }
+\dispi{indi $d$; getn $C$; outdi indi \CR}{where $C$ is the catalog
+       number of the output cube from {\tt IMAGR}\@.}
+\dispi{transcod = '312' \CR}{to put frequency first.}
+\dispi{go \CR}{to make a transposed cube.}
+\dispe{One also needs a ``meaningfull'' single-plane image, perhaps
+  the central facet of the continuum image made above.  Or we can
+  compute the first moment image.}
+\dispi{default xmom \CR}{ }
+\dispi{indi $d$; getn $T$; outdi indi \CR}{where $T$ is the catalog
+       number of the output cube from {\tt TRANS}\@.}
+\dispi{flux = $f$ \CR}{to compute only with brightness $> f$ Jy/beam.}
+\dispi{go\CR}{to amke a first moment image.}
+\dispe{Finally}
+\dispi{default tvspc \CR}{ }
+\dispi{indi $d$; getn $M$; outdi indi \CR}{where $M$ is the catalog
+       number of the meaningful image, perhaps the output plane from
+       {\tt XMOM}\@.}
+\dispi{in2di $d$; get2n $T$ \CR}{where $T$ is the catalog number of
+      the output cube from {\tt TRANS}\@.}
+\dispi{in4di $d$; get4n $C$ \CR}{where $C$ is the catalog
+       number of the output cube from {\tt IMAGR}\@.}
+\dispi{go \CR}{Have fun!}
+\dispe{This allows you to look at spectra from the cube at individual
+  spatial pixels as well as the cube as an image at individual
+  frequencies.  Enter {\tt EXPLAIN TVSPC} or see \AIPS Memo 120 for
+  details.}
+
+\item\ Make image(s) and final calibrated data sets into FITS files
+  with {\tt \tndx{FITTP}}\@.  Exit {\tt AIPS} and
+\dispi{setenv FIT /lustre/mmao/Pband \CR}{for tcsh and c shells}
+\dispi{export FIT=/lustre/mmao/Pband \CR}{for bash shell}
+\dispe{Then start {\tt AIPS} again}
+\dispi{default fittp \CR}{ }
+\dispi{indi $d$; getn $M$ \CR}{to select an image or data set}
+\dispi{dataout 'FIT:VirA.FITS \CR}{to make an appropriate output name}
+\dispi{go \CR}{ }
+\dispe{And repeat with new $M$ and {\tt DATAOUT} values.}
+
+\end{enumerate}
+
+\vfill\eject
+\sects{Additional Recipes}
+
+% chapter   *************************************************
+\recipe{Banana storage}
+
+      Bananas ripen after harvesting.  They do it best at room
+temperature.  Because of this there are three stages to banana
+storage.
+\par\bre
+\Item {{\bf On the counter:} When you buy a bunch of
+   bananas that are not exactly at the ripeness you want, you
+   can keep them at room temperature until they are just right for
+   you.  Be sure to keep them out of any plastic bags or containers.}
+\Item {{\bf In the refrigerator:} If there are any bananas left,
+   and they are at the ripeness you like, you can put them in the
+   refrigerator.  The peel will get dusty brown and speckled, but the
+   fruit inside will stay clear and fresh and at that stage of
+   ripeness for 3 to 6 days.}
+\Item {{\bf In the freezer:} If you want to keep your bananas even
+   longer, you can freeze them.  Mash the bananas with a little lemon
+   juice, put them in an air tight freezer container and freeze.  Once
+   they're defrosted, you'll go bananas baking bread, muffins and a
+   world of other banana yummies.  Or, you can freeze a whole banana
+   on a Popsicle stick.  When it is frozen, dip it in chocolate sauce,
+   maybe even roll it in nuts, then wrap it in aluminum foil and put
+   it back in the freezer.  Talk about a scrumptious snack.}
+\ere
+
+% chapter *************************************************
+\recipe{Mexican bananas}
+
+\bre
+\Item {Mix together 1 cup {\bf sugar}, 1 teaspoon {\bf cinnamon}, 1/8
+     teaspoon {\bf nutmeg}, and 1/8 teaspoon {\bf ginger}.}
+\Item {Peel 6 firm {\bf bananas}, cut in half lengthwise, and brush
+     with 1/4 cup {\bf lemon juice}.}
+\Item {Place a banana half at end of each of 12 {\bf tortillas} and
+     sprinkle with  sugar mixture.}
+\Item {Roll tortillas, brush top and sides with 1/4 cup {\bf
+     evaporated milk}, and then sprinkle with remaining sugar mixture.}
+\ere
+
+
+% chapter  I  *************************************************
+\recipe{Banana mandarin cheese pie}
+
+\bre
+\Item {In large mixer bowl, beat 8 ounces softened {\bf cream cheese}
+     until fluffy.}
+\Item {Gradually beat in 8 ounces {\bf sweetened condensed milk} until
+     smooth.}
+\Item {Stir in 1 teaspoon {\bf lemon juice} and 1 teaspoon {\bf
+     vanilla extract}.}
+\Item {Slice 2 medium {\bf bananas}, dip in lemon juice, and drain.}
+\Item {Line 8(?)-inch {\bf graham cracker pie crust} with bananas and
+     about 2/3 of an 11-ounce can (drained) {\bf mandarin oranges}.}
+\Item {Pour filling over fruit and chill for 3 hours or until set.}
+\Item {Garnish top with remaining orange segments and 1 medium {\bf
+     banana} sliced and dipped in lemon juice.}
+\ere
+\vfill\eject

@@ -1,0 +1,385 @@
+; FARS
+;--------------------------------------------------------------------
+;! Faraday rotation synthesys based on the brightness vs wavelength
+;# TASK ANALYSIS POLARIZATION
+;--------------------------------------------------------------------
+;;  Copyright (C) 2009-2012, 2014, 2017
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+FARS      LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+FARS: Task to create Faraday rotation measure image
+INNAME                             First image name
+INCLASS                            First image class
+INSEQ           0.0      9999.0    First image seq. #
+INDISK          0.0         9.0    First image disk drive #
+IN2NAME                            Second image name
+IN2CLASS                           Second image class
+IN2SEQ          0.0      9999.0    Second image seq. #
+IN2DISK         0.0         9.0    Second image disk drive #
+OUTNAME                            First output image name
+OUTSEQ         -1.0      9999.0    First output image seq. #
+OUTDISK         0.0         9.0    First output image disk  #
+INFILE                             Input file of weights
+DOALIGN        -2.0         1.0    Should images be coincident?
+                                   (See HELP.)
+BLC             0.0      4096.0    Bottom left corner
+TRC             0.0      4096.0    Top right corner
+                                   See help for the 1st axis
+                                   (must be frequencies!!!)
+APARM                              Parameters for algorithm:
+                                     1 number of pixels at
+                                       half of the Fourier
+                                       transform output
+                                       The whole number is
+                                         2*APARM(1)+1
+                                     2 cell size in 1/m^2
+                                       0 =>
+                                       PI/(4*(Lmax^2-Lmin^2))
+                                       Lmax,Lmin-max,min lambda
+                                       at the data
+                                     3 0 => regular output
+                                       1 => output is RMTF
+                                     4 0=> CLEANed Fourier
+                                           transform
+                                       1=> unCLEANed Fourier
+                                           transform
+                                     5 0=>original(shifted back)
+                                          RE/IM are sent out
+                                       1=>the shifted RE/IM are
+                                           sent out
+                                       2=>amplitude and phase of
+                                          the data are sent out
+                                     6 is not used
+                                     7 0=> convolve the clean
+                                       components
+                                       1=> no convolve
+                                     8 0=> use the Gaussian as
+                                           the convolve function
+                                       1=> use the Re of RMTF as
+                                           the convolve function
+                                     9 full width of Gaussian
+                                       convolve function, at 0.5
+                                       level, in 1/m^2
+                                       0 => fit to real RMTF
+                                    10 what send to output?
+                                       0 => sum of CLEAN and
+                                            residual
+                                       1 => CLEAN result
+                                       2 => residual
+GAIN                               Gain in the CLEAN
+NITER                              Maximum number of clean
+                                   components
+FLUX                               Minimum flux of clean
+                                   component (Jy)
+DOHIST         -3.0         1.0    -2 => copy 1st HI only
+                                   -3 => copy no HI files
+PRTLEV                             Number of Cleans to print
+----------------------------------------------------------------
+FARS
+Type: Task
+
+      The measured brightness at the given set of lambda^2 is related
+      with the brightness distribution as a function of Faraday
+      rotation depth through the Fourier transform.
+      The solve of the inverse problem: "Evaluation of the brightness
+      distribution as a function of Faraday rotation depth using the
+      measured brightness at the given set of lambda^2 "
+      got the name "Faraday Rotation Synthesis".
+      The task FARS carries out solution of this problem.
+
+      FARS now writes 4 slice files in each output image.  They
+      reresent the real part, imaginary part, amplitude, and phase of
+      the RMTF or dirty beam of the synthesis.  TVSLICE and other
+      slice functions may be used to examine these parts of the beam.
+      The units displayed are based on the image and so they do not
+      really apply.  The phase slice is in degrees and the others
+      really in normalized beam units.
+
+      The RUN file named DOFARS defines a procedure that will do the
+      initial transposes and find the weights text file, run FARS,
+      delete the transposed input cubes, and transpose the output
+      cubes to yield 4 output cubes in all.
+Adverbs:
+  INNAME......First image name. Q-polarization.  Standard defaults.
+  INCLASS.....First image class.    Standard defaults.
+  INSEQ.......First image seq. #.   0 => highest.
+  INDISK......Disk drive # for the first image.  0 => any.
+  IN2NAME.....Second image name. U-polarization. Standard defaults.
+  IN2CLASS....Second image class.   Standard defaults.
+  IN2SEQ......Second image seq. #.  0 => highest.
+  IN2DISK.....Disk drive # for the second image.  0 => any.
+  OUTNAME.....Output image name. Real part.  Standard defaults.
+              Output image class for first image 'FARSre' or 'FARSam'
+              Output image class for second image 'FARSim' or 'FARSph'
+  OUTSEQ......Output image seq. #.  0 => highest unique.
+  OUTDISK.....Output disk number. 0 => highest with space.
+  INFILE......Name of the user-supplied file to defining weights
+              of the different frequencies data. The sequence of the
+              weights must correspond to the sequence of frequencies
+              at the input cubes. The weights has to be arranged
+              in rows of 80 byte long. The weights should be separated
+              any number of blanks (1 is preferable).
+              Each weight must be represented by integer between 0 and 99.
+              Although any integer is accepted.
+  DOALIGN.....Controls how the two input images are to be aligned
+              True (>.1) means that the images must agree in
+              their coordinates, though not necessarily in the reference
+              pixel position.  Alignment is by coordinate values (if
+              DOALIGN > -0.1) or by offsets from the reference pixel
+              positions (if DOALIGN <= -0.1).  NOTE: all real axes (>1
+              point) are aligned.  If DOALIGN = -2, the headers are
+              ignored and the images are aligned at pixel (1,1,...).
+              (see HELP DOALIGN).
+  BLC.........Bottom left corner of the 1st input image. The other
+              images are aligned by coordinates (see DOALIGN) on all
+              axes having > 1 point.  The second image may have fewer
+              real axes than the 1st.  The 2 windows must have the same
+              dimension on the first 2 axes, but the task will select a
+              smaller window than was specified if needed to overlap the
+              2 images.
+              The first axis (must be frequency. Use TRANS if not!!!)
+              is controlled by BLC, TRC only for input data.
+              The output data for the first axis is controlled by
+              APARM(1,2,4)
+  TRC.........Top right corner of input images. (See BLC.)
+  APARM.......Parameters needed for algorithm:
+               APARM(1) number of pixels at half of the Fourier
+                        transform output
+                        The whole number is 2*APARM(1)+1
+                        with zero at the center.
+                        The value of APARM(1) should be chosen in accordance
+                        of expected range of the Faraday rotation measures
+                        and value of CELL (APARM(2))
+               APARM(2) cell size of the outputs, in 1/m^2
+                        The cell is recomended to be less or around
+                        the default value (pi)/4/(lambda^2max - lambda^2min)
+               APARM(3) 0 => regular outputs
+                        1 => outputs are RMTF
+
+               APARM(4) 0=> CLEANed Fourier transform, using inputs:
+                            NITER, FLUX, GAIN. The CLEAN uses the
+                            shifed (at lambda^2) data but the cleaned
+                            components correspond to the original lambda^2
+                            RE is recorded to the first output
+                            IM is recorded to the second output
+                        1=> the uncleaned Fourier transform is recorded
+                            RE is recorded to the first output
+                            IM is recorded to the second output
+               APARM(5) 0=>original  data (RE and IM) are used at the
+                           Fourier transform
+                        1=> the shifted (to the center) data (RE, IM)
+                            are used at the Fourier transform.
+                            This option allows better discrimination
+                            of different features at the Fourier transform.
+                        2=> amplitude and phase  of the data are sent out.
+               APARM(6) is not used
+               APARM(7) 0=> convolve the clean components
+                        1 => no convolve; So just the set of the clean
+                             components is sent to the output files
+                        No convolution is forced if:
+                             uncleaned Fourier is sent out (APARM(4)=1)
+               APARM(8) 0=> use the Gaussian as the convolve function
+                        1=> use the Re of RMTF as the convolve function
+               APARM(9) full width of the Gaussian convolve function,
+                        at the 0.5 level, in 1/m^2   0 -> fit the
+                        real part of the RMTF.
+               APARM(10) What send to the output?
+                         0 => sum of CLEAN and  residual
+                         1 => CLEAN result
+                         2 => residual
+  GAIN........Gain in the CLEAN
+  NITER.......Maximum number of clean components 0 => 1
+  FLUX........Minimum Clean component (Jy)
+                 The task can subtract the given number of complex
+                 components. On each iteration, the maximum (and its
+                 position) of the spectrum amplitude is determined.
+                 The complex function RMTF is multiplied by the
+                 complex value of the spectrum at the position of the
+                 found amplitude maximum and by GAIN.
+                 The found function(production) is put by its median
+                 on the position of found amplitude maximum, and is
+                 subtracted from the having evaluated spectrum. The
+                 process of the subtraction is terminated having
+                 achieved number of iterations NITER or the flux FLUX.
+  DOHIST......Normally the HI file of input 1 is copied to the output
+              history file and the HI file of the second input is
+              appended.  The history of the Q and U cubes may be very
+              similar, so to avoid having the file grow exponentially
+              DOHIST = -2 => copy the first HI file only.
+              DOHIST = -3 => copy no HI file, write FARS HI only.
+  PRTLEV......> 0 => Number of Cleans to print.  <= 0 -> none.
+----------------------------------------------------------------
+FARS: Task to solve Faraday Rotation Synthesys problem
+DOCUMENTOR: L. Kogan
+RELATED PROGRAMS:
+
+      The main ideas of the algorithm are  described by
+      B.J. Burn at:
+      MNRAS, 133, 67, 1966 and
+
+      M.A.Brentjens
+      and A.G.de Bruyn at:
+      Astronomy & Astrophysics, 441, 1217-1228(2005)
+
+      FARS read the two input cube images which should have identical
+      structure. The first axis of the cubes must be FREQ!!!!!!
+      If not the task 'TRANS' should be used to achieve this order.
+      The first cube should correspond to the Q-linear polarization
+      component.
+      The second cube should correspond to the U-linear polarization
+      component.
+      The purpose of the task is to get the brightness distribution
+      (for each pixel at RA-DEC plane) corresponded to the given Fraday
+      rotation depth. The multi frequency observations are required to get
+      this purpose.
+
+      The task forms complex function of wavelength squares
+      (the first input is real part, the second input is imaginary part)
+      For each pixel at the image plane, FARS carries out the Fourier
+      transform along the frequency (lambda square) axis.
+      This Fourier transform converts the observed complex brightness
+      as a function of the lambda^2 to the output complex function of
+      the Faraday rotation depth. The Fourier transform can be directed
+      to the outputs directly or being cleaned. The real part of the
+      output is recorded into
+      the first output file and the imaginary part of this output is
+      recorded in the second output file. The input data are determined
+      at the positive set of lambda^2. The output of the Fourier
+      transform (complex function) is the convolution of the actual
+      brightness (as a function of the Faraday depth) and the so called
+      Rotation Measure Transfer Function (RMTF). The RMTF is one
+      dimensional Fourier transform of the lambda^2 sampling function.
+      RMTF is similar to dirty beam at the image synthesis.
+      The dirty beam is real function because the brightness
+      distribution is a real function. RMTF is a complex function, but
+      it's imaginary part can be zeroed at the vicinity of zero Faraday
+      depth if we shift the origin of the lambda^2 set to the median.
+      The more distribution of the lambda^2 is homogeneous the wider
+      is area where imaginary part of RMTF is equal zero.
+      FARS carries out all calculation with the centered data,
+      and then rotates the outputs by the phase corresponded to the
+      central lambda^2. The output (RE, IM) can be shifted back to
+      the original lambda^2 distribution or not (or amplitude can be
+      sent to the output) under control of APARM(5).
+
+      It is supposed the images for each of the frequencies are available
+      The example of the typical image header is following:
+
+AIPS 1: ----------------------------------------------------------------
+AIPS 1: Type    Pixels   Coord value     at Pixel     Coord incr   Rotat
+AIPS 1: RA---SIN  2048    12 28 16.418    1024.00      -0.100000    0.00
+AIPS 1: DEC--SIN  1024    12 39 58.294     513.00       0.100000    0.00
+AIPS 1: FREQ         1   8.0851000E+09       1.00  5.0000000E+07    0.00
+AIPS 1: STOKES       1   2.0000000E+00       1.00  1.0000000E+00    0.00
+
+      The images for different frequencies should be combined in the cube
+      using the AIPS task MCUBE (or better MQUBE). The recommended inputs
+      for MCUBE are following:
+AIPS 1: MCUBE:  Task to collect a set of n-dim maps into a (n+1)-dim map
+AIPS 1: Adverbs     Values                 Comments
+AIPS 1: ----------------------------------------------------------------
+AIPS 1: INNAME     'M87X'                  Input name(name).
+AIPS 1: INCLASS    'Q-COS'                 Input name(class).
+AIPS 1: INSEQ         1                    Input name(seq. #). 0=>high
+AIPS 1:                                    First sequence # in the set
+AIPS 1: INDISK        3                    Input disk drive #. 0=>any
+AIPS 1: IN2SEQ        0                    Last sequence # in set.
+AIPS 1: IN3SEQ        0                    Sequence # increment.
+AIPS 1: OUTNAME    'M87XCUBE'              Output name(name).
+AIPS 1: OUTCLASS   'Q-COS'                 Output name(class).
+AIPS 1: OUTSEQ        0                    Output name(seq. #).
+AIPS 1:                                      0 => highest unique
+AIPS 1: OUTDISK       3                    Output image disk drive #
+AIPS 1:                                      0 => highest with space
+AIPS 1: DOALIGN       0                    Alignment control parm
+AIPS 1: AXREF         1                    n+1 axis pixel of map INSEQ.
+AIPS 1:                                    0 => 1
+AIPS 1: AX2REF        0                    n+1 axis pixel of map IN2SEQ
+AIPS 1:                                    0 => opposite end from INSEQ
+AIPS 1: NPOINTS       4                    Number of pixels on axis n+1
+AIPS 1: DOCONCAT      2                    > 1 => make a SEQ.NUM or
+AIPS 1:
+
+      NPOINTS is the number of combined images, which should be prepared
+      under the same NAME and CLASS but with different INSEQ=1,2,3,4
+
+      The output cube image should have the following axes at the image
+      header:
+
+AIPS 1: ----------------------------------------------------------------
+AIPS 1: Type    Pixels   Coord value     at Pixel     Coord incr   Rotat
+AIPS 1: RA---SIN  2048    12 28 16.418    1024.00      -0.100000    0.00
+AIPS 1: DEC--SIN  1024    12 39 58.294     513.00       0.100000    0.00
+AIPS 1: FQID         4   1.0000000E+00       1.00  1.0000000E+00    0.00
+AIPS 1: STOKES       1   2.0000000E+00       1.00  1.0000000E+00    0.00
+AIPS 1: FREQ         1   8.0851000E+09       1.00  5.0000000E+07    0.00
+AIPS 1: ----------------------------------------------------------------
+
+The axis 'FQID' reports the number of frequencies at the cube.
+The axis 'FREQ' reports the reference frequency.
+The actual frequencies are the sum of the reference frequency and
+the ofcets given at the FQ table created by MCUBE.
+
+FARS requires another sequence of axes!!! So the AIPS task TRANS should
+be applied to get it.
+The example of TRANS inputs is following:
+
+AIPS 1: TRANS:  Task to transpose a subimage of an up to 7-dim. image
+AIPS 1: Adverbs     Values                 Comments
+AIPS 1: ----------------------------------------------------------------
+AIPS 1: INNAME     'M87XCUBE'              Input name(name).
+AIPS 1: INCLASS    'Q-COS'                 Input name(class).
+AIPS 1: INSEQ         1                    Input name(seq. #). 0=>high
+AIPS 1: INDISK        3                    Input disk drive #. 0=>any
+AIPS 1: OUTNAME    'M87XTRANS'             Output name(name).
+AIPS 1: OUTCLASS   'Q-COS'                 Output name(class).
+AIPS 1: OUTSEQ        0                    Output name(seq. #).
+AIPS 1:                                      0 => highest unique
+AIPS 1: OUTDISK       3                    Output image disk drive #
+AIPS 1:                                      0 => highest with room
+AIPS 1: BLC        *all 0                  Bottom left corner of image
+AIPS 1:                                      0 => entire image
+AIPS 1: TRC        *all 0                  Top right corner of image
+AIPS 1:                                      0 => entire image
+AIPS 1: TRANSCOD   '31245'                 New axis order in terms of
+AIPS 1:                                    input axis numbers
+AIPS 1: BADDISK    *all 0                  Disks to avoid for scratch
+
+So the final image cube should have the following axes at the image
+      header:
+
+AIPS 1: ----------------------------------------------------------------
+AIPS 1: Type    Pixels   Coord value     at Pixel     Coord incr   Rotat
+AIPS 1: FQID         4   1.0000000E+00       1.00  1.0000000E+00    0.00
+AIPS 1: RA---SIN  2048    12 28 16.418    1024.00      -0.100000    0.00
+AIPS 1: DEC--SIN  1024    12 39 58.294     513.00       0.100000    0.00
+AIPS 1: STOKES       1   2.0000000E+00       1.00  1.0000000E+00    0.00
+AIPS 1: FREQ         1   8.0851000E+09       1.00  5.0000000E+07    0.00
+AIPS 1: ----------------------------------------------------------------
+
+The same set of steps should be carried out to get the second linear
+polarization input image for FARS.
+
+

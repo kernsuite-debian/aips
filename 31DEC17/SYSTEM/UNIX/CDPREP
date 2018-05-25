@@ -1,0 +1,555 @@
+#!/bin/sh
+##----------------------------------------------------------------------
+#! prepare an ISO 9660 file system image for AIPS
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-1999, 2001-2002, 2004, 2017
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+# Usage: CDPREP [ARCH]
+#
+#        where ARCH is an optional override of the default architectures
+#        (SUL and LINUX).  If DEBUG=YES, it is verbose and asks.
+#
+# Details:
+#
+#  This is performed in 5 stages (6 if you count burning the CDrom
+#  itself):
+#    1.  Untar the source from the anonymous ftp repository (once-off)
+#    2.  gzip -9 the TEXT/PUBL area (once-off)
+#    3.  copy the 15MMMYY/{SUL,LINUX|ARCH}/{LIBR,LOAD,MEMORY} areas
+#        if needed (see if this has already been done; if not, move the
+#        unneeded system areas out of the way for now; need cache area).
+#    4.  Make sure symlinks for INSTEP1, CDPREP and REGISTER are in the
+#        AIPS_ROOT area.
+#    5.  mkisofs.
+#   [6.  burn the cd; may be done from xcdroast]
+#
+# Revised to build the files at the AOC
+#-----------------------------------------------------------------------
+#                                       Setup parameters: where the
+#                                       source can be found, the work
+#                                       area, and the filesystem image
+#                                       destination location.
+
+ftpsource=/home/aipsftp
+fitsource=/home/aipsftp/FITS/31DEC10
+y2ksource=/home/aipsftp/FITS/31DEC10
+cdwriter=/home/aipsftp/31DEC16/cdroast
+aipslocal=/home/AIPS/31DEC16/LINUX/SYSTEM/COAOARN
+
+aipswork=$cdwriter/aipswork/cd
+backup=$cdwriter/aipswork/otherarch
+imageloc=$cdwriter/cdroast
+
+aipsroot=/home/AIPS
+#                                       OpenSource specific
+tar="tar"
+gzip="gzip"
+#                                       Slowaris settings
+# tar="/opt/local/gnu/bin/tar"
+# gzip="/opt/local/gun/bin/gzip"
+
+umask 002
+regen=no
+
+#                                       Make sure NEW is defined
+if [ "$NEW" = "" ] ; then
+   if [ -f /home/aips/LOGIN.SH ] ; then
+      . /home/aips/LOGIN.SH
+   else
+      echo "CDPREP: AIPS environment not found???"
+      exit 1
+   fi
+fi
+#                                       Get the NEW version date
+vers=`echo $NEW | sed -e 's,^.*/,,'`
+[ "$DEBUG" = YES ] && echo -n "CDPREP: version is $vers" && read dum
+#                                       Make sure dest area exists
+if [ -d $aipswork ] ; then
+   echo "CDPREP: $aipswork work area already exists; good."
+else
+   [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdir $aipswork..." && read dum
+   if mkdir $aipswork ; then
+      echo "CDPREP: $aipswork work area has now been created."
+      regen=yes
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   else
+      echo "CDPREP: cannot create $aipswork work area"
+      exit 1
+   fi
+fi
+cd $aipswork
+#                                       Need to unpack?
+
+if [ -f ${vers}/AIPS/PGM/AIPS.FOR ] ; then
+   echo "CDPREP: $vers already unpacked in work area; good."
+else
+#                                       Is the tarball present?
+   regen=yes
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   if [ ! -f ${ftpsource}/${vers}/${vers}.tar.gz ] ; then
+      echo "CDPREP: Cannot find ${vers}.tar.gz in $ftpsource area"
+      exit 1
+   fi
+#                                       Unpack it.
+
+   echo "CDPREP: unpacking the tarball to $aipswork/$vers"
+   echo "        (this will take a few minutes)"
+   [ "$DEBUG" = YES ] && echo -n \
+    "CDPREP: $tar zxvf ${ftpsource}/${vers}/${vers}.tar.gz..." && read dum
+   $tar zxvf ${ftpsource}/${vers}/${vers}.tar.gz
+   if [ -f ${vers}/AIPS/PGM/AIPS.FOR ] ; then
+      : yippee-yie-ay
+   else
+      echo "CDPREP: AIPS.FOR not found, tar command failed?"
+      exit 1
+   fi
+fi
+#                                       Is TEXT area gzipped?
+if [ -f TEXT/PUBL/COOK0.PS.gz ] ; then
+   echo "CDPREP: TEXT area is already gzipped; good."
+elif [ -f TEXT/PUBL/COOK0.PS ] ; then
+   regen=yes
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   echo "CDPREP: need to gzip the TEXT/PUBL files..."
+   [ "$DEBUG" = YES ] && echo -n "CDPREP: gzip TEXT..." && read dum
+   (cd TEXT/PUBL; find . -type f -exec $gzip -v -9 {} \; )
+   if [ -f TEXT/PUBL/COOK0.PS.gz ] ; then
+      : assume it worked
+   else
+      echo "CDPREP: gzipping the TEXT/PUBL area failed?"
+      exit 1
+   fi
+else
+   echo 'CDPREP: this cannot happen!  TEXT area missing???'
+   exit 1
+fi
+#                                       Check symlinks
+for i in CDSETUP INSTEP1 REGISTER ; do
+   if [ -L $i ] ; then
+      ptr=`/bin/ls -l $i | awk '{print $NF}' | awk -F/ '{print $1}'`
+      if [ $ptr = $vers ] ; then
+          echo "CDPREP: symlink $i exists and points to $vers; good."
+      else
+          echo "CDPREP: symlink $i points to $ptr, not $vers; fixing..."
+	  rm -f $i
+          ln -s $vers/SYSTEM/UNIX/INSTALL/$i
+      fi
+   else
+      regen=yes
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+      [ "$DEBUG" = YES ] && echo -n "CDPREP: ln $i..." && read dum
+      rm -f $i
+      ln -s ${vers}/SYSTEM/UNIX/INSTALL/$i
+      echo "CDPREP: made symlink $i"
+   fi
+done
+#                                       ################################
+#                                       Process any argument
+echo "arg = $1"
+if [ "$1" != "" ] ; then
+   if [ -f ${ftpsource}/${vers}/${1}/LOAD/AIPS.EXE.gz -o \
+        -f ${ftpsource}/${vers}/${1}/LOAD/AIPS.EXE ] ; then
+      image=${imageloc}/${vers}.${1}.raw
+      [ "$DEBUG" = YES ] && echo -n "CDPREP: image $image..." && read dum
+      NARCH=$1
+#     echo "CDPREP: this option (architecture $NARCH) not supported yet"
+#     exit 1
+      echo "CDPREP: Restricting ourselves to architecture $1"
+   else
+      echo "CDPREP: cannot find architecture $NARCH on ftp server"
+      exit 1
+   fi
+else
+#                                       This *can* be multiples, but
+#                                       only one fits on a CD anymore
+   NARCH="LINUX"
+   echo "CDPREP: Using standard $NARCH architecture"
+#  image=${imageloc}/${vers}.MAIN.raw
+   image=${imageloc}/${vers}.${NARCH}.raw
+   [ "$DEBUG" = YES ] && echo -n "CDPREP: image $image, imageloc $imageloc..." && read dum
+fi
+#                                       Get rid of arches we don't want
+for i in `/bin/ls -d ${vers}/*/LOAD 2>/dev/null` ; do
+   j=`echo $i | sed -e 's,/LOAD,,'`
+   k=`echo $j | sed -e "s,${vers}/,,"`
+   needed=no
+   for l in $NARCH ; do
+      [ $k = $l ] && needed=yes
+   done
+   if [ $needed = no ] ; then
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+      regen=yes
+      [ "$DEBUG" = YES ] && echo "CDPREP: i=$i j=$j k=$k"
+      echo "CDPREP: removing unneeded area $j/LOAD,LIBR,MEMORY"
+      echo -n "CDPREP: Please confirm with YES: "; read yn
+      [ "$yn" = YES ] && rm -fr $j/{LIBR,LOAD,MEMORY} && \
+       echo "CDPREP: removed $k/LOAD etc. from prep area"
+   fi
+done
+for i in `/bin/ls -d BIN/* DA00/* 2>/dev/null` ; do
+   j=`basename $i`
+   needed=no
+   for l in $NARCH ; do
+      [ $j = $l ] && needed=yes
+   done
+   if [ $needed = no ] ; then
+      echo "CDPREP: removing unneeded $i area"
+      echo -n "CDPREP: Please confirm with YES: "; read yn
+      [ "$yn" = YES ] && rm -fr $i &&
+       echo "CDPREP: removed $i from prep area"
+   fi
+done
+
+echo "CDPREP: Checking work filesystem for architecture(s) $NARCH..."
+for i in $NARCH ; do
+   if [ -f ${vers}/${i}/LOAD/ZSTRTA.EXE ] ; then
+      echo "CDPREP: binaries seem present and unzipped for $i; good."
+   elif [ ! -d ${vers}/${i}/LOAD ] ; then
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+      regen=yes
+      [ "$DEBUG" = YES ] && echo -n "CDPREP: cp $i..." && read dum
+      if [ -f ${backup}/${i}/LOAD/ZSTRTA.EXE ] ; then
+         echo "CDPREP: copying binaries from backup area $backup/$i"
+         (cd ${vers}/$i; cp -r ${backup}/${i}/* .)
+      else
+         echo "CDPREP: copying binaries from ftp area; will take time."
+         (cd ${vers}/$i; cp -r ${ftpsource}/${vers}/${i}/* .)
+      fi
+   fi
+   if [ -f ${vers}/${i}/LOAD/ZSTRTA.EXE.gz ] ; then
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+      regen=yes
+      echo "CDPREP: need to gunzip binaries for $i; will take time..."
+      [ "$DEBUG" = YES ] && echo -n "CDPREP: gunzip ${i}/LOAD/..." && \
+       read dum
+      gunzip -v ${vers}/${i}/LOAD/*.gz
+      if [ -f ${vers}/${i}/LOAD/ZSTRTA.EXE ] ; then
+         : success
+      else
+         echo "CDPREP: not all binaries gunzipped?"
+         exit 1
+      fi
+   fi
+#                                       Up to 9 servers
+   if [ -f ${vers}/${i}/LOAD/XAS9 ] ; then
+      echo "CDPREP: hard links in LOAD seem to be there"
+   else
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+      regen=yes
+      [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: need to remake links"
+      ( cd ${vers}/${i}/LOAD
+        for i in 1 2 3 4 5 6 7 8 9 ; do
+	   ln XAS XAS$i
+	   ln TVSERV.EXE TVSRV$i
+	   ln MSGSRV.EXE MSSRV$i
+	   ln TEKSRV.EXE TKSRV$i
+	done
+      )
+      echo "CDPREP: created hard links for XAS, TV/TK/MS servers"
+   fi
+#                                       Bin, DA00 areas...
+   if [ ! -d BIN/$i ] ; then
+      mkdir -p BIN/$i
+   fi
+   if [ ! -d ${ftpsource}/${vers}/BIN/$i ] ; then
+      echo "CDPREP: Error, no BIN area for $i in $ftpsource?"
+      exit 1
+   fi
+   usethis="${ftpsource}/${vers}/BIN/${i}"
+   [ -f ${backup}/BIN/${i}/F2PS ] && usethis="${backup}/BIN/${i}"
+   for b in ${usethis}/* ; do
+      bn=`basename $b`
+      if [ -f BIN/${i}/$bn ] ; then
+         n=`$aipslocal/NEWEST BIN/${i}/$bn $b`
+         if [ $n != BIN/${i}/$bn ] ; then
+            echo "CDPREP: using newer $bn for $i from ftp area..."
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+            regen=yes
+            rm -f BIN/${i}/$bn
+	    cp $b BIN/${i}/
+         fi
+      else
+         echo "CDPREP: copying $bn for architecture $i..."
+	 cp $b BIN/${i}/
+         [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+         regen=yes
+      fi
+   done
+   if [ ! -d DA00/$i ] ; then
+      mkdir -p DA00/$i
+   fi
+   if [ ! -d ${ftpsource}/${vers}/DA00/$i ] ; then
+      echo "CDPREP: Error, no DA00 area for $i in $ftpsource?"
+      exit 1
+   fi
+   usethis="${ftpsource}/${vers}/DA00/${i}"
+   [ -f "${backup}/DA00/${i}/SPD000000;" ] && usethis="${backup}/DA00/${i}"
+   for d in ${usethis}/* ; do
+      dn=`basename $d`
+      if [ -f DA00/${i}/$dn ] ; then
+         n=`$aipslocal/NEWEST DA00/${i}/$dn $d`
+         if [ $n != DA00/${i}/$dn ] ; then
+            echo "CDPREP: using newer $dn for $i from ftp area..."
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+            regen=yes
+            rm -f DA00/${i}/$dn
+            cp $d DA00/${i}/
+         fi
+      else
+         echo "CDPREP: copying $dn for architecture $i..."
+	 cp $d DA00/${i}/
+         [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+         regen=yes
+      fi
+   done
+#                                       Now
+   case $i in
+      LINUX)
+#                                       Watch for new compilers
+         if [ -f LINUX/lib/libimf.so ] ; then
+            echo "CDPREP: shared libraries for LINUX exist; good."
+         else
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+	    regen=yes
+            [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdir LINUX/lib..." && read dum
+            if mkdir -p LINUX/lib ; then
+               if cp ${ftpsource}/${vers}/LINUX/lib/lib* LINUX/lib/ ; then
+                  echo "CDPREP: copied Linux icomp Fortran shared libraries"
+               else
+                  echo "CDPREP: FAILED to copy Linux icomp shared libraries"
+                  exit 1
+               fi
+            else
+               echo "CDPREP: FAILED to create LINUX/lib area"
+               echo "        for shared Mac Fortran libraries"
+               exit 1
+            fi
+         fi
+         ;;
+      MACPPC)
+#                                       Watch for new compilers
+         if [ -f MACPPC/lib/libxlf90.A.dylib ] ; then
+            echo "CDPREP: shared libraries for MACPPC exist; good."
+         else
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+	    regen=yes
+            [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdir MACPPC/lib..." && read dum
+            if mkdir -p MACPPC/lib ; then
+               if cp ${ftpsource}/${vers}/MACPPC/lib/lib* MACPPC/lib/ ; then
+                  echo "CDPREP: copied MAC xlf Fortran shared libraries"
+               else
+                  echo "CDPREP: FAILED to copy MAC xlf shared libraries"
+                  exit 1
+               fi
+            else
+               echo "CDPREP: FAILED to create MACPPC/lib area"
+               echo "        for shared Mac Fortran libraries"
+               exit 1
+            fi
+         fi
+         ;;
+      MACINT)
+#                                       Watch for new compilers
+         if [ -f MACINT/lib/libimf.dylib ] ; then
+            echo "CDPREP: shared libraries for MACINT exist; good."
+         else
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+	    regen=yes
+            [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdir MACINT/lib..." && read dum
+            if mkdir -p MACINT/lib ; then
+               if cp ${ftpsource}/${vers}/MACINT/lib/lib* MACINT/lib/ ; then
+                  echo "CDPREP: copied MAC icomp Fortran shared libraries"
+               else
+                  echo "CDPREP: FAILED to copy MAC icomp shared libraries"
+                  exit 1
+               fi
+            else
+               echo "CDPREP: FAILED to create MACINT/lib area"
+               echo "        for shared Mac Fortran libraries"
+               exit 1
+            fi
+         fi
+         ;;
+      SOL|SUL)
+#                                       Watch for new compilers
+         if [ -f SUL/lib/libF77.so.* ] ; then
+            echo "CDPREP: shared libraries for Solaris exist; good."
+         else
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+	    regen=yes
+            [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdr SUL/lib..." && read dum
+            if mkdir -p SUL/lib ; then
+               if cp ${ftpsource}/${vers}/SUL/lib/lib* SUL/lib/ ; then
+                  echo "CDPREP: copied Solaris Fortran shared libraries"
+               else
+                  echo "CDPREP: FAILED to copy Solaris shared libraries"
+                  exit 1
+               fi
+            else
+               echo "CDPREP: FAILED to create SUL/lib area"
+               echo "        for shared Solaris Fortran libraries"
+               exit 1
+            fi
+         fi
+         if [ -f SUL/lib/libF77.so.* ] ; then
+            : fine
+         else
+            [ "$DEBUG" = YES ] && echo -n "CDPREP: ln SUL SOL..." && read dum
+            ln -s SUL SOL
+         fi
+         ;;
+      SUN4)
+         if [ -f SUN4/lib/libF77.so.* ] ; then
+            echo "CDPREP: shared libraries for Sun4 exist; good."
+         else
+            [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+	    regen=yes
+            if mkdir -p SUN4/lib ; then
+               if cp ${ftpsource}/${vers}/SUN4/lib/* SUN4/lib/ ; then
+                  echo "CDPREP: copied Sun4 Fortran shared libraries"
+               else
+                  echo "CDPREP: FAILED to copy Sun4 shared libraries"
+                  exit 1
+               fi
+            else
+               echo "CDPREP: FAILED to create SUN4/lib area"
+               echo "        for shared Sun Fortran libraries"
+               exit 1
+            fi
+         fi
+         ;;
+   esac
+done
+#                                       FITS area
+if [ ! -d FITS ] ; then
+   [ "$DEBUG" = YES ] && echo -n "CDPREP: mkdir FITS..." && read dum
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   regen=yes
+   if mkdir FITS ; then
+      echo "CDPREP: created FITS area for Y2K images."
+   else
+      echo "CDPREP: FAILED to create FITS area."
+      exit 1
+   fi
+fi
+if [ -f FITS/Y2KLUVDATA1 ] ; then
+   echo "CDPREP: FITS Y2K images present; good."
+else
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   regen=yes
+   echo "CDPREP: about to copy FITS Y2K images (these are big)"
+   [ "$DEBUG" = YES ] && echo -n "CDPREP: cp Y2KL* FITS..." && read dum
+   if [ ! -f ${fitsource}/Y2KLUVDATA1 ] ; then
+      echo "CDPREP: My setting for the FITS area is"
+      echo "CDPREP: $fitsource"
+      echo "CDPREP: but I can't find Y2KLUVDATA1 there.  Please check."
+      exit 1
+   fi
+   if cp ${fitsource}/Y2KL* FITS/; then
+      echo "CDPREP: Copied FITS Y2K images successfully."
+   else
+      echo "CDPREP: FAILED to copy Y2K from ${fitsource}/"
+   fi
+fi
+#                                     We have grown too big
+#if [ -f FITS/Y2KLUVDATA1 ] ; then
+#   echo "CDPREP: FITS Y2K images present; good."
+#else
+#   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+#   regen=yes
+#   echo "CDPREP: about to copy FITS Y2K images (these are HUGE)"
+#   [ "$DEBUG" = YES ] && echo -n "CDPREP: cp Y2K* FITS..." && read dum
+#   if [ ! -f ${y2ksource}/Y2KLUVDATA1 ] ; then
+#      echo "CDPREP: My setting for the FITS area is"
+#      echo "CDPREP: $y2ksource"
+#      echo "CDPREP: but I can't find Y2KLUVDATA1 there.  Please check."
+#      exit 1
+#   fi
+#   if cp ${y2ksource}/Y2K* FITS/; then
+#      echo "CDPREP: Copied FITS Y2K images successfully."
+#   else
+#      echo "CDPREP: FAILED to copy Y2K from ${y2ksource}/"
+#   fi
+#fi
+if [ -f COPYING ] ; then
+   echo "CDPREP: copyleft found; good."
+else
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen set to yes"
+   regen=yes
+   if [ ! -f ${aipsroot}/${vers}/COPYING ] ; then
+      echo "CDPREP: file COPYING missing from ${aipsroot}/$vers area."
+      echo "CDPREP: This is the GNU GPL generic document."
+      echo "CDPREP: Cannot proceed.  Please find (try older versions)"
+      echo "CDPREP: and put it in the ${aipsroot}/${vers}/ directory."
+      exit 1
+   fi
+   if cp ${aipsroot}/${vers}/COPYING . ; then
+      echo "CDPREP: put Copyleft in top-level area."
+   else
+      echo "CDPREP: FAILED to put COPYING file here"
+      exit 1
+   fi
+fi
+App="AIPS version $vers"
+Pub="National Radio Astronomy Observatory\n520 Edgemont Road\nCharlottesville, VA 22903\nUSA\naipsmail@nrao.edu"
+Prep=$LOGNAME
+if [ \( -s $image \) -a \( $regen = no \) ] ; then
+   echo "CDPREP: Image for $NARCH exists and is current; nothing to do."
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: image name $image"
+else
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: image $image"
+   [ "$DEBUG" = "YES" ] && echo "CDPREP: debug: regen $regen"
+   echo "CDPREP: about to create the ISO9660 filesystem image..."
+   echo -n "CDPREP: (in 5 seconds..."
+   sleep 1; echo -n "4..."; sleep 1; echo -n "3..."; sleep 1; echo -n "2..."
+   sleep 1; echo -n "1..."; sleep 1; echo "NOW."
+   [ "$DEBUG" = YES ] && echo -n \
+    "CDPREP: mkisofs -A \"$App\" -P \"$Pub\" -p \"$prep\" -R -l -L -o $image $aipswork..." && read dum
+   if mkisofs -A "$App" -P "$Pub" -p "$prep" -R -l -L -o $image $aipswork ; then
+      echo 'CDPREP: DONE!  Checking size...'
+      isosize=`/bin/ls -s $image | awk '{print $1}'`
+      isosize=`expr 1 + \( $isosize / 1024 \)`
+      if [ $isosize -gt 700 ] ; then # this is *about* the limit...
+         echo "CDPREP: Warning: Image file is TOO BIG."
+         echo "CDPREP: It is $isosize MBytes, larger than 700M,"
+         echo "CDPREP: and thus WILL NOT fit on a single CD."
+      elif [ $isosize -gt 600 ] ; then
+         echo "CDPREP: Warning: Image file may be too big."
+         echo "CDPREP: It is $isosize MBytes, larger than 600,"
+         echo "CDPREP: and thus MIGHT NOT fit on a single CD."
+      elif [ $isosize -lt 40 ] ; then
+         echo "CDPREP: Warning: Image file may be too small."
+         echo "CDPREP: It is $isosize MBytes, smaller than 40M,"
+         echo "CDPREP: and it should be a LOT bigger???"
+      else
+         echo "CDPREP: Size ($isosize MBytes) appears ok."
+      fi
+   else
+      echo "CDPREP: FAILED to mkisofs -A "$App" -P "$Pub" -p "$prep" -R -l -L -o $image $aipswork"
+      exit 1
+   fi
+fi

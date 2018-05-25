@@ -1,0 +1,257 @@
+; SPIXR
+;---------------------------------------------------------------
+;! Fits spectral indexes to each row of an image incl curvature
+;# TASK IMAGING ANALYSIS
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2005-2006, 2010, 2016-2017
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+SPIXR     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+SPIXR      Finds the spectral index from each row of an image
+INNAME                             Input image name (name)
+INCLASS                            Input image name (class)
+INSEQ             0.0     9999.0   Input image name (seq. #)
+INDISK            0.0        9.0   Input image disk unit #
+OUTNAME                            Output image name (name)
+OUTSEQ           -1.0     9999.0   Output image name (seq. #)
+OUTDISK           0.0        9.0   Output image disk unit #.
+BLC                                Bottom left corner of input
+TRC                                Top right corner of input
+FLUX                               Use only data > FLUX
+REFREQ                             Reference frequency in GHz
+                                   < 0 -> header, 0 -> 1 GHz
+OPTYPE                             'CURV' fit incl curvature
+PBPARM                             Beam parameters:
+                                   (1) Cutoff: 0 -> no PB corr
+                                   (2) > 0 -> Use (3)-(7)
+                                   (3)-(7) Beam shape
+DPARM                              Flag if bad answer levels:
+                                   (1) N < (2) Sp <  (3) Sp >
+                                   (4) T/min < (5) T/max >
+                                   (6) T < (7) T > (8) c <
+                                   (9) c >
+BADDISK                            Disk to avoid for scratch
+----------------------------------------------------------------
+SPIXR
+Task:  Fits each row of an image cube to make an image of spectral
+       index (intensity = frequency to the power spectral index).
+       It may be instructed to make images of the uncertainties and
+       the curvature.  SPIXR actually fits the function
+            log(T(x,y,f)) = log(T(x,y,f0)) + S(x,y) log(f/f0) +
+                  C(x,y) (log(f/f0))^2
+       and writes images of T(x,y,f0), S(x,y), and C(x,y).  Note that
+       the logarithms are base 10 and f0 is 1 GHz.  These affect the
+       values in the curvature image.  That is a change done
+       2010-07-13.
+
+       It is an error to feed this task any data cube not having the
+       first axis as FREQ, FQID, or SEQ.NUM.  One may build a data
+       cube for use in this task.  First one must make the image at
+       each frequency lie on the same coordinate grid (OHGEO) and have
+       similar spatial resolution (CONVL).  If it might matter, it
+       would be best to correct for the single-dish primary beam
+       pattern (PBCOR).  Then build the cube with MCUBE using
+       DOCONCAT=TRUE.  Finally run TRANS to transpose the cube, making
+       the frequency (FQID usually or SEQ.NUM.) axis first.  If the
+       axis is SEQ.NUM. then, in TRANS, do not reverse the order of
+       the frequency pixels since SPIXR must read the history file to
+       find the true frequencies for each pixel number.  If the axis
+       is FQID, this caution does not apply.
+
+       SPIXR provides only very elementary blanking capabilities.
+       Normally, users will wish to do more elaborate blanking with
+       BLANK before running SPIXR.  The data cube must have the same
+       spatial resolution and units in all spectral channels.  If not,
+       the resolutiona and units issues alone will create erroneous
+       spectral indices.  Running CONVL specifying BMAJ, BMIN, BPA
+       after running IMAGR with BMAJ=0 is recommended.
+
+Adverbs:
+  INNAME.....Input image name (name).     Standard defaults.
+  INCLASS....Input image name (class).    Standard defaults.
+  INSEQ......Input image name (seq. #).   0 => highest.
+  INDISK.....Disk drive # of input image. 0 => any.
+  OUTNAME....Output image name (name).    Standard defaults.
+             The OUTCLASSes are 'B TEMP', 'D BT', 'SP CNT', 'SPIX',
+             'D SPIX', 'SPCU', 'D SPCU' for brightness, brightness
+             uncertainty, count, spectral index, spectral index
+             uncertainty, curvature, and curvature uncertainty.
+  OUTSEQ.....Output image name (seq. #). 0 => highest unique.
+  OUTDISK....Disk drive # of output image.  0 => highest
+             number with sufficient space.
+  BLC........Bottom right corner in input image of desired
+             subimage.  Default is entire image.
+  TRC........Top right corner in input image of desired
+             subimage.  Default is entire image.
+  FLUX.......A flux cutoff in the same units as the input image (i.e.
+             Jy/beam).  Data values below FLUX are ignored in the
+             spectral index computation.  NOTE that 0.0 is not a null
+             value.  Instead, it means ignore all negative
+             brightnesses (which it has to do anyway).
+  REFREQ.....Compute total flux, spectra index and curvature with
+             reference frequency REFREQ in GHz
+             0 => use 1 GHz;  < 0 => use header frequency
+             Output imges will be assigned this as the frequency.
+  OPTYPE.....'CURV' => fit curvature as well as spectral index
+             anything else => fit only spectral index.
+  PBPARM.....Primary beam parameters:  Adjust the cutoff levels to
+             account for the primary beam.
+              (1) Lowest beam value to believe: 0 -> do not do a
+                  primary beam correction.  The maximum correction is
+                  a factor of 100.
+              (2) > 0 => Use beam parameters from PBPARM(3)-PBPARM(7)
+                  Otherwise use default parameters for the VLA (or
+                  ATCA where appropriate)
+              (3-7)..For all wavelengths, the beam is described by the
+                function:
+                   1.0 + X*PBPARM(3)/(10**3) + X*X*PBPARM(4)/(10**7) +
+                   X*X*X*PBPARM(5)/(10**10) + X*X*X*X*PBPARM(6)/(10**13)
+                   X*X*X*X*X*PBPARM(7)/(10**16)
+                where X is (distance from the pointing position in arc
+                minutes times the frequency in GHz)**2.
+                See explain for details
+  DPARM......The images can be dominated by bad answers, making it
+             hard to see the good parts.  Therefore flag the soluion
+             for a pixel if
+             (1) Number samples > FLUX is < DPARM(1)  0 -> 0
+             (2) Spectral index < DPARM(2)            0 -> -large
+             (3) Spectral index > DPARM(3)            0 -> +large
+             (4) Brightness/(min brightness) < DPARM(4)  0 -> 0
+             (5) Brightness/(max brightness) > DPARM(5)  0 -> +large
+             (6) Brightness < DPARM(6)                0 -> 0
+             (7) Brightness > DPARM(7)                0 -> +large
+             (8) Curvature < DPARM(8)                 0 -> -large
+             (9) Curvature > DPARM(9)                 0 -> +large
+             You should invoke some of these - 2,3 and 8,9 at least.
+  BADDISK....Disk drives to avoid for scratch files.
+----------------------------------------------------------------
+
+     SPIXR has the option of scaling the cutoff values on a
+pixel-by-pixel basis to "correct" for the primary beam.  Thus, as the
+beam value goes down the cutoff value goes up.  This allows SPIXR to be
+run on data cubes after the application of PBCOR.  Since the primary
+beam is a function of frequency, the spectral moments are affected by
+the primary beam correction.  Unfortunately this correction also
+raises the noise, making the option to raise the cutoff useful.
+
+     SPIXR corrects an image for the primary beam attenuation of
+the antennas.  The function used to model the primary beam for normal
+VLA frequencies
+
+            F(x) =  1.0
+                   + parm(3) * 10E-3  * x
+                   + parm(4) * 10E-7  * x*x
+                   + parm(5) * 10E-10 * x*x*x
+                   + parm(6) * 10E-13 * x*x*x*x
+                   + parm(7) * 10E-16 * x*x*x*x*x
+
+where x is proportional to the square of the distance from the
+pointing position in units of [arcmin * freq (GHz)]**2, and F(x)
+is the multiplicative factor to divide into the image intensity at the
+distance parameter x.  For other antennas, the user may read
+in appropraite constants in PBPARM(3) through PBPARM(7).  The
+flag, PBPARM(2) must be set to a positive number to invoke this
+option and PBPARM(3) must not be zero.
+     This correction scales with frequency and has a cutoff
+beyond which the map values are set to an undefined pixel value GIVEN
+in PBPARM(1).  At the VLA frequencies the default cutoff is
+                 1.485 GHz     29.8  arcmin
+                 4.885 GHz      9.13 arcmin
+                15     GHz      2.95 arcmin
+                22.5   GHz      1.97 arcmin
+and occurs at a primary beam sensitivity of 2.3% of the value at
+the beam center.  Corrections factors < 1 are forced to be 1.
+The estimated error of the algorithm is about 0.02 in (1/F(x))
+and thus leads to very large errors for x>1500, or at areas
+outside of the primary response of 20%.  The cutoff level
+may be specified with DPARM(1).
+
+Default values of PBPARM for the VLA are given by Perley's fits:
+      0.0738 GHz  -0.897  2.71   -0.242
+      0.3275      -0.935  3.23   -0.378
+      1.465       -1.343  6.579  -1.186
+      4.885       -1.372  6.940  -1.309
+      8.435       -1.306  6.253  -1.100
+     14.965       -1.305  6.155  -1.030
+     22.485       -1.417  7.332  -1.352
+     43.315       -1.321  6.185  -0.983
+For the ATCA, these are by default:
+      1.5 GHz     -1.049   4.238  -0.8473  0.09073  -5.004E-3
+      2.35        -0.9942  3.932  -0.7772  0.08239  -4.429E-3
+      5.5         -1.075   4.651  -1.035   0.12274  -6.125E-3
+      8.6         -0.9778  3.875  -0.8068  0.09414  -5.841E-3
+     20.5         -0.9579  3.228  -0.3807  0.0       0.0
+For the Karl G Jansky VLA ("EVLA"), the defaults are frequency
+dependent.  If the observing frequency is between two tabulated
+frequencies, then the beam is computed for each of the tabulated
+frequencies and then interpolated to the observing frequency.  The
+values used are far too numerous to give here, see EVLA Memo 195,
+"Jansky Very Large Array Primary Beam Characteristics" by Rick Perley,
+revision dated June 2016.  Obtain it from
+http://library.nrao.edu/evla.shtml
+
+
+                 RICK PERLEY'S (OLD) REPORT
+
+	Polynomial Coefficients from LSq Fit to VLA Primary
+	Beam raster scans.
+
+	Functional form fitted:
+
+		1 + G1.X^2 + G2.X^4 + G3.X^6
+
+	where X = r.F,
+
+	and 	r = radius in arcminutes
+		F = frequency in GHz.
+
+	Fits were made to 3% cutoff in power for 24 antennas.
+Poor fits, and discrepant fits were discarded, and the most
+consistent subset of antennas had their fitted coefficients
+averaged to produce the following 'best' coefficients.
+
+
+Freq.		G1		G2		G3
+----------------------------------------------------------
+1.285           -1.329E-3       6.445E-7        -1.146E-10  *
+1.465           -1.343          6.579           -1.186 "
+4.885           -1.372          6.940           -1.309
+8.435           -1.306          6.253           -1.100
+14.965          -1.305          6.155           -1.030
+22.485 (old)    -1.350          6.526           -1.090      *
+22.485 (new)    -1.417          7.332           -1.352
+43.315          -1.321          6.185           -0.983
+-----------------------------------------------------------
+
+	The estimated errors (from the scatter in the fitted
+coefficients) are generally very small:
+
+	G1: .003 at all bands except Q (.014)
+	G2: .03 to .07 at all bands except Q (.15)
+	G3: .01 to .02 at all bands except Q (.04)
+
+	R. Perley  21/Nov/00
+
+* The 1.285 and 22.485 old feed values are not used.
