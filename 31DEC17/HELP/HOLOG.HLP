@@ -1,0 +1,264 @@
+; HOLOG
+;---------------------------------------------------------------
+;! Read & process holography visibility data to telescope images
+;# TASK UV ANALYSIS IMAGING
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2015-2017
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;---------------------------------------------------------------
+HOLOG     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+HOLOG:  Task to read and process holography visibility data
+INFILE
+                                   Input data file name.
+OUTNAME                            Output image name.
+OUTDISK         0.0         9.0    Output disk number.
+UVTAPER         0.0                Data tapering: (1) type,
+                                   (2) width in cells to 0.5
+OPTYPE                             Telescope type: 'PFOC' prime
+                                   focus, 'SUBR' subreflector
+                                   'SURP' subreflector with
+                                   reference pointing
+FACTOR          0.0       100.0    Magnification
+REFREQ          0.0                Reference frequency in GHz
+APARM                              Operating parameters.
+                                    1: Frequency (GHz).
+                                    2: Satellite elevation, deg.
+                                       Use 0 for sidereal obj.
+                                    3: Antenna diameter, m.
+                                    4: Unpaneled diameter, m.
+                                       (3,4) used to blank ant.
+                                       aperture phase data.
+                                    5: Focal length, m.
+                                    6: Disabled
+                                    7: Disabled
+                                    8: Disabled
+                                    9: 10000 * Ref ant. +
+                                       100 * target ant. + IF#.
+                                    10: Stokes (RR=1, LL=2)
+                                       (9) and (10) used only
+                                       if INFILE is not of form
+                                       'AREA:FILE'
+BPARM                              Data reduction parameters.
+                                    1: Required map size, meters
+                                    2: No. of pixels on a side
+                                       of the output map (power
+                                       of 2, min=32, max=512).
+                                       0 => 128
+                                    3: Min. antenna scan angle
+                                       Units: inverse sine(ang)
+                                       0 => all data used.
+                                    4: Max. antenna scan angle
+                                       Units: inverse sine(ang)
+                                       0 => all data used.
+                                       <0 => radial (min, max).
+                                    5: Amplitude scaling factor
+                                       0 => 1
+                                    6: Fourier transform sign
+                                       0 => -1 (VLA convention)
+                                    7: Minimum antenna aperture
+                                       used for fit, in meters
+                                       < 0 => circular min.
+                                       0 => set by APARM(4)
+                                    8: Maximum antenna aperture
+                                       used for fit, in meters
+                                       < 0 => Circular max.
+                                       0 => set by APARM(3)
+                                       (7,8) used for focus and
+                                       pointing calculations.
+                                    9: Correction control flags:
+                                       read the HELP!
+                                    10: >0 => logarithmic ampl.
+                                        .LE. 0 => linear ampl.
+                                       default = linear
+CPARM                              Parameters for the gridding
+                                   operation (see HELP).
+NORMALIZ       -1.0       1.0      > 0 => normalize outputs 1
+                                   and 2 below
+DOVECT         -1.0       1.0      > 0 write real/imaginary not
+                                   amplitude/phase images
+DPARM                              Output maps, >0 => Save this.
+                                    1,2: Regridded amplitude and
+                                         phase of the observed
+                                         antenna beam pattern.
+                                      3: Weights used in the
+                                         regridding procedure.
+                                    4,5: Derived amplitude and
+                                         phase of the antenna
+                                         illumination
+                                    6,7: Amplitude and phase of
+                                         the point-spread func.
+                                      8: Focus model corrections.
+                                      9: Surface deviation map.
+                                     10: Antenna power pattern
+                                         (See HELP!)
+VPARM                               Use this model don't fit
+                                    1. Constant offset degrees
+                                    2. Phase ramp in X deg/cell
+                                    3. Phase ramp in Y deg/cell
+                                    4. Feed offset X in mm
+                                    5. Feed offset Y in mm
+                                    6. Feed offset Z in mm
+                                    7. Subreflector X tilt mm
+                                    8. Subreflector Y tilt mm
+                                    9. > 0 replace phase w model
+                                    10. > 0 Replace amp with
+                                       average, value is clip
+                                       level (all below set 0)
+----------------------------------------------------------------
+HOLOG
+Type: Task
+Use:  HOLOG processes holography data.  It reads visibility data
+      from a file and Fourier transforms it to produce the
+      grading in the aperture plane of the antenna.  Up to nine
+      different AIPS image files will be produced according to
+      the options specified in DPARM.
+
+      In the following description, (l,m) are the angular antenna
+      offsets, while (u,v) are distances in the antenna aperture
+      plane.
+
+      The input data format is four free format ASCII encoded
+      values per record:
+          1) Azimuth offset from source (degrees)
+                or true l (if APARM(2) <= 0)
+          2) Elevation offset from source (degrees)
+                or true m (if APARM(2) <= 0)
+          3) Amplitude (Volts or dB)
+          4) Phase (degrees)
+
+Adverbs:
+  INFILE......Input visibility file name in the form AREA:FILE, where
+              AREA is a directory logical name or environment
+              variable, and FILE is an operating system specific file
+              name.  If INFILE = 'ANT' or is blank, then INFILE will
+              be set to
+                          'FITS:HOLOnn-mmssii'
+              where nn is the moving antenna number and mm is the
+              reference antenna number (= 0 if more than one reference
+              antenna is used), ss is the Stokes, and ii is the IF.
+              If INFILE contains only a logical name, as INFILE =
+              'AREA:', then 'AREA:HOLOnn-mmssii' will be used. The
+              values of nn, mm, ss, and ii come from APARMs (9) and
+              (10).
+  OUTNAME.....Output image name (12 characters).  If the last 7
+              characters are blank, they are set to 'nn-mmss'.
+  OUTDISK.....Output disk number.
+  UVTAPER.....Tapering of data during the gridding process:
+              (1) Type: 1 Gaussian, 2 Exponential, 3 Linear
+              (2) Radius in cells for taper of 0.5.  0 => N/3.
+              (Remember that the max radius of the data must be
+              < N/2 just to avoid aliasing.)
+  OPTYPE......The model used for removing the effects of primary focus
+              offset.  'PFOC' = Prime Focus. 'SUBR' = Cassegrain
+              system.  'SURP' = Cassegrain system with reference
+              pointing  - default SUBR
+  FACTOR......The magnification.  Used only if OPTYPE = 'SUBR', 'SURP'
+Operating parameters: all are required (NO defaults).
+  REFREQ......Use this as the reference frequency in GHz.  If 0, use
+              the observing frequency found in the UVHOL output file
+              (INFILE here).
+  APARM(1)....Observing frequency (GHz). (ignored)
+  APARM(2)....Satellite elevation, degrees. Set = -1. for VLA data
+              (true l,m); set = +1. for sky az,el; set = actual
+              elevation for true az,el
+  APARM(3)....Antenna diameter, in meters. Used to blank antenna
+              surface phase map before applying models.
+  APARM(4)....Subreflector or unpaneled diameter, in meters.  Used to
+              blank antenna phase map before models are applied.
+  APARM(5)....Focal length, in meters.  This is used in correcting for
+              the focus and feed offset, and in computing the surface
+              deviation map.
+  APARM(6-8)..Inoperative.
+  APARM(9)....10000 * Reference antenna number + 100 * 2nd (moving)
+              antenna number + IF number.  Used only for default names
+              (i.e., if INFILE = 'AREA:')
+  APARM(10)...Stokes ID (1 - 4 => RR, LL, RL, LR).  Used only for
+              default names (i.e., if INFILE = 'AREA:')
+Data reduction control parameters.
+  BPARM(1)....Required map size, in meters.
+  BPARM(2)....Number of pixels on a side of the output map
+              (power of 2, maximum 512).
+  BPARM(3,4)..Range of |l| and |m| (antenna scan angles) to use for
+              transform. Units are inverse sine(angle)
+  BPARM(5)....Scaling factor for the input amplitudes.
+  BPARM(6)....Fourier transform control.  If negative, the phase read
+              from the data file is negated.  If the absolute value is
+              2, a direct Fourier transform will be done, otherwise,
+              an FFT.
+  BPARM(7,8)..Range of |x| and |y| used in correcting for pointing,
+              focus, and feed offset.  Negative values give (min, max)
+              of r = SQRT(u*u + v*v).  See also BPARM(9).
+  BPARM(9)....Decimal encoded control parameters
+                  1: If set, apply the subreflector rotation model.
+                 10: Turn off phase slope model (pointing).
+                100: Inhibit local phase ambiguity correction in
+                     the antenna aperture (V_PHA) plane.
+               1000: Turn off all model calculations.
+               2000: Turn off subreflector offset model.
+               4000: Turn off focus (z) model.
+  BPARM(10)...Switch for logarithmic or linear data
+              >= 0 for logarithmic data (as for PKS)
+              < 0  for linear data (for the VLA).
+Regridding parameters.
+  CPARM(1)....Type of interpolation to apply in gridding 'l'.
+                1: Pillbox, (don't use for regularly sampled data)
+                2: Exponential,
+                3: Sinc,
+                4: Sinc*Exponential,
+                5: Spheroidal (default).
+              NEGATE to obtain natural weighting. (default = uniform)
+  CPARM(2)....Support radius in u, in cells.
+  CPARM(3-5)..Parameters defining the interpolation function
+              in 'l'.
+                Do HELP UVnTYPE for n=1,2,3,4,5.
+  CPARM(6-10).Corresponding parameters for 'm'.
+Output option flags.
+  NORMALIZ....> 0 => amplitude and phase will be normalized, else no
+              normalization of amplitude and phase is done.
+  DOVECT......> 0 -> write real and imaginary rather than amplitude
+                     and phase on DPARM(1,2)
+  The particular map will be stored if the associated DPARM is
+  > zero.  If all are <= 0, DPARM(4,5) will both be set to 1.
+  AIPS task PANEL wants (4) for the mask and (9) for the deviations.
+  DPARM(1,2)..Regridded amplitude and phase of the observed antenna
+              beam voltage pattern (A_AMP, A_PHA).
+  DPARM(3)....Weights used in the regridding procedure (WGT) -
+              includes the weights for uniform (vs natural) weighting.
+  DPARM(4,5)..Derived amplitude and phase of the illumination of the
+              antenna aperture (V_AMP, V_PHA). The focus model, if
+              requested, will be removed from the phase image.
+  DPARM(6,7)..Amplitude and phase of the point-spread function.  This
+              indicates the blurring in the derived grading map
+              (P_AMP, P_PHA).
+  DPARM(8)....Map of the phase corrections removed by the focus model
+              (MODEL).
+  DPARM(9)....Map of the surface deviations of the antenna (V_DEV).
+              Units are in meters. The focus offset model, if
+              requested, will be removed.
+  DPARM(10)...The interpolated antenna power pattern (A_PWR).  Set it
+              = to the desired interpolation factor, with anything >0
+              and < 2 => 2.  Must be a power of 2 <= 2048 / NPIX,
+              where NPIX = BPARM(2).
+----------------------------------------------------------------

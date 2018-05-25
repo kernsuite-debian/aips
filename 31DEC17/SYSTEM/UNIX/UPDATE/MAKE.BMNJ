@@ -1,0 +1,204 @@
+#!/bin/sh
+# MAKE.BMNJ
+#-----------------------------------------------------------------------
+#! Create a midnight job area for binary install/MNJ
+## Update UNIX
+#-----------------------------------------------------------------------
+#;  Copyright (C) 2004, 2006-2007, 2009, 2016
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+say() {
+    echo "MAKE.BMNJ - $*"
+}
+RESP=""; export RESP
+nsay() {
+    echo -n "MAKE.BMNJ - $1: "; read RESP
+    eval $2=$RESP
+    export $2
+}
+if [ "$UPDUNIX" = "" ] ; then
+  say "AIPS environment not defined; did you remember \$CDTST?"
+  exit 1
+fi
+#
+hname=`$AIPS_ROOT/SETNAME`
+updarea=$AIPS_VERSION/$ARCH/UPDATE
+[ ! -d $updarea ] && mkdir $updarea
+say "Moving to $updarea"; cd $updarea
+
+say "The binary MNJ now uses rsync for updates;"
+say "but cvs (http://www.cvshome.org) may be useful;"
+say "looking to see if I can find a copy of it.... "
+
+CVS=`which cvs`
+if [ ! -f "$CVS" ] ; then
+    say "I cannot seem to find it, either it is not here or it is"
+    say "here, but it is installed in a place that is not in your"
+    say "search path. If it is not here, you should install it and"
+    say "run MAKE.BMNJ again. Otherwise, please tell me where you"
+    say "put it."
+
+    CVSLOC="X"
+    nsay "Full path to cvs: " CVSLOC
+    if [ ! -f $CVSLOC -o ! -x $CVSLOC ] ; then
+       say "The location you gave me, $CVSLOC, either does not exist,"
+       say "is not a file or is not executable. Please try again."
+    fi
+    CVS=$CVSLOC
+else
+    say "Found $CVS."
+fi
+
+if [ -f $SYSLOCAL/UPDCONFIG ] ; then
+  say "Found UPDCONFIG in your SYSLOCAL area $SYSLOCAL"
+                                      # see if it was created by us...
+  grep 'Created by MAKE.MNJ' $SYSLOCAL/UPDCONFIG >/dev/null 2>&1
+  if [ $? -eq 0 ] ; then
+     say " - but it was created by this script.  Good!"
+  else
+     say "*** THIS SHOULD NOW BE COMPRISED OF JUST YOUR OWN SETTINGS."
+     say "*** It should NOT be a copy of the UPDUNIX version."
+     say "*** You may want to move it out of the way and re-run this"
+     say "*** script before proceeding."
+     nsay "*** Press <RETURN> to acknowledge..." dum
+  fi
+else
+  say "Setting up your MNJ settings in"
+  say " $SYSLOCAL/UPDCONFIG:"
+  echo "# Created by MAKE.MNJ on `date -u`" >$SYSLOCAL/UPDCONFIG
+  echo "cvscmd=$CVS" >>$SYSLOCAL/UPDCONFIG
+  echo "ClientName=$hname" >>$SYSLOCAL/UPDCONFIG
+  echo "MailList=$LOGNAME" >>$SYSLOCAL/UPDCONFIG
+  echo "ErrorList=$LOGNAME,aipsmgr@nrao.edu" >>$SYSLOCAL/UPDCONFIG
+  say " --------------------------"
+  cat $SYSLOCAL/UPDCONFIG
+  say " --------------------------"
+  say "If you wish to change any of these settings, refer to the"
+  say "comments at the start of $UPDUNIX/UPDCONFIG"
+  say "and edit $SYSLOCAL/UPDCONFIG yourself."
+  nsay "Press <RETURN> to acknowledge..." dum
+fi
+
+# Create .cvsignore files so cvs knows what areas of the local
+# repository aren't supposed to be updated.
+echo "$SITE" > $AIPS_VERSION/$ARCH/SYSTEM/.cvsignore
+echo "MASTER" >> $AIPS_VERSION/$ARCH/SYSTEM/.cvsignore
+echo "COAOARN" >> $AIPS_VERSION/$ARCH/SYSTEM/.cvsignore
+echo ".cvsignore" >> $AIPS_VERSION/$ARCH/SYSTEM/.cvsignore
+echo "XAS" > $AIPS_VERSION/Y/SERVERS/.cvsignore
+for D in ALPHA AXLINUX DEC HP HP2 IBM LINUX LINUXPPC LNX64 MACINT MACPPC SGI SOL SOL86 SUL SUN4 ; do
+    echo "ERRORS" > $AIPS_VERSION/$D/.cvsignore
+    echo "INSTALL" >> $AIPS_VERSION/$D/.cvsignore
+    echo "LIBR" >> $AIPS_VERSION/$D/.cvsignore
+    echo "LIBRDBG" >> $AIPS_VERSION/$D/.cvsignore
+    echo "LOAD" >> $AIPS_VERSION/$D/.cvsignore
+    echo "MEMORY" >> $AIPS_VERSION/$D/.cvsignore
+    echo "PREP" >> $AIPS_VERSION/$D/.cvsignore
+    echo "TEMPLATE" >> $AIPS_VERSION/$D/.cvsignore
+    echo "UPDATE" >> $AIPS_VERSION/$D/.cvsignore
+done
+for D in NRAOAOC COAOARN MASTER ; do
+   if [ -d $AIPS_VERSION/$ARCH/SYSTEM/$D ] ; then
+      echo "*" > $AIPS_VERSION/$ARCH/SYSTEM/$D/.cvsignore
+   fi
+done
+echo "PAPC.INC" > $AIPS_VERSION/INC/NOTST/$ARCH/.cvsignore
+
+if [ -f $CVSLOC ] ; then
+   say "cvs needs to be primed by a login operation; this"
+   say "is also a good time to test and make sure you can"
+   say "connect to our server. We will now try to login to"
+   say "the server (mnj.aoc.nrao.edu); when prompted for"
+   say "a password, just hit the enter or return key."
+   $CVS -d :pserver:anoncvs@mnj.aoc.nrao.edu:/home/aipssrc/cvs login
+fi
+
+dname=$HOME/do_daily.$hname
+if [ ! -f $dname ] ; then
+    echo "#!/bin/sh" >$dname
+    if [ $? != 0 ] ; then
+        say "Cannot create $dname"
+        dname="do_daily.$hname"
+        say "Will create `pwd`/$dname instead."
+        echo "#!/bin/sh" >$dname
+    fi
+    echo "# Generic AIPS midnight job runner" >>$dname
+    echo "# un-comment next line to disable the job." >>$dname
+    echo "# exit" >>$dname
+    echo "#" >>$dname
+    echo ". $AIPS_ROOT/LOGIN.SH >/dev/null 2>&1" >>$dname
+    echo "\$CDTST >/dev/null 2>&1" >>$dname
+    echo "#" >>$dname
+    echo "# Assume this file is called 'something.hostname'" >>$dname
+    echo "# (to help in a multiple architecture installation)" >>$dname
+    echo "myname=\`basename \$0 | awk -F. '{print \$2}'\`" >>$dname
+    echo "[ \"\`\$AIPS_ROOT/SETNAME\`\" = \"\$myname\" ] || exit" >>$dname
+    echo "#" >>$dname
+    echo "# Get cvs in the path..." >>$dname
+    if [ "$CVSLOC" = "" ] ; then
+        echo "# PATH=\$PATH:/set/me/to/dir/where/cvs/is/found" >>$dname
+        echo "# export PATH" >>$dname
+    else
+        echo "PATH=\$PATH:$CVSLOC" >>$dname
+        echo "export PATH" >>$dname
+    fi
+    echo "#" >>$dname
+    echo "# uncomment to remove any old binaries if SAVE=TRUE..." >>$dname
+    echo "# (cd \$LOAD; find . -name '*.EXE.OLD' -atime +2 -exec rm -f {} \;)" >>$dname
+    echo "#" >>$dname
+    echo "# Now do the MNJ" >>$dname
+    echo "cd \$AIPS_VERSION/\$ARCH/UPDATE" >>$dname
+    echo "#" >>$dname
+    echo "#uncomment the TST NEW line ONLY while 31DEC16 is still changing" >>$dname
+    echo "#(if you do, comment out the AIPSUPD TST line; you" >>$dname
+    echo "# do NOT want to run the darn thing twice)" >>$dname
+    echo "# ./AIPSUPD TST NEW" >>$dname
+    echo "./AIPSUPD TST" >>$dname
+    echo "#" >>$dname
+    echo "exit" >>$dname
+    chmod +x $dname
+    say "Created $dname"
+    say "Please inspect it to make sure it fits your needs."
+    nsay "Press <RETURN> when ready to proceed..." dum
+else
+    say "$dname already exists"
+fi
+#                                          check crontab
+cron=`crontab -l 2>/dev/null | grep $dname`
+if [ "$cron" = "" ] ; then
+    say "You might want to add a crontab entry, e.g."
+    echo ""
+    echo "30 1 * * 1-6 $dname"
+    echo ""
+    say "when you are ready to start the MNJ."
+else
+    say "Your crontab appears to have an entry already:"
+    echo ""
+    echo "$cron"
+    echo ""
+    say "for the do_daily script."
+fi
+say "Your configuration for the AIPS midnight job is complete."
+# I hope...

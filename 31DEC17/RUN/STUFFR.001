@@ -1,0 +1,99 @@
+$ STUFFR.001
+$---------------------------------------------------------------
+$! RUN file to define a proc to combine data sets in hour angle
+$# Run POPS UV
+$-----------------------------------------------------------------------
+$;  Copyright (C) 2006-2007, 2009, 2015, 2017
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it/or
+$;  and/or modify it under the terms of the GNU General Public
+$;  License as published by the Free Software Foundation; either
+$;  version 2 of the License, or (at your option) any later
+$;  version.
+$;
+$;  This program is distributed in the hope that it will be
+$;  useful, but WITHOUT ANY WARRANTY; without even the implied
+$;  warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+$;  PURPOSE.  See the GNU General Public License for more
+$;  details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as
+$;  follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+PROC CHKIT
+chkname
+if (error <= 0) then;
+   print inname, inclass, inseq, 'found'; i=i+1; end
+return; finish
+$
+PROC STUFFR
+if (outname = ' ') then; outname=inname; end
+if (outclass = ' ') then; outclass='stuffr'; end
+if ((in2seq < inseq) ! (inseq <= 0)) then;
+   print 'check inseq and in2seq'; return; end
+$                                                 check names
+vnum=33-getpopsn; vput stuffr; x = in2seq; i = 0
+for y=inseq:x; indisk=0
+   inclass='hatmp';inseq=y; chkit
+   inclass='srtemp'; chkit
+   inclass='dbctmp'; chkit; end
+inname=outname; inclass='ubatmp'; inseq=getpopsn; chkit
+inclass=outclass; inseq=outseq;
+if (outseq > 0) then; chkit; end
+if (i > 0) then;
+   print 'quitting - delete the listed files
+   vget stuffr; return; end
+$
+intype='UV'
+vget stuffr; dowait 1; x = in2seq; i = 0
+keyword = 'DATE-OBS'; gethead;
+$                                                  UV loop
+for y=inseq:x;
+$                                                  TI2HA
+  default ti2ha; vget stuffr; task='ti2ha';inseq=y;chkname
+  if (error>0) then;
+    print inname, inclass, inseq, 'not found';
+  else; print inname, inclass, inseq, 'used';
+    outseq=inseq; outclass='hatmp'; outname=inname;
+    doarray=-1; go; i=i+1
+$                                                  UVSRT
+    default uvsrt; vget stuffr; task='uvsrt'; sort='bt'
+    inseq=y; indisk=outdisk; outseq=inseq; outname=inname
+    inclass='hatmp'; outclass='srtemp'; puthead; docalib=-1
+    flagver=-1; go ;   zap
+$                                                  rename only
+    if (i = 1) then;
+      vget stuffr; indisk=outdisk; inclass='srtemp'; inseq=y
+      outname=inname;outclass='dbctmp';outseq=y;rename
+$                                                  real DBCON
+    else
+      default dbcon; vget stuffr; task='dbcon'; doarray=1
+      indisk=outdisk; inclass='dbctmp'; inseq=0; nameget
+      in2disk=outdisk; in2name=inname; in2class='srtemp'
+      in2seq=y; outname=inname; outclass=inclass; outseq=y
+      go; zap; inclass=in2cl; inseq=in2seq; zap
+      end
+    end
+  end
+$                                                  UBAVG
+default ubavg; vget stuffr; task='ubavg'; indisk=outdisk
+outclass='ubatmp'; outseq=1; inseq=x; inclass='dbctmp'
+outname=inname; docalib=-1; flagver=-1; go; zap
+$                                                  UVSRT
+default uvsrt; vget stuffr; task='uvsrt'; indisk=outdisk
+inclass='ubatmp';inseq=1; sort='tb'; go; zap
+$
+dowait=-1; vget stuffr
+return
+finish
