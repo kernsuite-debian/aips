@@ -1,0 +1,507 @@
+; OOFRING
+;---------------------------------------------------------------
+;! fringe fit data to determine antenna calibration, delay, rate
+;# PROCEDURE CALIBRATION AP VLBI
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2017
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+OOFRING   LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+OOFRING:  procedure to fringe fit data with spectral index opts
+                                   Input uv data.
+INNAME                                UV file name (name)
+INCLASS                               UV file name (class)
+INSEQ              0.0      9999.0    UV file name (seq. #)
+INDISK             0.0         9.0    UV file disk drive #
+OUTNAME                            Name to use for OOSUB output
+                                   ' ' -> INNAME
+DOKEEP            -1.0         1.0 > 0 -> keep divided uv data
+                                   Data selection (multisource):
+BCHAN             0.0     2048.0   Lowest channel number 0=>all
+ECHAN             0.0     2048.0   Highest channel number
+ANTENNAS                           Antennas to select. 0=all
+DOFIT                              Subset of ANTENNAS list
+                                   for which solns are desired.
+UVRANGE                            Range of uv distance for full
+                                   weight
+WTUV                               Weight outside UVRANGE 0=0.
+WEIGHTIT          0.0        3.0   Modify data weights function
+                                   CLEAN map (optional)
+IN2NAME                               Cleaned map name (name)
+IN2CLASS                              Cleaned map name (class)
+IN2SEQ            0.0     9999.0      Cleaned map name (seq. #)
+IN2DISK           0.0        9.0      Cleaned map disk unit #
+INVERS           -1.0    46655.0   CC file version #.
+NCOMP                              # comps to use for model.
+                                   1 value per field
+FLUX                               Lowest CC component used.
+NMAPS             0.0     4096.0   No. Clean map files
+ONEFREQ          -1.0        1.0   > 0 => CC model from only
+                                   one frequency (group)
+CMETHOD                            Modeling method:
+                                   'DFT','GRID','    '
+CMODEL                             Model type: 'COMP','IMAG'
+                                   'SUBI' (see HELP re images)
+SMODEL                             Source model, 1=flux,2=x,3=y
+                                   See HELP SMODEL for models.
+
+                                   Solution control adverbs:
+REFANT                             Reference antenna
+SEARCH            0.0     1000.0   Prioritized reference antenna
+                                   list - supplements REFANT
+                                   - but only if APARM(9)>0
+SOLINT                             Solution interval (min)
+                                   0 => 10 min
+SOLSUB                             Solution subinterval
+SOLMIN                             Min solution interval
+
+APARM                              General parameters
+                                      1=min. no. antennas
+                                      2 > 0 => data divided
+                                      3 > 0 => avg. RR,LL
+                                      4 > 0 => avg. freq. in IFs
+                                      5 = 1 => combine all IFs
+                                        = 2 => also MB delay
+                                        = 3 => combine IFs in
+                                               halves
+                                        = 4 => combine IFs in
+                                               thirds
+                                        = N => combines IFs in
+                                               N-1 pieces
+                                        SEE HELP WARNING
+                                      6=print level, 1=some
+                                      7=SNR cutoff (0=>5)
+                                      8=max. ant. # (no AN)
+                                      9 > 0 => do exhaustive
+                                               baseline search
+                                     10 > 0 -> fit dispersion
+                                        and IF group delay after
+                                        fit of SB delays
+DPARM                              Delay-rate parameters
+                                      1=no. bl combo. (def=3)
+                                      2=delay win (nsec), if <0
+                                        no delay search done
+                                      3=rate win (mHz)
+                                      4=int. time (sec)
+                                       0 => min. found in data
+                                      5 >0 => don't do ls. soln
+                                      6 >0 => don't avg. in freq
+                                      7 >0 => don't rereference
+                                        phase
+                                      8 > 0 => activate zero'ing
+                                                options
+                                      9 > 0 => do not fit rate
+ANTWT                              Ant. weights (0=>1.0)
+BIF                                First IF included when
+                                   APARM(5) > 0
+EIF                                Last IF included when
+                                   APARM(5) > 0
+BPARM                              Task enrichment parameters
+                                   (1) Antenna diameter (m)
+                                        0 -> no correction
+                                   (2) Omit CC options
+                                   (3) spectral index radius
+                                        0 -> no correction
+FQTOL                              Frequency tolerance in kHz
+                                   (primary beam & spec index)
+IN3NAME                            Spectral index image name
+IN3CLASS                           Spectral index image class
+IN3SEQ                             Spectral index image sequence
+                                   number
+IN3DISK                            Spectral index image disk
+IN4NAME                            Spectral curvature name
+IN4CLASS                           Spectral curvature class
+IN4SEQ                             Spectral curvature sequence
+                                   number
+IN4DISK                            Spectral curvature disk
+BADDISK            0.0        15.0 Disk no. not to use for
+                                      scratch files.
+----------------------------------------------------------------
+OOFRING
+Task:  This procedure allows frequency-dependent modeling options to
+       be applied to calibrator data prior to fringe fitting.  The
+       task OOSUB divides the frequency-dependent model into the data
+       set making a temporary data set.  Then FRING determines the
+       group delay and phase rate calibration to be applied to the uv
+       data.  A solution (SN) table will be left for a multi-source
+       data set.  SN tables will be attached to the INPUT data file
+       using TACOP to copy that extension file from the temporary data
+       set usd by FRING to the original input data set.  The temporary
+       data set may be kept or deleted after the TACOP.
+
+            This procedure does not apply data selection and
+       calibration adverbs to the input data set.  You must apply
+       these with SPLIT or SPLAT (or other tasks) to make a data set
+       consisting solely of the edited/calibrated data that you wish
+       to fringe fit.
+
+            Model images made with both values of IMAGR's DO3DIMAG
+       option are handled correctly, as are multi-scale images.  Set
+       NMAPS = NFIELD * NGAUSS.
+            FRING now uses dynamic memory throughout, allowing large
+       delay-rate searches no matter what size the pseudo AP may be.
+       Of course, your computer must have enough memory to support
+       this allocation.
+Adverbs:
+  INNAME.....Input UV file name (name).    Standard defaults.
+  INCLASS....Input UV file name (class).   Standard defaults.
+  INSEQ......Input UV file name (seq. #).  0 -> highest.
+  INDISK.....Disk drive # of input UV file.  0 -> any.
+  OUTNAME....Name to use for OOSUB output with class 'OOFRI1'
+             Can be used to avoid conflict between multiple uses of
+             OOFRING.  ' ' -> INNAME.
+  DOKEEP.....> 0 => keep the file produced by OOSUB containing the
+                    input data divided by the model and the SN table
+                    produced by FRING
+             <=0 => delete this temporary file after TACOP.
+
+  BCHAN......First channel to use. 0=>all.
+  ECHAN......Highest channel to use. 0=>all higher than BCHAN
+  ANTENNAS...A list of the antennas to  have solutions determined. If
+             any number is negative then all antennas listed  are NOT to
+             be used to determine solutions and all others are. All 0 =>
+             use all.
+  DOFIT......A list of the antennas for which solutions should or
+             should not be determined.  If DOFIT = 0, all antennas are
+             solved for.  If any entry <= -1, , then DOFIT is taken as
+             the list of antennas for which no solution is desired; a
+             solution is found for all antennas not in DOFIT.  If any
+             entry of DOFIT is non-zero and all are >= 0, then only
+             those antennas listed in DOFIT will be solved for - all
+             other selected antennas will not be solved for.
+             NOTE: THIS OPTION MUST NOT BE USED UNLESS YOU UNDERSTAND
+             IT FULLY.  Basically, it should be used to solve for the
+             gains of "poor" antennas after the "good" antennas have
+             been fully calibrated.  Antennas included in ANTENNAS but
+             not in DOFIT are assumed to have a complex
+             gain/delay/rate of (1,0,0,0) and the gains/delays
+             produced will be very wrong if this is not the case.
+             See HELP DOFIT.
+The following may be used for all data files (except as noted):
+  UVRANGE....The range of uv distance from the origin in kilowavelengths
+             over which the data will have full weight; outside of this
+             annulus in the uv plane the data will be down weighted by a
+             factor of WTUV.
+  WTUV.......The weighting factor for data outside of the uv range
+             defined by UVRANGE.
+  WEIGHTIT...If > 0, change the data weights by a function of the
+             weights just before doing the solution.  Choices are:
+             0 - no change   weighting by 1/sigma**2
+             1 - sqrt (wt)   weighting by 1/sigma may be more stable
+             2 - (wt)**0.25
+             3 - change all weights to 1.0
+
+The following specify a CLEAN model to be used if a single source was
+specified in CALSOUR:
+  IN2NAME....Cleaned map name (name).      Standard defaults.
+             Note: a CLEAN image for only a single-source may
+             be given although it may be in a multi-source file.
+             If the source table contains a flux, then that flux will
+             be used to scale the components model to obtain the
+             stated total flux.  This is needed since initial Cleans
+             may not obtain the full flux even though they represent
+             all the essentials of the source structure.
+  IN2CLASS...Cleaned map name (class).     Standard defaults.
+  IN2SEQ.....Cleaned map name (seq. #).    0 -> highest.
+  IN2DISK....Disk drive # of cleaned map.  0 => any.
+  INVERS.....CC file version #.  0=> highest numbered version
+  NCOMP......Number of Clean components to use for the model, one
+             value per field.  If all values are zero, then all
+             components in all fields are used.  If any value is not
+             zero, then abs(NCOMP(i)) (or fewer depending on FLUX and
+             negativity) components are used for field i, even if
+             NCOMP(i) is zero.  If any of the NCOMP is less than 0,
+             then components are only used in each field i up to
+             abs(NCOMP(i)), FLUX, or the first negative whichever
+             comes first.  If abs(NCOMP(i)) is greater than the number
+             of components in field i, the actual number is used.  For
+             example
+                   NCOMP = -1,0
+             says to use one component from field one unless it is
+             negative or < FLUX and no components from any other
+             field.  This would usually not be desirable.
+                   NCOMP = -1000000
+             says to use all components from each field up to the
+             first negative in that field.
+                   NCOMP = -200 100 23 0 300 5
+             says to use no more than 200 components from field 1, 100
+             from field 2, 23 from field 3, 300 from field 5, 5 from
+             field 6 and none from any other field.  Fewer are used if
+             a negative is encountered or the components go below
+             FLUX.
+  FLUX.......Only components > FLUX in absolute value are used in the
+             model.
+  NMAPS......Number of image files to use for model.  For multi-scale
+             models, set NMAPS = NFIELD * NGAUSS to include the Clean
+             components of the extended resolutions.  If more than one
+             file is to be used, the NAME, CLASS, DISK and SEQ of the
+             subsequent image files will be the same as the first file
+             except that the LAST 3 or 4 characters of the CLASS will
+             be an increasing sequence above that in IN2CLASS.  Thus,
+             if INCLASS='ICL005', classes 'ICL005' through 'ICLnnn'
+             or 'ICnnnn', where nnn = 5 + NMAPS - 1 will be used.  Old
+             names (in which the 4'th character is not a number) are
+             also supported: the last two characters are '01' through
+             'E7' for fields 2 through 512.  In old names, the highest
+             field number allowed is 512; in new names it is 4096.
+  ONEFREQ....In IMAGR, a CC file is made from the "average" of all
+             channels included in the bandwidth synthesis.  But it is
+             also possible to make the model image(s) from a single
+             frequency (or from frequencies within FQTOL anyway).
+             Set ONEFREQ = 1 if the model was made this way, leave it
+             zero if all frequencies were included in the model.
+  CMETHOD....This determines the method used to compute the model
+             visibility values.
+             'DFT' uses the direct Fourier transform, this method is
+                   the most accurate.
+             'GRID' does a gridded-FFT interpolation model computation
+             '    ' allows the program to use the fastest method
+  CMODEL.....This indicates the type of input model; 'COMP' means that
+             the input model consists of Clean components, 'IMAG'
+             indicates that the input model consists of images.
+             'SUBI' means that the model consists of a sub-image of
+             the original IMAGR output.  If CMODEL is '   ' Clean
+             components will be used if present and the image if not.
+             SUBI should work for sub-images made with DO3DIM true and
+             sib-images of the central facet made with DO3DIM false,
+             but probably will not work well for shifted facets with
+             DO3DIM false.  Use BLANK rather than SUBIM in such cases.
+             CALIB will set a scaling factor to correct image units
+             from JY/BEAM to JY/PIXEL for image models.  If the source
+             table contains a flux, then that flux will be used to
+             scale the components model to obtain the stated total
+             flux.  This is needed since initial Cleans may not obtain
+             the full flux even though they represent all the
+             essentials of the source structure.
+  SMODEL.....A single component model to be used instead of a CLEAN
+             components model; if abs (SMODEL) > 0 then use of this
+             model is requested.
+                SMODEL(1) = flux density (Jy)
+                SMODEL(2) = X offset in sky (arcsec)
+                SMODEL(3) = Y offset in sky (arcsec)
+                SMODEL(4) = Model type:
+                  0 => point model
+                  1 => elliptical Gaussian and
+                       SMODEL(5) = major axis size (arcsec)
+                       SMODEL(6) = minor axis size (arcsec)
+                       SMODEL(7) = P. A. of major axis (degrees)
+                  2 => uniform sphere and
+                       SMODEL(5) = radius (arcsec)
+The following control how the solutions are done, if you don't
+understand what a parameter means leave it 0 and you will probably get
+what you want.
+  REFANT.....The desired reference antenna for phases.
+  SEARCH.....List of Prioritized antennas to be used when APARM(9)>0.
+             This adverb supplements REFANT.  Along with APARM(9)>0,
+             it is recommended that SEARCH be filled
+             with a list of antennas whose order reflects the user's
+             notion of which baselines will be easiest to find fringes
+             on.  All baselines to each antenna in SEARCH will be
+             searched in order looking for fringes.  All remaining
+             baselines will then be searched.  Choosing SEARCH wisely
+             will speed the FFT portion of FRING.  The antenna chosen
+             in REFANT is treated as SEARCH(0), ie all baselines to
+             it are searched first.
+  SOLINT.....The solution interval (min.)  You really should set this;
+             longer values are allowed beginning with 15OCT96.
+             0 => 10 minutes for all inputs
+             If SOLINT > Scan/2 (in Multisource) SOLINT = Scan.
+  SOLSUB.....The begin time for the next interval in advanced from the
+             current one by SOLINT / SOLSUB where 1 <= SOLSUB <= 10.
+             0 -> 1.  This is to produce solutions at sub-intervals of
+             SOLINT based on SOLINT length of averaging.
+  SOLMIN.....Minimum number of subintervals to be used in a solution.
+             0 -> SOLSUB.
+  APARM......General control parameters.
+  APARM(1)...Minimum number of antennas allowed for a solution. 0 => 3.
+  APARM(2)...If > 0 then the input data has already been divided by a
+             model; only solutions will be determined.
+  APARM(3)...If > 0 then average RR, LL
+  APARM(4)...If > 0 average all frequencies in each IF before the
+             solution and in the output for single source files.
+  APARM(5)...WARNING: IF THE FREQUENCY INCREMENT BETWEEN IFS THAT WILL
+             BE INCLUDED IN A GROUP HAS THE OPPOSITE SIGN FROM THE
+             FREQUENCY INCREMENT BETWEEN CHANNELS IN THE IFS OF THAT
+             GROUP, YOU SHOULD NOT USE THE FOLLOWING
+                  (SET APARM(5)=0 ONLY).
+             If = 1 then make a combined solution for the IFs;
+             If <= 0 then make separate solutions.
+             If = 2 do separate least squares fits for single- and
+                  multi-band delays.  This option will override APARM(4)
+                  > 0. WARNING: multi-band delays derived by this method
+                  cannot be smoothed.
+             If = 3 then make solutions combining IFs 1 through NIF/2
+                  and IFs NIF/2+1 through NIF.  This may be appropriate
+                  for the EVLA in which the first NIF/2 are from
+                  hardware IF AC and the others are from hardware BD.
+             If = 4 then make solutions combining IFs 1 through NIF/4,
+                  NIF/4+1 through NIF/2, NIF/2+1 through 3*(NIF/4),
+                  and IFs 3*(NIF/4)+1 through NIF.  This may be
+                  appropriate for the EVLA for 3-bit sampling in which
+                  each quarter passes through separate hardware and
+                  hence has separate delay errors.
+             NOTE - APARM(10) can partly override this - causing the
+             task to fit a delay in each IF and then to fit a
+             dispersion across all IFs plus delay for each group of
+             IFs.  The output SN table will contain dispersion values
+             plus the single-band delays and phases corrected for the
+             dispersion.
+  APARM(6)...Print flag, -1=none, 0=time every 10th time, 1=time,some
+             info, 2=more including the antenna signal to noise ratio,
+             3=a very great deal.
+  APARM(7)...The minimum allowed signal-to-noise ratio.   0 => 5
+  APARM(8)...If there is no antenna (AN) table with the input file then
+             the maximum antenna number in the file should be entered in
+             APARM(8).
+  APARM(9)...If > 0, perform exhaustive baseline search in the initial
+             FFT stage.  Normally, the first stage of FRING is to FFT
+             individual baselines searching for initial estimates of the
+             residual phases, rates, and delays.  This stage is notable
+             in that FRING gives up too easily - only baselines to the
+             user-selected REFANT and one other antenna are searched.
+             APARM(9)>0 instructs FRING to exhaustively search for
+             initial estimates for each antenna's errors.  See SEARCH
+             above as well.
+  APARM(10)..If > 0, causes the task to fit a delay in each IF and then
+             to fit a dispersion plus a delay for each group of IFs to
+             the SB delays in all IFs.  The output SN table will
+             contain dispersion values plus the single-band delays and
+             phases corrected for the dispersion.
+  Delay-rate control parameters:
+  DPARM......Delay rate parameters.
+  DPARM(1)...Number of baseline combinations to use in the initial,
+             coarse fringe search (1-3).  Larger values increase the
+             point source sensitivity but reduce the sensitivity to
+             extended sources when an accurate model is not available.
+             0=>3.
+  DPARM(2)...The delay window to search (nsec) centered on 0 delay.
+             0 => full Nyquist range defined by the frequency spacing.
+             If DPARM(2) < 0.0 no delay search will be performed.
+  DPARM(3)...The rate window to search (mHz) centered on 0 rate.
+             0 => full Nyquist range defined by the integration time.
+  DPARM(4)...The minimum integration time of the data (sec);
+             0 => search the data to find the minimum integration
+                  time.
+             The correct minimum of all baselines should be supplied.
+  DPARM(5)...If > 0 then don't do the least squares solution. If the
+             least squares solution is not done then only the coarse
+             search is done and much less accurate solutions are
+             obtained.
+  DPARM(6)...If > 0 then the output data will not be averaged in
+             frequency else, all frequencies in each IF will be
+             averaged.  Affects single source files only.
+  DPARM(7)...If > 0 then the phase, rate and delays will not be
+             re-referenced to a common antenna.  This option is only
+             desirable for VLBI polarization data.
+  DPARM(8)...DPARM(8)>0 allows zero'ing of RATE, DELAY, and/or PHASE
+             solutions.  ** Note that the ZEROing is done _AFTER_ the
+             FRING solution is found,  this is not the mechanism for
+             turning off the DELAY, RATE, or PHASE search,  see
+             DPARM(2-3) for that capability. **
+             DPARM(8) value   zero RATES?  zero DELAYs?  zero PHASEs?
+                  0              No           No              No
+                  1             Yes           No              No
+                  2              No          Yes              No
+                  3             Yes          Yes              No
+                  4              No           No             Yes
+                  5             Yes           No             Yes
+                  6              No          Yes             Yes
+                  7             Yes          Yes             Yes
+  DPARM(9)...> 0 => supress fitting for rate (rather than just zero
+             the fit afterwards).  This assumes that the true rate is
+             small and causes all the data in SOLINT to be averaged
+             before being fed to the fitter.  DPARM(8)=1 is not needed
+             in this case.
+  ANTWT......Antenna weights.  These are additional weights to be
+             applied to the data before doing the solutions, one per
+             antenna.  Use PRTAN to determine which antenna numbers
+             correspond to which antennas.
+  BIF........First IF included when APARM(5)=1,3,4 (all IFs receive the
+             solution found for the appropriate group of IFs, but only
+             BIF-EIF are used to find it).
+  EIF........Last IF included when APARM(5)=1,3,4 (all IFs receive the
+             solution found for the appropriate group of IFs, but only
+             BIF-EIF are used to find it).
+  BPARM......Correction control parameters (SEE EXPLAIN IMAGR):
+             (1) If > 0 then make frequency dependent primary beam
+               corrections assuming an antenna diameter of IMAGRPRM(1)
+               meters.  Note that VLA and ATCA arrays (TELESCOPE
+               header parameter) use the default primary beam
+               parameters defined elsewhere in AIPS, while other
+               antennas actually use IMAGRPRM(1) as the diameter of a
+               "standard" telescope.  See FQTOL below also.
+             (2) If BPARM(1) > 0, you may omit selected CCs from the
+               operation based on position:
+                  BPARM(2) <= 0  : Include all CCs
+                            = 1  : Omit CCs within the main beam at
+                                   all frequencies
+                            = 2  : Omit CCs within the main beam at
+                                   some frequncies
+                            = 3  : Omit Ccs outside the main beam at
+                                   some frequencies
+                            = 4  : Omit CCs outside the main beam at
+                                   all frequencies
+             (3) 1 => use a spectral-index image represented in
+               IN3NAME, IN3CLASS, IN3SEQ, IN3DISK below to correct the
+               Clean component model for each channel.  IN4NAME et al
+               will also be used as a curvature image iff IN3NAME are
+               specified.
+               BPARM(3)-0.5 is used as a radius in pixels over which
+               the spectral index image is averaged.  When it is small
+               (0 < BPARM(3) <~ 1), the spectral index is interpolated
+               rather than averaged.  See FQTOL below as well.  When
+               doing spectral index, the primary beam correction
+               (BPARM(1)) costs very little extra.  This parameter is
+               IMAGRPRM(17) in IMAGR.
+  FQTOL......Frequency tolerance in kHz.  Spectral channels with FQTOL
+             are handled together (use the same average CC model) when
+             applying the primary beam and spectral index
+             corrections.  Default is to do each channel separately
+             which can take a long time.
+  IN3NAME....Image name of spectral index image; no default.
+  IN3CLASS...Image class of spectral index image; no default.
+  IN3SEQ.....Image sequence of spectral index image; 0 -> highest.
+  IN3DISK....Disk of spectral image image; 0 -> any.
+  IN4NAME....Image name of spectral index curvature image; no default.
+             Curvature images should be base 10 rather than base e -
+             they differ by a factor of 2.3.  Also the reference
+             frequency is 1.0 GHz.  These are changes done 2010-07-13.
+  IN4CLASS...Image class of spectral index curvature image; no
+             default.
+  IN4SEQ.....Image sequence of spectral index curvature image;
+             0 -> highest.
+  IN4DISK....Disk of spectral curvature image image; 0 -> any.
+  BADDISK....A list of disk numbers to be avoided when creating scratch
+             files.
+----------------------------------------------------------------
+For some basic introduction to fringe fitting, please see the discussions
+in:
+
+Thompson, Moran, and Swenson
+Felli and Spencer
+Perley, Schwab, and Bridle
+
+The AIPS cookbook also describes how and when FRING should be used.
+

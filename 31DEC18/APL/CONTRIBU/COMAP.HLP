@@ -1,0 +1,412 @@
+; COMAP
+;---------------------------------------------------------------
+;! Procedure to MAP and Self-Calibrate a UVDATA set
+;# Task AP Imaging
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1997
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+;---------------------------------------------------------------
+COMAP     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+COMAP:  Procedure to CLEAN and Self-Calibrate UVDATA
+INNAME                             Input UV data (name)
+INCLASS                            Input UV data (class)
+INSEQ                              Input UV data (seq. #)
+INDISK                             Input UV data disk drive #
+IN2NAME                            Model for First Self-Cal
+IN2CLASS                           Model image (class)
+IN2SEQ                             Model image (seq #)
+IN2DISK                            Model image disk drive #
+OUTDISK                            Output image disk drive #
+CELLSIZE         0.0     9999.9    (X,Y) size of grid in asec
+IMSIZE           0.0     4096.0    Image size
+NITER                              Number of clean iterations
+REFANT                             Reference ant. for Self-cal.
+SOLINT                             Min. Solution interval (min)
+NMAPS                              Number of Map-Selfcal loops
+DOPOL                              >0: Produce Polarization maps
+DOCENTER                           >0: Move Source to map center
+DOALL                              >0: Do amplitude self-cal
+CUTOFF                             Clip Flux Limit. <0: No Clip
+UVTAPER                            Taper to apply to UV data
+UVRANGE                            Range of UV data to include
+UVWTFN                             Weighting function for data
+GAIN               0.0         2.0 Clean Gain
+NBOXES             0.0        50.0 Number of boxes for CLEAN
+CLBOX              0.0      4096.0 Four coordinates for each box
+BMAJ     *                         FWHM(asec) maj. axis beam
+BMIN     *                         FWHM(asec) min. axis beam
+BPA      *      -360.0       360.0 CLEAN beam position angle
+BADDISK         -1.0     1000.0    Disks to avoid for scratch.
+----------------------------------------------------------------
+COMAP
+Type:  Procedure
+ Use:  COMAP is a procedure which maps and self-calibrates
+       UVDATA.  Makes many simplifing assumptions, sets input
+       values for MX and CALIB.  Uses UVSUB to divide by the
+       source model before running PHASE to coherence time
+       average the input UV data.
+
+       TASK SCMAP SELF-CALIBRATES AND IMAGES ALL IN ONE TASK WITH A
+       VARIETY OF INTERACTIVE CLEANING AND EDITING OPTIONS.  USE IT
+       RATHER THAN THIS OLD PROCEDURE.
+
+Adverbs:
+  INNAME.....Input UV data file (name).       Standard defaults.
+  INCLASS....Input UV data file (class).      Standard defaults.
+  INSEQ......Input UV data file (seq. #).     0 => highest.
+  INDISK.....Input UV data file disk drive #. 0 => any.
+  IN2NAME....Input Model Image for first self-calibration.
+             if INNAME='POINT', a point source model is used.
+  IN2CLASS...Model Image class
+  IN2SEQ.....Model Image sequence number.
+  IN2DISK....Model Image disk number
+  OUTDISK....The disk drive # of output images.  0 => highest
+             with space (note: map and Beam go on same disk.
+  CELLSIZE...(X,Y) pixel separation in asec.
+  IMSIZE.....(X,Y) The minimum desired size of the fields.
+  NITER......CLEAN iteration limit. 0 => 1000
+  REFANT.....Reference Antenna for Self-Calibration
+  SOLINT.....Minimum Self-Cal solution interval (min.).
+             0 => 1 minute
+  NMAPS......Number of Map and Self-Cal Iterations
+  DOPOL......Produce Polarization images.
+  DOCENTER...Shift source peak to center of the map.
+  DOALL......Attempt Amplitude Self-calibration.
+  CUTOFF.....Maximum Flux allowed in UV-Data.  UV-data are
+             allowed with brightness between 0 and CUTOFF.
+             <0: No Clipping.  =0: Zero spacing flux + Noise
+  UVTAPER....(U,V) gaussian taper (kilolambda) at 30% level
+  UVRANGE....(Minimum,Maximum) baseline (kilolambda) in map.
+  UVWTFN.....Weighting function of (u-v) place.
+             blank=>Uniform; 'NA'=>Natural
+  GAIN.......The CLEAN loop gain.  0 => 0.10.
+  NBOXES.....Number (<=50) of rectangular search boxes
+             To search on the first field; the clean window
+             in all other fields is given by  FLDSIZE.
+             0 => use FLDSIZE to determine windows on field 1.
+  CLBOX......A 4x50 array with the BLC and TRC of each box.
+             0 => use window specified in FLDSIZE.
+  BMAJ.......The FWHM (asec) major axis of the restoring beam.
+             If 0; value obtained from fitting to the beam.
+             If <0; output will contain the residual image.
+  BMIN.......The FWHM (asec) minor axis of the restoring beam.
+  BPA........The position angle in the unrotated image of BMAJ.
+  BADDISK....This array contains the numbers of disks on which
+             it is desired that scratch files not be located.
+             BADDISK has no effect on input and output maps.
+----------------------------------------------------------------
+COMAP:      Procedure to Map and Self-Calibrate UV data
+DOCUMENTOR: G. Langston and W. Cotton (NRAO)
+            Also see MX and CALIB documentation.
+TASKS USED: MX, CALIB, SNPLT, UVPLT, UVPRM, CCFND, TXPL, CLIP
+            and COMB.
+
+                          PURPOSE
+
+     COMAP combines the functions of Mapping, CLEANing and
+self-calibrating a UV data set.  The UV data must be in AIPS
+single source format.
+
+    The COMAP procedure first divides the UV data by the best
+source model to create "pseudo-point source" UV-data.  The AIPS
+capability unique to COMAP is the use PHASE task which reads in
+the divided UV data and creates an intermediate "Coherence-Time-
+Averaged" UV data set.  The data in this file are smoothed over
+the coherence time of each baseline.  In this way, short
+baselines which often have higher signal-to-noise ratio due to
+more signal as well as lower baseline length dependent effects
+are more significant in the Self-calibration solution.
+
+    After the data are smoothed, the data are Self-calibated and
+the Self-calibaration is applied to the original (unsmoothed)
+UV data.  The Self-Calibrated UV data are then deconvolved and
+the cycle repeated.
+
+
+                   ADVERBS PECULIAR TO COMAP
+
+     Most of the adverbs used by COMAP are duplicates of those
+used by MX and CALIB.  However if the Adverbs are not specified,
+(such as REFANT or CELLS) value is estimated from the UV data.
+
+INNAME, INCLASS, INSEQ, INDISK
+     Input UV-data used by COMAP to creat the self-calibrated
+UV-data and output Image. COMAP is able to pick a REFerance
+ANTenna, based on the signal to noise ratio of visablities.
+
+IN2NAME, IN2CLASS, IN2SEQ, IN2DISK
+     First model image used to self-calibrate the input UV-data.
+The clean components for the image specified by IN2NAME,
+IN2CLASS, IN2SEQ and IN2DISK are selected in the same manner
+as subsequent self-calibrations.  If no image NAME is specified,
+the first self-calibration follows the first deconvolution.
+If IN2NAME is "POINT" then a point source model used used as the
+starting point of self-calibraton.
+
+IMSIZE
+     The minimum desired size for all of the fields.  The limits
+are 32x32 to 4096x4096 and must be a power of 2.  The adverb
+FLDSIZE define the region over which clean components are
+searched for.
+
+NBOXES, CLBOX
+     For the first field, up to 50 CLEAN windows can be
+specified via CLBOX as an alternate to FLDSIZE.  This allows
+more flexibility than a single window centered on the phase
+center.  If NBOXES is greater than 0 then the contents of CLBOX
+is used to specify the input window.  Since these values are in
+pixels care should be taken that they are determined from an
+image made with the same cellsize and shift.
+     NOTE: the values containes in CLBOX are not used to
+determine the size of the image for field 1.  IMSIZE and/or
+FLDSIZE must be used for this.  In the case that CLBOX and
+NBOXES are used, this is the only use made of FLDSIZE for field
+1.  Its use for higher numbered fields is unaffected.  If CLBOX
+is 0's then the value of FLDSIZE (or its default) is used for
+CLBOX.
+     NBOXES and CLBOX specify the size and location of the
+rectangular boxes comprising the "CLEAN Window" area A.  You
+make the best use of prior knowledge about the source to help
+COMAP do its job when you restrict A as closely as possible to
+the true boundaries of its emission. Recall that CLEAN attempts
+to optimize F(n) as a representation of the sky, with zeroes
+everywhere else.  The more information you provide about where
+the "real" emission is, the more likely COMAP is to converge on
+a unique, credible solution.
+
+UVWTFN
+     When using COMAP to make several small maps over a large field
+of view, use Natural weighting rather than Uniform weighting in
+order to obtain the signal to noise and resolution which are
+comparable to that obtained from one large map over the field of
+view. For mapsizes of 256 or less, the loss of signal to noise
+using Uniform weighting can be a factor of two or three.
+
+OUTDISK :
+     If OUTDISK = 0, the map and beam will be put on the same
+disk.  The Q and U maps may be put on another disk.  It is best
+to specify OUTDISK.
+
+FLDSIZE,IMSIZE,CELLSIZE :
+     For effective CLEANing of the maps, the number of pixels
+per beam should be such that the pixel value immediately north
+or east of the beam center is no less than about 50% of the
+peak. However, if tapering is used, the outlying (u,v) points
+may not have any significant weight in the map.
+     Strong aliased sources should be CLEANed in separate fields
+unless they are close to the object of interest.
+     COMAP will make maps which have a power of two pixels on a
+side; between 32 and 4096 on the X-axis and between 32 and 4096
+on the Y-axis.  FLDSIZE defines the region to be searched for
+CLEAN components.
+     If for some reason it is desirable to map a region much
+larger than the region being CLEANed, IMSIZE can specify the
+minimum size of a map.  Components will be CLEANed from the
+region specified by FLDSIZE but the output image size will be as
+specified by IMSIZE.  Values in IMSIZE must be powers of 2.
+
+STOKES :
+     If you do not expect your source to show significant
+circular polarization, as is normally the case with galactic
+and extragalactic continuum sources, making a V map can be a
+useful diagnostic for calibration problems, correlator offsets,
+etc.  The V map should be a pure noise map close to the
+theoretical sensitivity if your data base is well calibrated
+and edited.
+
+UVWTFN :
+     The default uniform weighting option gives higher
+resolution than natural weighting.  However, uniform weighting
+gives a lower signal to noise ratio.  Natural weighting is
+therefore preferable for detection experiments.
+With uniform weighting the dirty beam size decreases slightly
+with larger maps, other parameters remaining unchanged.
+
+GAIN and NITER :
+     The depth to which CLEAN carries out its deconvolution is
+approximately measured by the product NITER*GAIN.  The first
+CC extension file version corresponds to the first output
+frequency channel.
+     The value of NITER and the execution time needed
+to reach a given CLEANing depth are minimized by setting GAIN =
+1.0, but setting GAIN > 0.5 is recommended only when removing
+the sidelobes of a single bright unresolved component from
+surrounding fainter structure.
+
+BMAJ, BMIN, BPA :
+     The default values of 0 for these parameters invoke an
+algorithm whereby the central portion of the dirty beam B is
+fitted with an elliptical Gaussian function whose parameters are
+then used to specify the Clean Beam H.  The algorithm can be
+"fooled" by positive or negative sidelobes near the main
+lobe of B, and has been known to prescribe unsatisfactory forms
+for H, particularly for snapshot maps.
+
+BATCH :
+     Mapit can be used in BATCH mode.  Below is a sample AIPS
+session which sets up the BATCH queue and runs COMAP:
+
+>INPUT COMAP
+>INPUT COMAP_MX
+>INPUT COMAP_DO
+ ... if mapit inputs look ok
+>SAVE MYCOMAPINPUTS
+>BATCH
+ ... create a list of batch commands
+<GET MYCOMAPINPUTS
+<COMAP
+<CLRMSG
+<ENDBATCH
+ ... now start the batch queue
+>SUBMIT
+
+                      Hidden ADVERBS
+
+      There are several hidden ADVERBS to COMAP which are not
+usually changed by the user.  In an attempt to keep the inputs
+to COMAP simple, these ADVERBS are not in the ADVERB list above.
+However, there are situations where these other ADVERBS might
+prove useful to the advanced user.   These adverbs are listed
+via INPUT or HELP COMAP_DO and COMAP_MX.
+
+DOINT:    SCALAR, default FALSE (-1)
+     DO INTeractive COMAP; if true, before deconvolution the
+user is requested to input clean boxes, marking the locations
+were the image will be searched for clean components.  This
+option allows spurious source components to be rejected allowing
+MX to clean only in user specified regions.  This interactive
+mode also alls the user to stop cleaning when satisfied with the
+output.  This mode was inspired by the Jodrel Bank OLAF package
+software.
+
+DOZAP:    SCALAR, default TRUE (1)
+     If DOZAP is true, then all intermediate images and self-
+calibration solutions are deleted.  This step is necessary to
+conserve disk space.  If the user wishes to study COMAP progress
+setting DOZAP false leaves all intermediate images and UV-data
+around for examination.
+
+RMSFACT:  SCALAR, default 1.2
+     RMS FACtor is the rms noise factor used to stop bad
+self-calibrations and deconvolutions within COMAP.  COMAP
+continues the cycle of self-calibration and deconvolution
+until the requested number of iterations are performed OR
+the noise in the image produce by the current deconvolution is
+worse than the previous deconvolution.   Setting RMSFAC
+greater than one allows the solution to get worse, in the
+hope that as the COMAP parameters change, the solution will
+improve.  Note that the default allows the solution to get
+20 % worse before quiting.  Experience has found that the
+transition from PHASE to AMP+PHASE self-calibration
+causes significant changes to the RMS noise level IN EITHER
+DIRECTION.  Few errors have snuck past the 20 % level and
+failed to improve.  If AMP solution is bad it is usually
+EXTREAMLY bad and is detected.
+
+CLIMIT:   SCALAR, default 0.04 Jy
+     Clip LIMIT: the lowest source flux level which may be
+cliped in the CLIP step.  Because of the current performace
+of the VLA receivers, clipping at a lower level is certainly
+cliping the NOISE due to the receiver temperature.  The
+function of CLIP is to remove NON-GAUSIAN distributed noise
+(ie interference).
+
+CCFACT:   SCALAR, default 2
+     CC FACTor is used to determine the number of clean
+components to use in the next self-calibration cycle.  It is
+assumed that all negative CCs are spurious.  If negative CCs
+are spurious, then probably a few faint positive CCs are
+sperious as well.  CCFACT is used to determine the positive
+clean component limit.  All CCs brighter than CCFACT times the
+absolute value of the brightness of the first negative CC are
+used in the Self-cal model.
+
+SOLFAC:  SCALAR ARRAY, defaults 1,  3/4, 2/3, 1/2, 1/3,
+                               1/4, 1/5, 1/6, 1/8, 1/10
+     SOLution interval FACtors, is an array of values used
+to scale the input self-calibration solution interval.
+Self-calibration is most successful if the time over which
+the data is averaged is just longer than the time over
+which ionosphere (atmosphere) changes the phase of the data.
+However the longer the averaging time, the better the model
+is.  The SOLFAC array is used to scale SOLINT from long
+to short as a function of self-calibration loop.  The
+first two self-cals use the input interval, the third self-
+cal uses 2/3 SOLINT, the fourth, a half SOLINT, etc.
+
+SCTYPE:     STRING*2, default '  ' (least square fit)
+     Self-Calibration solution TYPE, SCTYPE, is the type of
+fit used by CALIB to calculate the antenna gains which minimize
+the difference between UV-data and the source model.  The least
+linear fit (SCTYPE='L1' is less sensitive to a few spurious
+data than the least squares (SCTYPE='') fit.  The least squares
+fit is better if the data has errors which are gaussian
+distributed.  The least linear fit is better if interference is
+present.
+
+NOLDUV:     SCALAR, default 2
+     NOLDUV is number of self-calibration cycles using the
+original UV-data as input.  After NOLDUV self-cals, the
+previous self-cal output is used as input to the next self-cal
+executions.  By default, the first two self-cals use the
+original UV-data.
+
+                      Notest on Snapshot imaging
+
+     A number of interesting observations have been made
+concerning imaging VLA snapshots during the testing of COMAP.
+One is the use of the MX adverb FACTOR to determine when the
+MX minor cycle clean should stop.  (Also See MX HELP)  In
+brief, MX, performs a minor cycle clean by reading in a large
+number of bright pixels of an image.  MX finds the maximum
+pixel in the input image and subtracts the beam from the
+entire image, until the brightest residual is fainter than
+the Beam's brightest sidelobe.  In this way no BEAM features are
+confused with real sources.
+
+     The point to note is that the VLA BEAM model assumes
+perfect phase calibration, however for snap-shots, the phase
+calibration is usually rare and the BEAM side-lobes are
+usually large.  This causes sidelobe in the image to be
+brighter than expected and can be turned into sperious features
+due to self-calibration.  Fortunately there is an easy way
+to avoid this problem, using the MX adverb FACTOR.  By setting
+FACTOR to -1, the minor cycle clean stops after each clean
+component is found, but is very slow.  The MX default is FACTOR
+equals 0.  For FACTOR = 1, the Minor Cycle does not stop until
+all NITERations are complete.
+
+A reasonable value for FACTOR for snapshots is between -0.4 and
+-0.1, so that cleaning stops before side-lobes are confused with
+sources.
+
+See HELP COMAP_DO and HELP COMAP_MX for further COMAP inputs.
+----------------------------------------------------------------
+
+
+
+
+

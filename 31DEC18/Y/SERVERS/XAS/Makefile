@@ -1,0 +1,252 @@
+# Makefile for xas
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2000, 2002-2003, 2005-2006, 2009, 2016-2017
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#
+# This makefile has been tested on the following:
+# baboon    - Sun SparcStation 2, SunOS 4.1.2, SC2.0.1 compilers
+# kochab    - Sun SparcStation 10, SunOS 5.5, SC4.2 compilers
+# rhesus    - IBM RS/6000 model 580 (AIX 3.2.5)
+# siamang   - Dec Alpha 266, OSF-1 4.0D
+# ohsumi    - SGI, SG-Irix 6.4
+# orangutan - Pentium Pro 200, Red Hat 5, Kernel 2.0.34 (egcs 1.0.3)
+# mandrill  - Alpha 21164 clone, Red Hat 5, Kernel 2.0.34 (egcs 1.0.3)
+#
+# (old note for VMS, xas.h must be modified to define VMS as 1)
+
+#   Destination for executable.  If you are building XAS on a system
+#   that has AIPS installed this should be the same as the AIPS LOAD
+#   area.  MAKE SURE "LOAD" IS DEFINED FIRST!!!!!  INSTEP1 should take
+#   care of this, but otherwise it is done with "source LOGIN.CSH"
+#   (c-shell) or ". LOGIN.SH" (bash, korn, bourne shells).
+#   Most implementations of make allow the use of an environmental
+#   variable as shown here: check your system documentation.
+
+DESTDIR = $(LOAD)
+
+#   Additional include files.  Some X Window System implementations do
+#   not place their include in the standard Unix directory /usr/include.
+#   The include directories should be listed here, each preceded by -I.
+#   For Sun, make sure OPENWINHOME is set!  (/usr/openwin usually)
+
+INCDIRS_ALPHA    =
+INCDIRS_DEC      =
+INCDIRS_IBM      =
+INCDIRS_LINUX    =
+INCDIRS_LNX64    =
+INCDIRS_AXLINUX  =
+INCDIRS_LINUXPPC =
+INCDIRS_MACPPC   = -I/usr/X11R6/include
+INCDIRS_MACINT   = -I/usr/X11/include
+INCDIRS_HP       = -I/usr/include/X11R5
+INCDIRS_HP2      = -I/usr/include/X11R5
+INCDIRS_SGI      =
+INCDIRS_SOL      = -I$(OPENWINHOME)/include
+INCDIRS_SOL86    = -I$(OPENWINHOME)/include
+INCDIRS_SUL      = -I$(OPENWINHOME)/include
+INCDIRS_SUN4     = -I$(OPENWINHOME)/include
+
+INCDIRS = $(INCDIRS_$(ARCH))
+
+#   Library search path.  Standard Unix libraries are usually found in
+#   /usr/lib; some X Window System implementations place their libraries
+#   elsewhere.  These should be listed here, each preceded by -L.
+#   IBM-SHR is for IBM systems shared memory.
+
+LIBDIRS_ALPHA    = -L/usr/lib/X11
+LIBDIRS_DEC      = -L/usr/lib/X11
+LIBDIRS_HP       = -L/usr/lib/X11R5
+LIBDIRS_HP2      = -L/usr/lib/X11R5
+# For AIX 3.2.2 or earlier, use LIBDIRS_IBM = -L/usr/lpp/X11/Xamples/lib
+#  if you have set up the X server to use MIT SHM shared memory.
+LIBDIRS_IBM      =
+# This should work for most Linux distributions.  The really old version
+# of this was /usr/X386/lib which dates from the old SLS days.
+LIBDIRS_LINUX    = -L/usr/X11R6/lib
+LIBDIRS_LNX64    = -L/usr/X11R6/lib64
+#LIBDIRS_LNX64    = -L/usr/X11R6/lib64 -Xlinker -rpath -Xlinker $(LIBR)/INTELCMP
+#   on Intel compiler we use
+#LIBDIRS_LINUX    = -L/usr/X11R6/lib -Xlinker -rpath -Xlinker $(LIBR)/INTELCMP
+LIBDIRS_AXLINUX  = -L/usr/X11R6/lib
+LIBDIRS_LINUXPPC = -L/usr/X11R6/lib
+LIBDIRS_MACINT   = -L/usr/X11/lib -L/opt/local/lib
+LIBDIRS_MACPPC   = -L/usr/X11R6/lib
+LIBDIRS_SGI      =
+# If you change LIBDIRS_SOL, make sure to change LOCALOPTS_SOL (-R argument)
+LIBDIRS_SOL      = -L$(OPENWINHOME)/lib
+LIBDIRS_SOL86    = -L$(OPENWINHOME)/lib
+LIBDIRS_SUL      = -L$(OPENWINHOME)/lib
+LIBDIRS_SUN4     = -L$(OPENWINHOME)/lib
+
+LIBDIRS = $(LIBDIRS_$(ARCH))
+
+#   In addition, there are apparently different requirements for
+#   standard low-level libraries on the various systems and different
+#   intolerance/requirement to include a library twice.
+
+STDLIBS_ALPHA  	 =
+STDLIBS_DEC    	 =
+STDLIBS_HP     	 =
+STDLIBS_HP2    	 =
+STDLIBS_IBM    	 =
+# for AIX 3.2.2 or earlier, set STDLIBS_IBM =-lXextSam
+#  if you have set up the X server to use MIT SHM shared memory.
+STDLIBS_LINUX  	 =
+STDLIBS_LNX64  	 =
+STDLIBS_AXLINUX  =
+STDLIBS_LINUXPPC =
+STDLIBS_MACPPC   =
+STDLIBS_MACINT   =
+STDLIBS_SGI    	 =
+STDLIBS_SOL    	 =  -lsocket -lnsl  -R$(OPENWINHOME)/lib
+STDLIBS_SOL86  	 =  -lsocket -lnsl  -R$(OPENWINHOME)/lib
+STDLIBS_SUL    	 =  -lsocket -lnsl  -R$(OPENWINHOME)/lib
+STDLIBS_SUN4   	 =  -lXext
+
+
+STDLIBS = $(STDLIBS_$(ARCH))
+
+#   The X Shared Memory Extension can significantly improve the
+#   performance of XAS.  Depending on whether your X server supports
+#   these (xdpyinfo should show it as MIT_SHM under the extensions
+#   section), you may want to preserve  the OSOPTS_(architecture) value
+#   below, or remove the -DUSE_SHM if it doesn't seem to work.  IBM X11
+#   servers do not have it enabled by default but the X server can be
+#   rebuilt to include it for AIX 3.2.2 or earlier versions
+
+OSOPTS_ALPHA    = -D_BSD -DUSE_SHM
+OSOPTS_DEC      = -D_BSD -DUSE_SHM
+OSOPTS_HP       = -D_BSD -DUSE_SHM
+OSOPTS_HP2      = -D_BSD -DUSE_SHM
+OSOPTS_IBM      = -D_AIX -D_BSD
+OSOPTS_LINUX    = -D_BSD -DUSE_SHM
+OSOPTS_LNX64    = -D_BSD -DUSE_SHM
+OSOPTS_AXLINUX  = -D_BSD -DUSE_SHM
+OSOPTS_LINUXPPC = -D_BSD -DUSE_SHM
+OSOPTS_MACPPC   = -D_BSD -DUSE_SHM
+OSOPTS_MACINT   = -D_BSD -DUSE_SHM -D_DARWIN_UNLIMITED_SELECT
+OSOPTS_SGI      = -D_BSD -DUSE_SHM
+OSOPTS_SOL      = -D_BSD -DUSE_SHM
+OSOPTS_SOL86    = -D_BSD -DUSE_SHM
+OSOPTS_SUL      = -D_BSD -DUSE_SHM
+OSOPTS_SUN4     = -D_BSD -DUSE_SHM
+
+# XAS still works on some VMS platforms... OSOPTS_VMS     = -D_VMS
+
+OSOPTS = $(OSOPTS_$(ARCH))
+
+# Add local compiler/linker options here.  The -R under Solaris makes sure
+# the library area used in LIBDIRS_SOL gets burned into the resulting
+# binary.
+
+LOCALOPTS_ALPHA    =
+LOCALOPTS_DEC      =
+LOCALOPTS_HP       =
+LOCALOPTS_HP2      =
+LOCALOPTS_IBM      =
+LOCALOPTS_LINUX    = -O2
+#LOCALOPTS_LNX64    = -O2 -axWPT
+#LOCALOPTS_LNX64    = -O3 -ip -I -D_FILE_OFFSET_BITS=64 -DHAVE_LINUX_GLIBC
+LOCALOPTS_LNX64    = -O3 -fomit-frame-pointer -funroll-loops -D_FILE_OFFSET_BITS=64 -DHAVE_LINUX_GLIBC
+#                                       Intel compiler
+# LOCALOPTS_LINUX    = -O2 -axNP
+LOCALOPTS_AXLINUX  = -O2
+LOCALOPTS_LINUXPPC = -O2
+LOCALOPTS_MACPPC   = -O2
+LOCALOPTS_MACINT = -O3 -ip -I/ -D_FILE_OFFSET_BITS=64 -mmacosx-version-min=10.7
+LOCALOPTS_SGI      =
+# remove the -K PIC and -Xa if you are not using the Sun C compiler.
+LOCALOPTS_SOL      = -O -v -K PIC -Xa
+LOCALOPTS_SUL      = -O -v -K PIC -Xa
+# The following good for Pentium or better. Use -m486 for 80486.
+LOCALOPTS_SOL86    = -O2 -mpentium
+LOCALOPTS_SUN4     =
+
+LOCALOPTS = $(LOCALOPTS_$(ARCH))
+
+# The C compiler, whatever works for you.
+
+CC_SOL      = /opt/SUNWspro/bin/cc
+CC_SOL86    = gcc
+CC_SUL      = /opt/SUNWspro/bin/cc
+CC_SUN4     = /usr/lang/cc
+CC_ALPHA    = cc
+CC_IBM      = cc
+CC_LINUX    = gcc
+#CC_LNX64    = /opt/intel/Compiler/11.0/074/bin/intel64/icc
+#CC_LNX64    = /opt/intel/bin/icc
+CC_LNX64    = /usr/local/compilers/gcc-6/bin/gcc
+CC_AXLINUX  = gcc
+CC_LINUXPPC = gcc
+CC_MACPPC   = /usr/bin/gcc
+CC_MACINT = /usr/local/bin/icc
+CC_HP       = cc
+CC_HP2      = cc
+CC_DEC      = cc
+CC_SGI      = cc
+
+CC = $(CC_$(ARCH))
+
+#    Do not alter anything below this line
+#--------------------------------------------------------------------
+
+CCOPTS = $(INCDIRS) $(OSOPTS) $(LOCALOPTS) -c
+
+OBJECTS = xas.o image.o comm.o cursor.o screen.o init.o colors.o catalog.o
+
+.c.o :
+	$(CC) $(CCOPTS) $<
+
+install : xas
+	touch $(DESTDIR)/XAS
+	mv $(DESTDIR)/XAS $(DESTDIR)/XAS.OLD
+	mv xas $(DESTDIR)/XAS
+
+all:
+	@ echo 'First make xas, then make install, then make clean'
+
+xas : $(OBJECTS)
+	$(CC) $(LIBDIRS) $(LOCALOPTS) $(OSOPTS) $(OBJECTS) -lXext -lX11 -lm $(STDLIBS) -o xas
+
+xas.o   : xas.c    xas.h
+
+image.o : image.c  xas.h
+
+comm.o  : comm.c   xas.h
+
+cursor.o: cursor.c xas.h
+
+screen.o: screen.c xas.h
+
+init.o  : init.c   xas.h  Xas.icon  Xas2.icon
+
+colors.o: colors.c xas.h
+
+catalog.o: catalog.c xas.h
+
+clean:
+	rm -f *.o xas XAS
+

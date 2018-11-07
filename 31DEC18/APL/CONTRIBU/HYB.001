@@ -1,0 +1,322 @@
+*   Establish proceedures useful for Hybrid mapping.
+$-----------------------------------------------------------------------
+$;  Copyright (C) 1995, 1997, 1999, 2008
+$;  Associated Universities, Inc. Washington DC, USA.
+$;
+$;  This program is free software; you can redistribute it and/or
+$;  modify it under the terms of the GNU General Public License as
+$;  published by the Free Software Foundation; either version 2 of
+$;  the License, or (at your option) any later version.
+$;
+$;  This program is distributed in the hope that it will be useful,
+$;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+$;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+$;  GNU General Public License for more details.
+$;
+$;  You should have received a copy of the GNU General Public
+$;  License along with this program; if not, write to the Free
+$;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+$;  MA 02139, USA.
+$;
+$;  Correspondence concerning AIPS should be addressed as follows:
+$;         Internet email: aipsmail@nrao.edu.
+$;         Postal address: AIPS Project Office
+$;                         National Radio Astronomy Observatory
+$;                         520 Edgemont Road
+$;                         Charlottesville, VA 22903-2475 USA
+$-----------------------------------------------------------------------
+*
+*   The proceedures are:
+*      HYBDEF:   Defines variables.
+*      HYBRID:   Do a hybrid mapping iteration.
+*      BOX2CC:   Convert BOX to CCBOX to allow use of TV to set CCBOX.
+*      SHOWBOX:  Draw current BOX on TV. (Use TVCORN on load).
+*      SHOWCBOX: Draw CCBOX on TV.
+*      DELIT:    Delete the 3 output files of a hybrid iteration.
+*      CC2BOX:   Given CCBOX, IMSIZE, CELLSIZE, RASHIFT, and DECSHIFT,
+*                  get new BOX.  Good when changing image parameters.
+*
+*   Use INP HYB to set inputs for HYBRID
+*   HYB.HLP should be in the 'version' area.
+*   Redo to allow outname and sequence to be specified.
+*
+*   Define some variables.
+*
+PROC HYBDEF
+  ARRAY   CCBOX(4,10)
+  ARRAY   MXUVR(2)
+  ARRAY   SAVUVR(2)
+  ARRAY   CCRAD(2)
+  SCALAR  NCCBOX
+  SCALAR  MINSNR
+  SCALAR  MINANT
+  array   imcells(2)
+  array   imrefp(2)
+  array   savcor(2)
+  array   scbox(4,10)
+  FINISH
+*
+*
+*   HYBRID
+*
+*   This proceedure squashes the clean components,
+*   throws out any outside the editing window
+*   in space and amplitude, self calibrates
+*   using CALIB, maps using MX, and finally
+*   plots the result.
+*
+*   FACTOR set to non-standard value in MX
+*
+PROC HYBRID
+  tput hyb
+    dowait   = true
+    savuvr   = uvrange
+*  -------  Edit the clean components.  --------
+    keyword  = 'extver1'
+  gethead
+    outver   = keyvalue(1) + 1
+    bcount   = 1
+    ecount   = 0
+  go ccedt
+*  -------  CALIB -------
+    if outname = ' ' then outname = inname; end
+    if outseq = 0 then outseq = inseq + 1; end
+    outclass = 'CALIB';  outdisk  = indisk
+    in2name  = inname;   in2class = inclass
+    in2disk  = indisk;   in2seq   = inseq
+    inname   = in3name;  inclass  = in3class
+    inseq    = in3seq;   indisk   = in3disk
+    calsour  = ' ';      qual     = -1
+    calcode  = ' ';      selband  = -1
+    freqid   = -1;       timerang = 0
+    bchan    = 1;        echan    = 0
+    antennas = 0;        subarray = 0
+    docalib  = -1;       gainuse  = 0
+    flagver  = 0;        doband   = -1
+    bpver    = -1;       smooth   = 0
+    invers   = outver;   ncomp    = 0
+    nmaps    = 0;        smodel   = 0
+    aparm    = minant,0,0,0,0,prtlev,minsnr,0
+    solcon   = 0;        cparm    = 0,1,0,0,0
+    snver    = 0;        antwt    = 0
+    gainerr  = 0;        dofit    = 0
+  go calib
+    inver   = 0
+*  -------  MX  -----------
+    inname   = outname;  inclass  = outclass
+    inseq    = outseq;   indisk   = outdisk
+    in2name  = 'mx';     in2class = 'uvwork'
+    in2seq   = outseq;   in2disk  = indisk
+    bchan    = 1;        echan    = 0
+    channel  = 0;        npoints  = 1
+    chinc    = 1;        stokes   = ' '
+    bif      = 0;        eif      = 0
+    nfield   = 1;        fldsize  = 0
+    uvrange  = mxuvr
+    xtype    = 5;        ytype    = 5
+    xparm    = 0;        yparm    = 0
+    gain     = 0.1;      flux     = 0
+    minpatch = 0;        bcomp    = 0
+    phat     = 0;        factor   = 1
+    dotv     = -1;       cmethod  = 'grid'
+  go mx
+    inname   = in2name; inclass  = in2class
+    intype   = 'UV'
+    zap
+    uvrange  = savuvr
+    intype   = 'MA'
+*  -------  Plot it.  -----
+    inname   = outname; inclass  = 'ICL001'
+    xyratio  = 0;       ltype    = 4
+    plev     = 0
+    levs     = -2.68,-1.93,-1,1
+    for i = 2 to 27
+       levs(i+3) = 10**(i/7)
+    end
+    docircle = -1;      stfactor = 0
+    dotv     = -1;      grchan   = 0
+    tvcorn   = 0;       ncount   = -1
+    offset   = 4
+  go cntr
+    dowait   = false
+    plver    = 0;       aspmm    = 0
+    lpen     = 3;       functype = ' '
+    dparm    = 0;       outtext  = ' '
+*  -------  Get rms etc -----
+    dohist   = 1
+    nboxes   = 50
+    pixstd   = 0.002
+    blc(3)   = blc(1);  blc(4)   = blc(2)
+    trc(3)   = trc(1);  trc(4)   = trc(2)
+    blc(1)   = 0;       blc(2)   = 0
+    trc(1)   = 0;       trc(2)   = 0
+  go imean
+    blc(1)   = blc(3);  blc(2)   = blc(4)
+    trc(1)   = trc(3);  trc(2)   = trc(4)
+*  go lwpla
+*  ------  Some clean up.  --------
+    outname  = ' ';     outseq   = 0
+* -------   Done.  ---------
+  return
+  finish
+*
+*
+*   BOX2CC
+*
+*  Convert from CLBOX in pixels to CCBOX in arcsec.
+*
+PROC BOX2CC
+    keyword    = 'CDELT1'
+  gethead
+    imcells(1) = keyvalue(1)
+*
+    keyword    = 'CDELT2'
+  gethead
+    imcells(2) = keyvalue(1)
+*
+    keyword    = 'CRPIX1'
+  gethead
+    imrefp(1)  = keyvalue(1)
+*
+    keyword    = 'CRPIX2'
+  gethead
+    imrefp(2)  = keyvalue(1)
+*
+    ccbox = 0
+    nccbox     = nboxes
+    for i = 1 to nboxes
+       ccbox(1,i) = ( clbox(1,i)-imrefp(1) ) * imcells(1) * 3600.0
+       ccbox(2,i) = ( clbox(2,i)-imrefp(2) ) * imcells(2) * 3600.0
+       ccbox(3,i) = ( clbox(3,i)-imrefp(1) ) * imcells(1) * 3600.0
+       ccbox(4,i) = ( clbox(4,i)-imrefp(2) ) * imcells(2) * 3600.0
+    end
+*
+*   Some final clean up so other programs will be easier to run.
+*
+    keyword = ' '
+*
+  finish
+*
+*
+*  SHOWBOX
+*
+*  Display the current boxes on the TV.
+*
+proc showdef
+   finish
+*
+proc showbox
+   savcor = tvcorn
+   for i = 1 to nboxes
+      tvcorn = clbox(1,i)+savcor(1), clbox(2,i)+savcor(2)
+      tvxy   = clbox(3,i)+savcor(1), clbox(2,i)+savcor(2)
+      tvline
+      tvcorn = clbox(3,i)+savcor(1), clbox(2,i)+savcor(2)
+      tvxy   = clbox(3,i)+savcor(1), clbox(4,i)+savcor(2)
+      tvline
+      tvcorn = clbox(3,i)+savcor(1), clbox(4,i)+savcor(2)
+      tvxy   = clbox(1,i)+savcor(1), clbox(4,i)+savcor(2)
+      tvline
+      tvcorn = clbox(1,i)+savcor(1), clbox(4,i)+savcor(2)
+      tvxy   = clbox(1,i)+savcor(1), clbox(2,i)+savcor(2)
+      tvline
+   end
+   tvcorn = savcor
+finish
+*
+*
+*  SHOWCBOX
+*
+*  Display current CCBOX on the TV
+*
+proc showcbox
+*  need to convert to pixels.
+    keyword    = 'CDELT1'
+  gethead
+    imcells(1) = keyvalue(1)
+*
+    keyword    = 'CDELT2'
+  gethead
+    imcells(2) = keyvalue(1)
+*
+    keyword    = 'CRPIX1'
+  gethead
+    imrefp(1)  = keyvalue(1)
+*
+    keyword    = 'CRPIX2'
+  gethead
+    imrefp(2)  = keyvalue(1)
+*
+    for i = 1 to nccbox
+       scbox(1,i) = ccbox(1,i)/(imcells(1) * 3600.0) + imrefp(1)
+       scbox(2,i) = ccbox(2,i)/(imcells(2) * 3600.0) + imrefp(2)
+       scbox(3,i) = ccbox(3,i)/(imcells(1) * 3600.0) + imrefp(1)
+       scbox(4,i) = ccbox(4,i)/(imcells(2) * 3600.0) + imrefp(2)
+    end
+*
+   print 'ASSUME TVLODED WITH TVCORN = ', tvcorn
+*
+   savcor = tvcorn
+   for i = 1 to nccbox
+      tvcorn = scbox(1,i)+savcor(1), scbox(2,i)+savcor(2)
+      tvxy   = scbox(3,i)+savcor(1), scbox(2,i)+savcor(2)
+      tvline
+      tvcorn = scbox(3,i)+savcor(1), scbox(2,i)+savcor(2)
+      tvxy   = scbox(3,i)+savcor(1), scbox(4,i)+savcor(2)
+      tvline
+      tvcorn = scbox(3,i)+savcor(1), scbox(4,i)+savcor(2)
+      tvxy   = scbox(1,i)+savcor(1), scbox(4,i)+savcor(2)
+      tvline
+      tvcorn = scbox(1,i)+savcor(1), scbox(4,i)+savcor(2)
+      tvxy   = scbox(1,i)+savcor(1), scbox(2,i)+savcor(2)
+      tvline
+   end
+   tvcorn = savcor
+*
+*   Some final clean up so other programs will be easier to run.
+*
+    keyword = ' '
+*
+finish
+*
+*
+*   DELIT
+*
+*   Delete files from a hybrid iteration.
+*
+PROC DELIT
+   PRINT INNAME, INSEQ
+   INCL = 'CALIB'
+   INTYPE = 'UV'
+   ZAP
+   INCL = 'IBM001'
+   INTYPE = 'MA'
+   ZAP
+   INCL = 'ICL001'
+   ZAP
+FINISH
+*
+*
+*    CC2BOX
+*
+*  Converts CCBOX to BOX given RASHIFT, DECSHIFT, CCBOX, and CELLSIZE.
+*
+proc cc2box
+
+*   Get reference pixels in new image.
+
+    imrefp(1)  = imsize(1) / 2 + rashift(1) / cells(1)
+    imrefp(2)  = imsize(2) / 2 + 1 - decshift(1) / cells(2)
+*
+    for i = 1 to nccbox
+       clbox(1,i) = imrefp(1) - ccbox(1,i)/cells(1)
+       clbox(2,i) = imrefp(2) + ccbox(2,i)/cells(2)
+       clbox(3,i) = imrefp(1) - ccbox(3,i)/cells(1)
+       clbox(4,i) = imrefp(2) + ccbox(4,i)/cells(2)
+    end
+    nboxes = nccbox
+*
+finish
+
+
+

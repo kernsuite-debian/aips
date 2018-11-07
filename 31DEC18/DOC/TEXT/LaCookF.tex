@@ -1,0 +1,465 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 1995, 1998, 2001-2002, 2004, 2007, 2013-2014, 2016
+%;  Copyright (C) 2018
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\setcounter{chapter}{5}
+\appen{File Sizes}{size}
+\renewcommand{\Chapt}{27}
+
+\renewcommand{\titlea}{31-December-2007 (revised 11-November-2016)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+\def\text#1{\hbox{\it#1}}
+
+Your data reduction strategy will be more effective if you have an
+idea of how big the data and map file sizes will be on disk.  Also, it
+will help you estimate just how many files you can \indx{backup} to
+tape.  In this appendix, we will discuss file sizes in bytes, which
+are 8 bits in size, rather than ``blocks,'' which can vary in size
+between different computers.  Inside \AIPS, the definition of ``byte''
+is perverted, but all systems now use a 1024-byte (8192 bit)
+``block.''
+
+\Sects{Visibility (\uv) data sets}{Sizeuv}
+
+     \uv\ data files contain information about the coherence function
+of a wavefront at random locations and random times.  Consequently,
+the way this information is stored on disk is different from that for
+images where the pixels are on a regular grid.  AIPS \uv\ data are
+stored on disk in a manner similar to the way that it would be
+organized on a FITS ``random group'' tape.  The data are stored as
+logical records; each record (a ``visibility'') contains {\bf all} the
+data taken on one baseline at a given time.  Consequently, a record
+may contain information for several IFs, several frequencies at each
+of those IFs and more than one polarization combination for each
+frequency/IF.  The first part of each logical record contains what are
+known as ``random parameters'' \eg\ spatial frequency coordinates and
+time.  After the random parameters, there is a small, regular array of
+data.
+
+    For a multi-source data set such as might be created by {\tt
+\tndx{FILLM}}, the random parameter group will include the following.
+{\tt UU-L-SIN}, {\tt VV-L-SIN}, and {\tt WW-L-SIN} give the spatial
+frequency coordinates, computed with a sine projection in units of
+wavelengths at the reference frequency.  {\tt TIME1} is the label for
+the time in days.   {\tt BASELINE} is the baseline number ($256 ant_1
++ ant_2 + subarray/100.$) and {\tt SOURCE} is the source number
+corresponding to an entry in the source table.  If you have frequency table
+identifiers (which is usually the case these days), then there will be
+an additional random parameter, {\tt FREQSEL}\@.  For a compressed
+database, two additional random parameters will be required --- {\tt
+WEIGHT} to give a single data weight for all samples in the record and
+{\tt SCALE} to give the gain used to compress that record.
+
+   The regular data array is similar to an image array in that the
+order of axes is arbitrary.  However, the convention is for the first
+axis to be of type {\tt COMPLEX}, having a dimension of 3 for
+uncompressed data (real, imaginary, weight) and a dimension of 1 for
+compressed data.  The other axes of the regular array are {\tt IF},
+{\tt RA}, {\tt DEC}, {\tt FREQ} and {\tt STOKES}.
+
+\subsections{\uv\ database sizes}
+
+The number of words in each ``visibility'' is given by
+$$
+ (\#~random~parameters)
+   + \lbrack (dimension~of~\hbox{{\tt COMPLEX}}~axis)
+   \times (\#~polns) \times (\#~freqs) \times (\#~IFs) \rbrack
+$$
+The size of the database to be loaded to disk with {\tt FILLM} is
+given by
+$$
+   (word~per~record) \times (\#~vis) \times 4 \rm\,bytes
+$$
+The number of visibilities is given (approximately) by
+$$
+   {length~of~observation \over integration~time} \times
+                                          number~of~baselines
+$$
+where the number of baselines is the usual ${1\over2}n(n-1)$.  This
+is equal to 351 for the VLA for the usual 27-antenna array.
+
+     For example, a 12-hour observation with 30 second integrations,
+one frequency and 2 IFs with RR, RL, LR and LL written in compressed
+format ({\tt DOUVCOMP = TRUE} in {\tt \tndx{FILLM}}) will occupy about
+34 Mbytes on disk.  In practice, the \uv\ file will usually be a
+little larger due to the way the system allocates space on the disks.
+You must also remember to allow room for the extension tables --- see
+\Sec{Sizeext}.   If this database had been written in uncompressed format,
+the \uv\ data would have occupied around 62~Mbyte, but would have
+carried information about different data weights for different IFs.
+
+Consider another example illustrated by the {\tt IMHEAD} listing below:
+\bve
+Image=MULTI     (UV)         Filename=20/07/90    .L BAND.   1
+Telescope=VLA                Receiver=VLA
+Observer=AFTST               User #= 1364
+Observ. date=20-JUL-1990     Map date=23-JUL-1990
+# visibilities    105198     Sort order  TB
+Rand axes: UU-L-SIN  VV-L-SIN  WW-L-SIN  BASELINE  TIME1
+           SOURCE  FREQSEL  WEIGHT  SCALE
+--------------------------------------------------------------
+Type    Pixels   Coord value  at Pixel    Coord incr   Rotat
+COMPLEX      1   1.0000000E+00    1.00 1.0000000E+00    0.00
+STOKES       4  -1.0000000E+00    1.00-1.0000000E+00    0.00
+IF           2   1.0000000E+00    1.00 1.0000000E+00    0.00
+FREQ         1   1.4524000E+09    1.00 2.5000000E+07    0.00
+RA           1    00 00 00.000    1.00      3600.000    0.00
+DEC          1    00 00 00.000    1.00      3600.000    0.00
+--------------------------------------------------------------
+Maximum version number of extension files of type HI is   1
+Maximum version number of extension files of type AN is   1
+Maximum version number of extension files of type NX is   1
+Maximum version number of extension files of type SU is   1
+Maximum version number of extension files of type FQ is   1
+Maximum version number of extension files of type CL is   1
+Maximum version number of extension files of type SN is   2
+\end{verbatim}\eve
+\dispe{This compressed ({\tt COMPLEX Pixels = 1}) \uv\ database
+contains 9 random parameters, 4 polarizations, 1 frequency, and 2 IFs.
+for {\it each} of 105198 visibilities.  The size of the database file
+itself is, therefore,
+$$
+  \Bigl\lbrack \lbrace 9 + \lbrack 1 \times 4 \times 1 \times 2 \rbrack
+         \rbrace \times 105198 \times 4 \Bigr\rbrack \rm\,bytes
+   = 7.153 \rm\,Mbytes.
+$$
+Note that this data set is 17/33 the size of an uncompressed data set.}
+
+\subsections{Compressed format for \uv\ data}
+
+     The use of ``compressed'' data can make substantial savings in
+the amount of disk space that you require, particularly for
+spectral-line databases.  All tasks should now be able to handle
+either the compressed or the uncompressed formats.  Compressed data
+files can be identified by the dimension of 1 for the {\tt COMPLEX}
+axis in the database header.  (Uncompressed data will have a dimension
+of 3.)  The savings can be close to a factor of three for spectral
+line observations. \iodx{compressed format}
+
+     This is achieved by converting all data weights into a single
+{\tt WEIGHT} random parameter, by finding a single {\tt SCALE} random
+parameter with which to scale all real and imaginary parts of the
+visibilities into 16-bit integers, and by packing the real and
+imaginary terms into one 32-bit location using magic-value blanking
+for flagged data.  This is to be compared with the uncompressed format
+in which each of the real, imaginary and weight terms are each stored
+in a 32-bit floating-point location.  The use of a single weight value
+masks {\it real} differences in system temperatures between
+polarizations and IFs, which one should retain for the lowest possible
+noise in imaging.
+
+     In general, data compression is a good thing and should be used,
+but with a little caution.  With a single frequency, single IF, and
+single polarization, you will not save any disk space.  In all other
+cases, there are respectable savings to be made.  However, the use of
+a packed data word for the real and imaginary parts of the visibility
+function along with magic value blanking imposes a restriction on the
+``spectral dynamic range'' of the data set of around 32000:1.
+Consequently, there are some situations where compressed data should
+{\it not} be used.  For example, if the spectral dynamic range in the
+\uv\ database is likely to be greater than, say, 1000:1, you must use
+{\it uncompressed} data format to avoid loss of accuracy.  This
+situation can arise in maser spectra, for example, in which there are
+maser lines of 1~Jy and $ >32000$~Jy; in this case, you should never
+use compressed data.  Bandpass calibration can cause large correction
+factors to be applied to the edge channels of a database.  In the
+presence of noise or interference, bad channels can become very much
+greater in amplitude than good channels.  In such cases you must
+either use uncompressed format or be very careful to flag bad channels
+or to drop them with the {\tt BCHAN} and {\tt ECHAN} adverbs {\it as}
+you apply the bandpass calibration.  In general, continuum data sets
+can be loaded with data compression since these dynamic range
+considerations will not normally apply.\iodx{compressed format}  The
+loss of weight information may not be worth the savings in disk space,
+however.  Compressed data takes less time to read/write due to the
+small number of bytes, but casts in cpu time some due to the extra
+computation.
+
+If there has been on-line or later flagging that depends on
+polarization, IF, or spectral channel (\ie\ RFI excision) or
+differences in the intrinsic weights between polarizations, IFs, or
+spectral channels (\ie\ different system temperatures for different
+IFs), then data compression causes a serious loss of information
+related to the data weight.
+
+
+\sects{Image files}
+
+     Since images are regular arrays, the sizes of image files are
+easier to calculate.  The images are stored as floating-point numbers,
+\ie\ 32 bits per pixel, so the image file size in bytes is given by
+$$
+     4 \times \prod_{i} length(i)
+$$
+where $length(i)$ is the number of pixels on the $i^{th}$ axis.  For
+example, a 128-channel cube with each plane a $256 \times 256$ image
+will require around 34 Mbytes of disk storage space.  This may be
+increased a little due to the way in which the system allocates space
+for files.
+
+\Sects{Extension files}{Sizeext}
+
+     Subsidiary data about \uv\ database and image files are written
+in ``\indx{extension files}.''  These include, for example, history
+records ({\tt HI} files), plot instructions ({\tt PL} files),
+calibration solutions ({\tt SN} files), ad nauseum.  Some extension
+files can become large.  A history file uses 1024 bytes for every 14
+history records, a small amount under most circumstances.  A plot file
+is normally small, but the output from {\tt \tndx{GREYS}} can be as
+large as one plane of the image and the output of {\tt \tndx{KNTR}}
+is larger by a factor of the number of panes in the plot.\iodx{plot
+file}\iodx{history file}
+
+     The {\tt CL} (calibration) table contains the total model of the
+interferometer at each interval.\iodx{calibration file}  Many of these
+logical records are blank in the case of most interferometers but, for
+the VLBA, these records will contain essential information.  The {\tt
+CL} table contains a logical record for each antenna in the array at
+each \tndx{CL} time stamp. The \tndx{CL} time stamps are set by the
+user when loading the data.  The default for VLA data is every~5
+minutes.  For VLBI data, it is every 1~minute.  Each {\tt CL} logical
+record requires
+$$
+  \lbrace 15 + \lbrack 14 \times  (\#~IFs) \times
+       (\#~pols)\rbrack\rbrace \times 4 \rm\, bytes
+$$
+For a 12-hour observation with the VLA with 2 IFs and 4 polarization
+pairs, with entries every 5 minutes, the CL table will occupy about
+$$
+   \Bigl\lbrack\lbrace 15 + \lbrack 14 \times 2 \times 2 \rbrack\rbrace
+   \times 4 \times {(12 \times 60) \over 5 } \times 27 \Bigr\rbrack
+   \rm\, bytes
+   = 1.05 \rm\, Mbytes
+$$
+
+     Since most other files are considerably smaller, their sizes can
+be ignored.  That they exist and may require some disk, should not be
+forgotten.  To look at the full \AIPS\ disk usage on your computer in
+summary form:
+\dispt{TASK\qs'\tndx{DISKU}' ; INP \CR}{to review the inputs.}
+\dispt{INDISK\qs 0 ; DETIME\qs 0 \CR}{to look at all disks and all
+               data sets}
+\dispt{USERID\qs 32000 \CR}{to look at all user numbers.}
+\dispt{DOALL\qs FALSE ; GO \CR}{to run the task in a summary mode.}
+\dispe{Then to look at file sizes in detail:}
+\dispt{INDISK\qs$n$ ; USERID\qs 0 \CR}{to restrict the display to your
+                data sets and one disk.}
+\dispt{DOALL\qs TRUE ; GO \CR}{to run the task to list all files on
+                disk $n$.}
+\pd
+
+\sects{Storing data on tape}
+
+     Images and \uv\ databases are written to \indx{magnetic tape} by
+{\tt \tndx{FITTP}} for archival purposes and for transfer to other
+computers and sites.  Three FITS-standard formats are available,
+controlled through the adverb {\tt FORMAT}.  The preferred format is
+32-bit floating point (IEEE standard) format.  There are no dynamic
+range limitations in this format and, on many modern computers, no bit
+manipulation is required since they use IEEE floating internally.
+\iodx{tape}\iodx{backup}
+
+     Of the two integer formats, there is little reason to use the
+32-bit integer since it poses dynamic range, re-scaling, and other
+problems with no saving in space.  The 16-bit integer format uses
+16-bit signed 2's complement integers to represent the data.  Such
+numbers are limited to the range -32768 to 32767.  {\tt FITTP} has to
+find the maximum and minimum in the image and then scale the data to
+fit in this numeric range.  For images of limited dynamic range, this
+format is perfectly adequate.  In fact, {\tt \tndx{FITAB}} offers the
+option to reduce the dynamic range even further with the {\tt
+QUANTIZE} adverb.  For images written to FITS disk files, this allows
+for better compression before the files are transmitted over the
+Internet.  For high-dynamic range images, the 16-bit format may not be
+adequate. (The integer formats are no longer allowed for \uv\ data.
+More than one user has reduced all his ``good'' spectral channels to
+pure 0 by scaling all the \uv\ data to include one really horrendously
+bad sample.)  A less important benefit of the floating point format is
+that the numbers representing your data are recorded exactly on tape
+as they are stored on disk; there are no ``quantization errors''.
+This may be important for software development.
+
+     The preceding paragraphs do not tell the full story, however.
+The portion of the FITS standard used by {\tt FITTP} does not allow
+for \uv\ data on tape in a \indx{compressed format}. Instead, {\tt
+\tndx{FITTP}} expands the data into the uncompressed form and then
+writes the data on tape.  In the conversion, the real and imaginary
+values that were stored in one packed number are expanded into three
+real values --- one each for real, imaginary and weight terms --- and
+the weight and scale random parameters are removed since they are no
+longer required.  Consequently, the compressed data are expanded to
+$$
+    \lbrace (\#~random~parameters - 2 ) + \lbrack (\#~pol) \times
+        (\#~IFs) \times (\#~frequencies) \times 3 \rbrack \rbrace
+      \over
+     \lbrace (\#~random~parameters) + \lbrack (\#~pol) \times (\#~IFs)
+       \times (\#~frequencies) \rbrack \rbrace
+$$
+the original size  (where $\#~random~parameters$ is the original
+number in the compressed database).
+
+     As an example, let us consider a multi-source spectral-line
+database stored on disk in \indx{compressed format}.  The data set has
+seven channels each at 2 IFs with 2 polarizations.  There are nine
+random parameters and 834031 visibilities.  From \Sec{Sizeuv}, we can
+calculate the size of the \uv\ file to be 123~Mbytes.  (Remember, this
+doesn't include any of the extension files, some of which might be
+several Mbytes in size.)   Before the file is written to tape in
+32-bit floating format, it is first expanded by a factor of
+$$
+ {\lbrace (9 - 2) + \lbrack 2 \times 2 \times
+                                      7 \times 3 \rbrack \rbrace
+\over
+\lbrace 9 + \lbrack 2 \times 2 \times 7 \rbrack \rbrace}  = 2.333 \, .
+$$
+Consequently, the data will occupy
+$$
+   {{123 \times 2.333}} \rm\, Mbytes  = 287\rm\, Mbytes
+$$
+on tape.  In other words, this database and all the associated
+extension files will not fit on a standard, 6250~bpi tape even using
+{\tt \tndx{BLOCKING} = 10}, but modern tape technology solves this
+problem.\iodx{tape}\iodx{backup}\iodx{magnetic tape}
+
+     Note that {\tt FITTP} writes history file data into the FITS
+header and writes table extension files as extensions after the main
+image or data set within the same tape file.  Plot ({\tt PL}) and
+slice ({\tt SL}) files are not saved to tape.\iodx{plot file}
+
+    Task {\tt FITAB} uses ``binary tables'' to represent visibility
+data rather than the old, mildly deprecated ``random groups'' form of
+the FITS format.  This has several advantages for $uv$ data.  It
+allows compressed data to be recorded in that form exactly (except for
+byte-order questions which should not concern the reader).  It also
+allows the data and attached tables to be divided into pieces which
+will reduce the size of files to be copied over the Internet, making
+copying and tape storage somewhat more reliable.  The principal
+disadvantage of {\tt FITAB} $uv$ data output is that only two packages
+can read it so far.  The one ``outside'' package that reads the format
+is {\tt obit} available from Bill Cotton at NRAO Charlottesville.
+
+\subsections{DAT and Exabyte tapes}
+
+     The arrival of modern tape technologies has hastened the demise
+of 9-track tapes.  First \indx{Exabyte (8mm)} and then \indx{DAT
+(4mm)} have provided much higher storage capacities than the 9-track
+tapes and have also provided faster seeks between file marks and
+greater data reliability.  The new technologies are very much cheaper
+as well, in part because they have been adopted by the PC market.
+They are both technically quite complex internally.  The DAT tape has
+a ``system log'' area at the beginning which allows for the fast
+seeks.  It is a bit fragile, however, since it is updated when the
+tape is unloaded and hence can be incorrect if there is an unfortunate
+power failure.  Both technologies are still evolving and both now
+offer various data encoding/compression options.  Unfortunately, the
+data compression techniques vary considerably with tape model and
+manufacturer and hence should not be used to archive or transport
+data.  The data are blocked on the tapes by means known only to the
+manufacturers and are not significantly under user control.  It is
+still probably good to use a large {\tt \tndx{BLOCKING}}, but only for
+I/O transfer reasons.  The EOF marks can be expensive on these tape
+devices.
+
+      Exabytes at low density have a capacity of about 2.2 Gbytes on a
+112m tape and use about 1 Mbyte (or maybe even 4 Mbytes) for each EOF
+mark.  The large size of the EOF limits the number of files you can
+write rather significantly.  The EOFs are also slow to process
+mechanically.  Exabytes at high density have a capacity of 4.5 Gbytes
+on a 112m tape and use 48 Kbytes per EOF mark.  DATs have a capacity
+of 2.0 Gbytes on a 90m tape, but also come in 60m and 120m sizes.  The
+EOF mark size is not readily available, but is probably no more than
+48 Kbytes.  The early warning of the end-of-medium is 40 Mbytes before
+the actual end of tape.
+
+\Sects{Very large data sets}{LargeData}
+
+     {\tt \tndx{FITTP}} and {\tt \tndx{FITAB}} cannot write
+multi-volume tapes.  Some spectral-line and VLBA databases (and
+perhaps some continuum databases) may be so large that the file cannot
+fit on one modern tape even with {\tt BLOCKING = 10}.  What can you do
+to \indx{backup} your data?  The simplest solution is to use {\tt
+\tndx{FITAB}}\@.  This task can write \uv\ data in compressed form and
+can break up a data set into ``pieces.''  You write as many pieces as
+will fit on the first tape, noting what the piece number is when the
+end-of-tape is reached.  You can then tell {\tt FITAB} to begin with
+that piece number on the next tape ({\tt BDROP = {\it n\/}-1} where
+{\it n\/} is the number of the piece that encountered the
+end-of-tape).  Unfortunately, the FITS format used by {\tt FITAB},
+while perfectly legitimate, is only understood by \AIPS\ versions
+beginning with {\tt 15APR99}\@.  Furthermore, {\tt FITAB} output is
+only understood by \AIPS\ and {\tt OBIT}\@.  If the data set is so
+large that it will not fit on the required tape device using {\tt
+FITTP} or the data must be taken to a system that does not understand
+{\tt FITAB}'s format, there are several approaches that you can adopt.
+
+     First, you could {\tt \tndx{SPLIT}} out the database into {\it
+single-source} databases and back each of these up individually.
+Alternatively, you could subdivide the large database in several
+smaller databases with {\tt \tndx{UVCOP}} by specifying a different
+time range for each of the smaller databases and then back these up
+individually.  Another way to solve the problem is to realize that the
+calibration and flagging information that you have carefully generated
+during the calibration is contained in the extension tables   --- the
+raw data that you loaded is not modified until you finally {\tt SPLIT}
+out the individual sources.  Consequently, you can write create a
+dummy \uv\ database to which all the extension tables are attached
+with the task {\tt \tndx{TASAV}}, then save this ``database'' on tape
+with \hbox{{\tt FITTP}}.  The raw visibilities can be saved in the
+form of copies of the archive tapes.
+
+\sects{Additional recipes}
+
+% chapter F *************************************************
+\recipe{Banana stuffing}
+
+\bre
+\Item {Pare and rub  4 {\bf bananas} through a sieve into bowl.}
+\Item {Add 1/2 grated {\bf onion}, 1 {\bf green pepper} chopped fine,
+     3 tablespoons finely  chopped {\bf parsley}, 4 slices cooked {\bf
+     bacon} chopped fine, 1 1/4 cups {\bf bread crumbs}, pinch of {\bf
+     thyme}, 1 teaspoon {\bf salt}, and 1 {\bf egg}.}
+\Item {Mix thoroughly, fill 1 {\bf chicken}, and roast in the usual
+     manner.}
+\ere
+
+% chapter F *************************************************
+\recipe{Banana nut bread}
+
+\bre
+\Item {Cream 1 cup {\bf sugar} and 1/2 cup {\bf margarine}
+      together.}
+\Item {Add 2 {\bf eggs}, 2 cups {\bf flour}, 1/2 teaspoon {\bf
+      salt}, and 1 teaspoon {\bf baking soda} and mix thoroughly.}
+\Item {Add 1 cup chopped {\bf nuts} (walnuts or pecans), 3/4 cup
+      mashed {\bf bananas}, and, lastly, 4 teaspoons {\bf sour
+      milk} and mix well.}
+\Item {Put in greased loaf pan.}
+\Item {Bake in \dgg{350} oven for 1 hour.}
+\ere
+

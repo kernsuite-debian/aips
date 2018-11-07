@@ -1,0 +1,375 @@
+; ACSCL
+;---------------------------------------------------------------
+;! Corrects cross amplitudes using auto correlation measurements
+;# Task UV VLBI CALIBRATION
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2014, 2016, 2018
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+ACSCL     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+ACSCL     Correct cross correlations using auto correlations
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+FLAGVER          -1.0              Flag table version to apply
+                                   0 -> highest
+TIMERANG                           Timerange:
+                                    1-4 = start day,hr,min,sec
+                                    5-8 = end   day,hr,min,sec
+SOLINT                             Solution interval (min)
+                                   > 0 => ignore scans
+                                   < 0 => SOLINT=ABS(SOLINT)
+                                   and average is terminated
+                                   at the end of scans
+                                   0 => -2 min; see help
+SOURCES                            Source list
+QUAL            -10.0              Source qualifier -1=>all
+CALCODE                            Calibrator code '    '=>all
+SELBAND                            Bandwidth to select (kHz)
+SELFREQ                            Frequency to select (MHz)
+FREQID                             Freq. ID to select.
+SUBARRAY          0.0              Subarray, 0 -> all
+DOCALIB           1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL (or SN) table to apply
+DOPOL            -1.0       10.0   If >0 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+DOBAND            1.0       10.0   If >0 apply bandpass cal.
+                                   Method used depends on value
+                                   of DOBAND (see HELP file).
+BPVER                              Bandpass table version
+SMOOTH                             Smoothing function. See
+                                   HELP SMOOTH for details.
+ICHANSEL                           Array of start and stop chn
+                                   numbers, plus a channel
+                                   increment and IF to be used
+                                   for channel selection in the
+                                   averaging. See HELP ICHANSEL.
+                                   Default = center 75% of band.
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+ACSCL
+Type: Task
+Use:  ACCOR corrects amplitudes in cross-correlation spectra due to
+      errors in sampler thresholds using measurements of
+      auto-correlation spectra.  Some correlators, e.g. JIVE, apply
+      this correction before writing out the data.  For them, ACCOR
+      should not be needed.  On the other hand, ACCOR should also be
+      benign since the auto-correlations should end up scaled to 1.0
+      and so cause essentially no correction to be made by ACCOR.  For
+      the VLBA correlators - both the older hardware correlator and
+      new software DiFX correlator - this correction is not done prior
+      to reading the data into AIPS.  For such data, ACCOR is
+      required.
+
+      The scaling of autocorrelation data may drift away from 1.0
+      later in the processing, for example, because of the choice of
+      normalization in BPASS.  ACSCL is designed to correct this drift
+      by applying all calibrations and making sure that the
+      autocorrelation data average 1.0.  Numerous "calibration"
+      adverbs are offered, although DOCALIB and DOBAND are forced to
+      true.  Otherwise, this task is ACCOR in disguise.
+
+      Note that this task should be used before APCAL since that will
+      make a CL table designed to scale the autocorrelations to the
+      SEFD.  Actually GAINUSE may point at a CL table prior to that
+      affected by APCAL even when APCAL has already been used.  The
+      added scaling may then be applied to the highest CL table
+      version with CLCAL.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  FLAGVER....Specifies the version of the flagging table to be applied.
+             0  => highest numbered table.
+             <0 => no flagging to be applied.
+  TIMERANG...Time range of the data to be used. In order: Start day,
+             hour, min. sec, End day, hour, min. sec. Days relative to
+             reference date.
+             TIMERANGE = 0  => All available data are used
+  SOLINT.....The solution interval (minutes). The mean values of
+             spectra are averaged through the SOLUTION intervals
+             following the start time in TIMERANGE. If SOLINT is more
+             than the range of times in TIMERANG, the time of
+             averaging is equal to the range of times in TIMERANG.
+
+             If SOLINT > 0, the averaging does not pay attention to
+             scan boundaries and several scans inside SOLINT may be
+             averaged together.  The averaging in this case may
+             include more than one source ID or/and frequency ID.
+             The source ID and frequency ID written to the output SN
+             table is the same for the all rows of the SN table and
+             equal 0.  Use CALSOUR = '' when running CLCAL to convert
+             this SN table to the relevant CL table.
+
+             If SOLINT < 0, ABS(SOLINT) is used as the average
+             interval and averaging is terminating at the end of the
+             scan.  The correct source IDs and frequency IDs appear in
+             the output SN table for the each averaged interval.
+             CALSOUR can be used in CLCAL to select calibrators in
+             this case.  Because of the gaps between scans, small
+             intervals can appear at scan ends.  Intervals less than
+             0.1*MIN(SOLINT, scan length) are not recorded to the
+             output SN table.
+
+             0 => -2 min
+  SOURCES....Source list.  The task loops over all sources specified.
+             '*' = all; a "-" before a source name means all except ANY
+             source named.
+  QUAL.......Only sources with a source qualifier number in the SU table
+             matching QUAL will be used if QUAL is not -1.
+  CALCODE....Sources may be selected on the basis of the calibrator code
+             given in the SU table.
+                  '    ' => any calibrator code selected
+                  '*   ' => any non blank code (cal. only)
+                  '-CAL' => blank codes only (no calibrators)
+                  anything else = calibrator code to select.
+             NB: The CALCODE test is applied in addition to the other
+             tests, i.e. SOURCES and QUAL, in the selection of sources
+             to process.
+  SELBAND....Bandwidth of data to be selected. If more than one IF is
+             present SELBAND is the width of the first IF required.
+             Units = kHz. For data which contain multiple
+             bandwidths/frequencies the task will insist that some form
+             of selection be made by frequency or bandwidth.
+  SELFREQ....Frequency of data to be selected. If more than one IF is
+             present SELFREQ is the frequency of the first IF required.
+             Units = MHz.
+  FREQID.....Frequency identifier to select (you may determine which is
+             applicable from the OPTYPE='SCAN' listing produced by
+             LISTR). If either SELBAND or SELFREQ are set, their values
+             override that of FREQID. However, setting SELBAND and
+             SELFREQ may result in an ambiguity.  In that case, the task
+             will request that you use FREQID.
+  SUBARRAY...Desired subarray - 0 => loop over all subarrays.
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....version number of the CL table to apply to multi-source
+             files or the SN table for single-source files.
+             0 => highest.
+  DOPOL......If > 0 then correct data for instrumental polarization as
+             represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  BLVER......Version number of the baseline based calibration
+             (BL) table to appply. <0 => apply no BL table,
+             0 => highest.
+  DOBAND.....> 0 is not an error if there is no BP table, but this
+                 task is really designed to be used after there is a
+                 bandpas correction.
+             If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+  BPVER......Specifies the version of the BP table to be applied
+             0 => highest numbered table.
+             <0 => no bandpass correction to be applied.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             The elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+  ICHANSEL...Array of start and stop channels plus a channel increment
+             and IF, used to select the channels to be averaged.  For
+             instance, if you wished to exclude channels 1 - 10 and
+             121 - 128 because of bandpass effects, and channels 56 -
+             80 of IF 1 but not IF 2 because of interference, then you
+             would set ICHANSEL = 11,55,1,1, 81,121,1,1, 11,121,1,2.
+             If you only wished to use every other channel from the
+             second IF then you would set ICHANSEL = 11,55,1,1,
+             81,121,1,1, 11,121,2,2.  Up to 20 groups of start, stop
+             and increment channel numbers plus IF numbers can be
+             specified. The default (ICHANSEL = 0) is to average the
+             center 75% of the band, i.e.
+             ICHANSEL(1,1) = (# channels)/8 + 1
+                       For example: # channels=16 => ICHANSEL(1,1)=3
+             ICHANSEL(2,1) = (# channels + 1)*7/8
+                       For example: # channels=16 => ICHANSEL(2,1)=14
+             ICHANSEL(3,1) = 1
+             ICHANSEL(4,1) = 0 (meaning all IFs).
+             If ICHANSEL describes averaging explicitly for some IFs,
+             but skips other IFs, then the center 75% of the band is
+             averaged for the skipped IFs.  For example:
+             ICHANSEL=2,6,1,2 => The channels 2-6 will be averaged for
+             IF=2 and the center 75% of the band will be averaged for
+             the rest of the IFs.
+  BADDISK....The disk numbers to avoid for scratch files (sorting
+             tables mostly).
+----------------------------------------------------------------
+ACSCL: Task to correct amplitudes distorted by errors of samplers.
+Documentor:  L.R. Kogan
+RELATED PROGRAMS: FITLD, ACCOR
+
+                          PURPOSE
+
+Calibration of a cross correlation spectrum supposes knowing parameters
+of samplers (digitizers in particular). Unfortunately these parameters
+are not identical to optimal ones and their real values are not known
+with enough accuracy. As a result the cross correlation spectrum
+amplitudes are measured with errors. These errors can be estimated
+having measured the mean value of auto correlation spectrum of a given
+interferometer's antennas. The theory of this correction is given by
+L. Kogan in VLBA SCIENTIFIC MEMO #9, 1995.
+
+The task estimates the mean values of the auto correlation spectra of
+all antennas of a given VLBI network and records them in a new SN table.
+The following application of the correction is provided by standard
+procedure of applying the SN table to an CL table (CLCAL) and following
+application this table with DOCALIB = 1 in relevant tasks.
+
+Some correlators apply this correction to the data before writing them
+out - notably the EVN JIVE correlator.  The VLBA hardware and software
+(DiFX) correlators do
+NOT apply this correction to the data.  Therefore, ACSCL is required
+for the VLBA correlators and any others that do not apply the
+correction.  ACSCL should be benign (do nothing) for those correlators
+that do apply the correction prior to reading the data into AIPS.
+Note that you can always run ACSCL and look at the SN table produced
+with PRTAB or SNPLT to see if it was benign or not.
+
+                          COMMENTS
+
+This method of correction is especially effective in the case of TWO
+bits (FOUR levels) digitizers. Uncorrected amplitudes of cross
+correlation spectra can differ from real ones in this case up to 25%.
+The correction can minimize the errors to a bit of percent.
+The behavior of the samplers' errors is unknown. In many cases it is
+stable for hours for a given sampler. But cases of minute changing can
+not be excluded. The default value of SOLINT is 60 minutes. But smaller
+value 5-10 minutes can be recommended as well.
+The correction quality can be checked by POSSM (for example) with
+DOCALIB=1 and GAINUSE equaled to the CL table number gotten from
+ACSCL's SN table.
+The mean values of all auto correlation spectra would be close to unit.
+  The task corrects other small errors of spectrum amplitudes caused by
+other errors besides samplers errors.
+  The task requires TB order of data. If it is not the task UVSRT has
+to be applied to the data early.
+
+                   COMMENTS FOR ACSCL BY CRAIG WALKER
+
+The data from the correlator are correlation coefficients - the ratio of
+the correlated power to the noise power.  The apriori calibration
+process can be considered to have two major steps.  The first is to
+adjust the data for all of the effects introduced by the various bits of
+hardware in the system, mainly the analog and digital filters.   The
+second step is to multiply by the SEFD - the ratio of Ts/gain which
+converts power to flux density.  That second step might also include
+some corrections for propagation effects like opacity.
+
+The autocorrelations are a measure of the total power in the system.
+For the second step to work properly, the net effect of the various
+corrections for instrumental effects should produce autocorrelations
+that are unity across the portion of the bandpass of interest.  Then,
+after multiplying by the SEFD, the autocorrelation amplitudes will be
+the SEFD, which is the desired situation.  The same scaling of cross
+correlations will produce the calibrated flux density.
+
+One of the first calibration steps for VLBI data is to run ACCOR.
+That has the effect of making the average of the autocorrelations
+unity, but  it does not correct for spectral shape.
+
+With BPASS in its current form, one can get unity calibration results
+for the autocorrelations by normalizing by power over the full band
+using autocorrelation based bandpasses.  Note that one might actually
+not want to normalize at all to force the results to unity, but it
+doesn't really matter because ACCOR has already forced the average to
+unity.  The problem with this method is that the autocorrelations do
+not contain information about the phase bandpass, and one really wants
+to calibrate the phases along with the amplitude.
+
+If one uses strong-source cross correlation data to derive the
+bandpasses, complete with phases, and normalize on power across the
+full band, you get close.  But there are aliasing effects in the edge
+channels that cause the bandpass shape in the autocorrelations to be
+somewhat different, in those channels, from the cross correlation
+bandpass.  The autocorrelations are higher in the edge channels
+because the aliased signals don't correlate.  This effect is stronger
+for the PFB, with soft edge filters, than the DDC or the legacy system
+with harder edged filters.  The result is that, when the
+cross-correlation derived bandpass is applied to the autocorrelations,
+the values over the central channels that you want to keep are
+slightly suppressed.  In my test data, the average value is 0.977 for
+the PFB and 0.993 for the DDC. One can use CLCOR with the power gain
+option (new) to correct that and get good calibration.  But it would
+be nice to not have to do the CLCOR correction.
+
+In principle, one could run BPASS with autocorrelation based
+bandpasses, apply that, and make an incremental cross-correlation
+bandpass and it should work.  But AIPS is not set up to do that
+conveniently.  One would have to make a new file with the calibration
+applied after the first BPASS.
+
+What would be most convenient, I believe, is for BPASS to make a cross
+correlation based bandpass, apply it to a the autocorrelations, and
+determine the average result over the selected channels, probably not
+including the edge channels.  Then the normalization would be to cause
+those autocorrelation channels to come out 1.00 on average (and
+individually to within the noise).  This would introduce the
+complexity of having to read the crosscorrelations, determine the
+bandpass shapes, read the autocorrelations, apply the bandpass,
+determine the average in the selected channels, then apply to the
+bandpass the normalization required to make that average unity.  The
+program would thus have to deal with both cross and autocorrelations,
+which it probably does not do now.  But the end results, I think, is a
+proper calibration to do in preparation for the scaling by the SEFD to
+convert correlation coefficients to Jy.
+
+
+

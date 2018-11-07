@@ -1,0 +1,546 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2018
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+\setcounter{chapter}{21}
+\APPEN{VLA-specific programs in \AIPS}{VLA Maintenance Tasks in \AIPS}{VLAtasks}
+\renewcommand{\Chapt}{35}
+
+\renewcommand{\titlea}{31-December-2018 (revised 24-August-2018)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+Most tasks in \AIPS\ are designed to work for a generalized
+interferometer or single-dish.  However, a number of tasks have been
+written specifically at the behest of scientists supporting the
+calibration and maintenance of the VLA and \indx{EVLA}\@.  These include
+a task to read the ``telcal'' text file to prepare an initial solution
+({\tt SN}) table, a task to solve for antenna position corrections
+from appropriate solutions in an {\tt SN} table, a task to fit
+corrections to the antenna pointing model from a file produced by the
+on-line system in pointing mode, and several tasks to process
+holography data up to and including a map of the corrections to be
+applied to the antenna panels.  This appendix is an attempt to
+document such tasks.  Note that {\tt TLCAL} is a task which may be of
+interest to general VLA users.  The antenna location task {\tt LOCIT}
+and the holography tasks may well be of interest to scientists
+maintaining interferometers other than the VLA\@.  However, the
+pointing task {\tt PEEK} will probably be of use only to people tasked
+with maintaining the VLA\@.
+
+\Sects{Real-time calibration tables: {\tt \Tndx{TLCAL}}}{TLCAL}
+
+The VLA on-line system determines antenna-based complex gain and delay
+values for the average of every calibrator scan.  These are written
+into a text file which is stored at the VLA site on a computer named
+{\tt mchammer}.  The actual file name is\\
+\centerline{{\tt /home/mchammer/evladata/telcal/{\it year}/{\it
+      month}/{\it asdmfile}.GN}}\\
+where {\it year} is the four-digit year, {\it month} is the two-digit
+month, and {\tt asdmfile} is the long complicated name assigned to the
+particular scheduling block.  It is possible to read such files
+directly from computers in Socorro and {\tt 31DEC18} task {\tt TLCAL}
+supports such access.  The text file may also be copied by, for
+example, the analysts and made available to users in Socorro and
+elsewhere.  The gains in the telcal file all assume that every source
+is 1.0 Jy in all spectral windows.  If you have run {\tt SETJY} on
+your data set before using {\tt TLCAL}, then you can adjust the gains
+of the known flux calibrators using the fluxes stored in the source
+({\tt SU}) table.  In this case, the {\tt SN} table produced will be
+ready for use with {\tt GETJY}\@.
+
+To run {\tt TLCAL} on a file in your data area, enter
+\dispt{TASK\qs 'TLCAL' \CR}{}
+\dispt{INDI\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify the data
+       set.}
+\dispt{DOAPPLY\qs 1 \CR}{to use the fluxes in the source table.}
+\dispi{ASDMFILE(1) = 'MYAREA: \CR}{two parts are concatenated.}
+\dispil{ASDMFILE(2) = 'TSUB0001.sb23643640.eb23666175.56454.14034020834
+       \CR}{}
+\dispt{INP \CR}{to check that you remembered to leave off the close
+       quotes above.}
+\dispt{GO \CR}{to run the task.}
+\dispe{Substitute your file name parameters for those used above and
+  leave off the {\tt .GN} part of the name and the close quotes (to
+  preserve your desired case).  It would be wise to check the {\tt SN}
+  table produced with, \eg\ {\tt SNPLT}\@ .  Bad RFI may render some
+  telcal values bogus.}
+
+The Telcal file is text file with very long lines beginning with 3
+header lines.  Then there are columns for MJD (to high accuracy), UTC
+(sexagesimal), LST (days), LST (sexagesimal), IFID (5-character
+string), Sky frequency (MHz), Antenna ID (\eg\ {\tt ea03}), gain
+amplitude, phase(degrees), residual, delay (ns), flagged (true/false),
+zeroed (true/false). hour angle (radians), azimuth (radians),
+elevation (radians), source name, and flag reason.  {\tt TLCAL} uses
+the MJD, antenna, amplitude, phase, delay, flagged, and source
+columns.  A combination of the IFID (peculiar to the EVLA) and the sky
+frequency is used to identify the IFs to which these apply.
+
+\vfill\eject
+\Sects{Correcting antenna positions: {\tt \Tndx{LOCIT}}}{LOCIT}
+
+     The data taken for pointing analysis after antennas have been
+moved is now also used to determine corrections to the assumed antenna
+locations.  The data are loaded into \AIPS\ using {\tt BDF2AIPS} in
+the usual way, but {\tt DOKEEP = 1} is required in order to load
+pointing data.  Then {\tt FRING} is run on one scan from a strong
+source with {\tt SOLINT = 5} minutes and with no rates ({\tt DPARM(9)
+= 1})\@.  Then {\tt CLCAL} is used to apply the {\tt SN} table
+to all times in the {\tt CL} table.  Then the data set is reduced in
+size by running {\tt SPLAT}, averaging in frequency and time:\iodx{EVLA}
+\dispt{DEFAULT SPLAT \CR}{to initialize the adverbs}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify the data
+       set.}
+\dispt{OUTDISK\qs INDISK \CR}{to keep on same disk.}
+\dispt{APARM\qs 3, 1, 0, 0, 1 \CR}{to average data in frequency, but
+       not over IF\@.  The input data are taken at 1-second
+       interval.}
+\dispt{DOCAL\qs 1 ; GAINU\qs 0 \CR}{to apply the calibration.}
+\dispt{CHANNEL\qs 64 ; CHINC\qs 0 \CR}{to average all spectral
+       channels together.}
+\dispt{SOLINT\qs 5/60 \CR}{to average over time to 5-second
+       intervals.}
+\dispt{INP \CR}{to check the inputs.}
+\dispt{GO \CR}{to make a rather smaller data set.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it j\/} \CR}{to specify the averaged
+       data set.}
+\dispt{INEXT\qs 'NX' ; INVERS\qs 0 ; EXTDEST \CR}{to delete the index
+       table which has each direction of the pointing as a separate
+       scan.}
+\dispt{DEFAULT 'INDXR'}{to initialize everything.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it j\/} \CR}{to specify the averaged
+       data set.}
+\dispt{CPARM\qs 0 , 10 \CR}{to set maximum scan length to 10 minutes.}
+\dispt{GO \CR}{to make the new index table.}
+\dispe{It might be wise to make a backup copy of the data set at this
+point in case later machinations go wrong.  Use {\tt UVCOP}\@.}
+
+     A solution table is now needed containing the phases of every
+scan in the data set.  Use
+\dispt{DEFAULT CALIB \CR}{to initialize the task and adverbs.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it j\/} \CR}{to specify the averaged
+       data set.}
+\dispt{SOLINT\qs 10 \CR}{to average full scans.}
+\dispt{APARM\qs 3, 0 \CR}{to require at least 3 antennas, but do {\it
+       not} average polarizations or IFs.}
+\dispt{SOLTYPE\qs 'L1R' ; SOLMODE\qs 'P' \CR}{to solve for phases only
+       with recursive L1 methods.}
+\dispt{DOCALIB\qs 1 ; GAINUS\qs 0 \CR}{to apply calibration, a no-op
+       at this stage.}
+\dispt{SNVER\qs 0 ; REFANT\qs {\it nn} \CR}{to create a new solution
+      table and to select a reference antenna ({\it nn})}
+\dispt{INP \CR}{to double check.}
+\dispt{GO \CR}{to make the solution table needed next.}
+
+Finally, fit the antenna positions.  It is best to do each IF
+separately and also try the mode that uses the phase difference
+between IFs.
+\dispt{DEFAULT LOCIT \CR}{to initialize things including {\tt DOTV}
+       false, and {\tt REFANT 0}.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it j\/} \CR}{to specify the averaged
+       data set.}
+\dispt{BIF\qs 1 ; EIF\qs BIF \CR}{to examine one IF at a time.}
+\dispt{STOKES\qs 'RR' \CR}{to examine one polarization at a time.}
+\dispt{DPARM\qs 0, 1, 10, 120 \CR}{to use each scan by itself (rather
+       than differencing consecutive scans), do not fit the {\tt K}
+       term, and limit the fit to elevations between 10 and 120
+       degrees.  All hour angles and declinations are used.  The total
+       phase is used.}
+\dispt{BPARM\qs 3, 0, -180, 180, 3, 4, 1, 3 \CR}{to plot 3 antennas
+       per page between -180 and 180 degrees as boxes with connecting
+       lines, and, if doing more than 1 IF or polarization, plot them
+       in the same plot.}
+\dispt{DOOUTPUT\qs -1 \CR}{to ignore any values contained in
+       pre-existing files named {\tt OUTPRINT.}{\it arrayname}.
+       If this file exists before running {\tt LOCIT} and {\tt
+       DOOUTPUT} $> 0$, it will be read and the corrections contained
+       within it added to those found before they are written to a new
+       {\tt OUTPRINT.}{\it arrayname} file and also to the other
+       output files.  See {\us HELP LOCIT \CR} for details.}
+\dispt{OUTPRINT\qs 'FITS:{\it date}' \CR}{to set the output file base
+      {\it name} used for output text files.}
+\dispt{INP \CR}{to check that all is well.}
+\dispt{GO \CR}{to run the task.}
+\dispe{Then do}
+\dispt{STOKES\qs 'LL' ; GO \CR}{to redo with the other Stokes.}
+\dispt{BIF\qs 2; EIF\qs BIF \CR}{to redo with the second IF.}
+\dispt{STOKES\qs 'RR' ; GO \CR}{to redo with the other Stokes.}
+\dispe{Now compare the answers and uncertainties found in each of the
+four runs.  Also it may be good to do}
+\dispt{BIF\qs 1; EIF\qs 2 \CR}{to include both IFs.}
+\dispt{STOKES\qs 'RR' \CR}{to do one Stokes at a time.}
+\dispt{BPARM(9)\qs 1 \CR}{to select the mode which uses the phase
+      difference between the 2 IFs.}
+\dispt{GO \CR}{to get a fifth estimate of the antenna position
+      corrections.}
+\dispe{Repeat for {\tt STOKES 'LL'}\@.}
+
+Now comes the hard part.  {\tt \Tndx{LOCIT}} will have created a great
+many plot files, an example of which is shown in
+Figure~\ref{fig:locit}.  It also writes text files named {\tt
+OUTPRINT} with extensions:\iodx{EVLA}\\
+\centerline{\begin{tabular}{l@{\extracolsep{2em}}p{4.5in}}
+{\tt FIT} & {This file contains all solutions with their uncertainties
+in a form that is easy to read.  It may be used to accumulate
+corrections depending on the setting of {\tt DOOUTPUT}.}\\
+{\tt EVLA} & {This file contains only significant corrections in a
+form that can be hand edited to put in the dates when the antennas
+move and when the database is fixed.  The edited result may be edited
+to a system file on the web to enable {\tt VLANT} to apply the
+appropriate corrections.}\\
+{\tt PAR} &{This file, containing only significant corrections, is
+read into Parminator to update the database.}\\
+{\tt 001} & {This file contains only significant corrections in a
+script form to read into {\tt CLCOR}.  Do this, to make a new {\tt CL}
+table and then rerun {\tt CALIB} to see if the resulting phases really
+end up near zero.}
+\end{tabular}}
+You will need to review the plots ({\tt TVPL} is helpful) and study
+the {\tt .FIT} file to decide which antennas have significant
+corrections that need to be made.  You will almost certainly need to
+edit the {\tt .001} file and then apply it to your averaged data set.
+Repeat {\tt CALIB} and then examine the resulting {\tt SN} table with
+{\tt EDITA} or {\tt SNPLT}\@.  If things worked well, then edit the
+{\tt .PAR} and {\tt .EVLA} files to match.
+
+\begin{figure}
+\centering
+\resizebox{\hsize}{!}{\gbb{540,405}{locit}}
+\caption[Example {\tt LOCIT} plot]{Example of the residual phases
+after a {\tt \Tndx{LOCIT}} solution is applied to the input {\tt
+SN}-table phases.  The solutions for antennas 14 and 15 are fine, but
+antenna 16 did not converge to a correct solution.  The data from both
+IFs and both polarizations were used in this run of {\tt LOCIT} and
+are represented by different colors in the plot.\iodx{EVLA}}
+\label{fig:locit}
+\end{figure}
+
+\vfill\eject
+\Sects{Improving antenna pointing: {\tt \Tndx{PEEK}}}{PEEK}
+
+When the EVLA on-line system conducts a pointing observation, be it
+for a long series of such observations after antenna moves or a
+single observation to be applied to the next target source, the
+software updates a text file with extension {\tt .PNT}\@.  These files
+may be copied from the computers at the VLA and then analyzed to
+determine increments to the parameters of the pointing model.  This
+analysis was done with a program called {\tt peek} available from Ken
+Sowinski's disk area.  In {\tt 31DEC18}, that program has been adapted
+to run as an \AIPS\ task.  The method of setting the input parameters
+was changed to be the familiar \AIPS\ methods, the program was given
+the option to make \AIPS-style plots in addition to the {\tt gnuplot}
+files, and has the option to suppress some of the output text files.
+
+An example usage would be
+\dispt{DEFAULT PEEK \CR}{to initialize the task name and all adverbs.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify an arbitrary
+       catalog entry to which plot files are attached.  It may be
+       omitted if {\tt DOPLOT}$ \leq 0$ or {\tt DOTV = 1}.}
+\dispi{ASDMFILE(1) = 'MYAREA:peek/ \CR}{two parts are concatenated.}
+\dispi{ASDMFILE(2) = 'PX8262 \CR}{file renamed to useful name size}
+\dispt{DOPLOT\qs 1 ; DOTV\qs 1 \CR}{to make \AIPS\ plots on the TV
+       display.}
+\dispt{INP \CR}{to check the inputs.}
+\dispt{GO \CR}{to run the task.}
+\dispe{Do not include the {\tt .PNT} extension in {\tt ASDMFILE}; the
+task will add it.  Adverb {\tt APARM} is used to set data and output
+selection parameters.  The defaults are to include all dates, to
+include elevations between 7 and 122 degrees, to include all samples
+with amplitude $> 0.01$, to omit samples with wind speed $> 5$ m/s, to
+include normalized beamwidths between 0.95 and 1.15, and to write the
+filtered change file only when the change is $> 0.1$ arc minutes and
+$> 3$ times the uncertainty.\iodx{EVLA}}
+
+Adverb {\tt FPARM} is used to determine which parameters the task
+determines, with the default being the usual set (Tilt, Azzero, Elzero,
+Colima, and Refrac).  {\tt FPARM} can be, but is normally not, used to
+attach the tilt to the antenna rather than the pad and to suppress the
+writing of various output text files.  These text files are written to
+the disk area which is the ``root'' directory of the {\tt ASDMFILE}
+adverb --- {\tt MYAREA:peek/} in the example above.  The output files
+are named with {\tt ASDMFILE} and extensions {\tt .PTR} (large overall
+summary), {\tt .gp} ({\tt gnuplot} plotting instructions), {\tt
+.changes} (all of the adjustments found), and {\tt .filtchg} (those
+adjustments that are deemed significant).  In addition, files are
+written named {\tt ant$nn$.dat} that include all relevant parameters
+for all antennas which have been fit and which are used by {\tt
+gnuplot}.
+
+You can use the {\tt .gp} file by typing {\tt gnuplot} followed by the
+name of the {\tt .gp} file.  It will make a file named {\tt plot.ps}.
+Adverb {\tt DOPLOT} may be used to request \AIPS-style plots with
+substantially better control, using {\tt DPARM}, over symbol types,
+sizes, and colors.  In both styles of plotting, six plots appear on
+each plot page showing measured and residual azimuth and elevation
+corrections plotted against azimuth, elevation, and relative time.
+You may plot these on the TV or make plot files, one for each antenna
+fit.  If using the TV, button {\tt D} tells the task to stop plotting
+but continue doing all the fits and text file outputs.  A new
+procedure to set colors for {\tt LWPLA} has been written called {\tt
+OKCOLORS}\@.  It sets the colors to useful values for plotting on a
+white background.  Black backgrounds use a lot of printer ink and so
+are less desirable when printing many plots.
+
+\vfill\eject
+\Sects{Improving antenna surfaces: \Indx{holography}}{holography}
+
+     In ``holography'' data from the \indx{EVLA}, reference antennas
+are pointed towards the nominal source position, as normal.  All
+other antennas are pointed to an offset position controlled by
+the observer.  The angular offset from the nominal position, for
+each antenna, is written to data sets in the same variables that are
+normally used for $u,v,w$.  In this mode, only data on a baseline
+between a reference antenna and an offset (non-reference) is
+considered useful.  The correlations observed on these baselines
+are stored in the multi-source file in the normal way.  Data are
+calibrated as usual and then extracted with {\tt \Tndx{UVHOL}} for
+holographic analysis.  This analysis includes determination of the
+shapes of the primary beams with {\tt \Tndx{PBEAM}}, Fourier analysis
+with {\tt \Tndx{HOLOG}} to make images of the dish surface including
+the deviations from the desired shape, and finally {\tt \Tndx{PANEL}}
+to prepare detailed prescriptions for adjusting the antenna panels.
+Verb {\tt \Tndx{TVLAYOUT}} plots an antenna panel layout on top of a
+TV holography image and has the layouts for the VLA and VLBA built in.
+
+     Holography data are taken by driving the moving antennas to a
+desired offset and then dwelling for a period of time, accumulating
+some number of samples.  Then the moving antennas are driven to the
+next desired offset, usually horizontally or vertically, and the
+process is repeated.  Holography samples are recorded with the $u$
+random parameter as the azimuth offset direction cosine, the $v$
+random parameter as the elevation direction cosine, and the $w$ random
+parameter as a counter of the dwell interval.  In the old VLA, the $w$
+had an additional 40000.0 added as a holography indicator.  With the
+EVLA, the source name is the sole method of discriminating between
+regular visibility data taken for calibration and the holography data.
+
+     {\tt \Tndx{UVHOL}} has three main modes of operation: printing
+the data much like {\tt UVPRT}, averaging and writing the data to text
+files for analysis by {\tt HOLOG}, and plotting the data in \AIPS\
+plot files or on the TV display.  {\tt UVHOL} has all of the usual
+data selection and calibration adverbs.  In addition it has a number
+of basic holography-specific adverbs.  {\tt ANTENNAS} is used to list
+the reference antennas and {\tt BASELINE} is used to list the moving
+antennas.  Since it takes some time for the antennas to settle down
+after each move, adverbs {\tt NPOINTS} or {\tt APARM(1)} through {\tt
+APARM(3)} control which samples within each pointing are retained.
+{\tt APARM} also controls whether the data are averaged over all
+moving antennas and/or all reference antennas and/or over time.
+Normally, holography data should not have the parallactic angle
+correction applied on {\tt DOPOL}, but it can be done if desired.
+{\tt DPARM} is used to advise the print routines on scaling of data
+and weights and also to invoke special plotting options (use db for
+amplitudes, plot phase or imaginary rather than amplitude/real).
+There are a number of the usual plot options, such as {\tt SYMBOL},
+{\tt DO3COL}, {\tt LTYPE}, and the like.  {\tt DOCRT} controls where
+the print out is sent, either to the terminal or to {\tt OUTPRINT}\@.
+
+     On {\tt OPTYPE='HOLG'} mode, the holography data are written to
+text files, a number of files for each pair of antennas.  Each line of
+these files, after a number of header lines, contains l, m, amplitude
+or real, phase or imaginary, error in amplitude or real, and error in
+phase or imaginary.  In this mode, {\tt OUTPRINT} specifies the
+logical directory name of the output files which are then named with
+an additional {\tt HOLO{\it nn}-{\it mmppii}} where {\it nn} is the
+reference antenna ({\tt BASELINE({\it j})} or 0 if multiple), {\it
+mm} is the antenna (or 0 if multiple), {\it pp} are 2 letters giving
+the polarization, and {\it ii} is the IF\@.  These files are then
+given to {\tt HOLOG}\@.
+
+An example of plotting one short raster at 4.8 GHz has inputs
+\dispt{DEFAULT UVHOL \CR}{to initialize the task name and all adverbs.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify the
+       holography data set.}
+\dispt{SOURCES\qs 'HOLORASTER' ' \CR}{to specify the standard
+       holography source name.  Required with EVLA data.  Note the
+       extra quote mark at the end which makes all the other values of
+       {\tt SOURCES} blank.}
+\dispt{STOKES\qs 'HALF'' \CR}{to plot RR and LL.}
+\dispt{ANTENNAS\qs 9,0 \CR}{to specify one reference antenna.}
+\dispt{BASELINE\qs 8,0 \CR}{to specify one moving antenna.}
+\dispt{ICHANSEL 5, 60 \CR}{to omit outer channels from the average.}
+\dispt{DOCALIB\qs 1 ; DOBAND\qs 1 \CR}{to apply the calibration.}
+\dispt{APARM\qs 1, 3, 2 \CR}{to include all but the first 3 samples
+       and last 2 in each pointing with no averaging.}
+\dispt{DPARM\qs 0 0 0 0 0 1 0 \CR}{to plot amplitudes in db.}
+\dispt{DO3COLOR\qs 1 \CR}{to plot the two polarizations in different
+       colors.}
+\dispt{OPTYPE\qs 'PLOT' \CR}{to make plots rather than output text.}
+\dispt{INP \CR}{to check the inputs.}
+\dispt{GO \CR}{to make the plot file shown in Figure~\ref{fig:uvhol}.}
+
+\begin{figure}
+\centering
+\resizebox{\hsize}{!}{\gbb{525,403}{uvhol}}
+\caption[Example holography raster]{Example of the amplitudes measured
+in a single holography scan as plotted by {\tt \Tndx{UVHOL}}\@.
+Antenna 8 moved in the {\tt L} coordinate while antenna 9 remained
+pointed directly at the source.  Both polarizations are plotted with
+multiple samples at each pointing (not averaged).}
+\label{fig:uvhol}
+\end{figure}
+
+Now, to continue the holography analysis, we write out the data in
+appropriate text files.  An example, would be\iodx{EVLA}
+\dispt{TGET\qs UVHOL \CR}{to get the previous parameters for {\tt
+       UVHOL}\@.}
+\dispt{OPTYPE\qs 'HOLG' \CR}{to set the holography mode.}
+\dispt{OUTPRINT\qs 'MYAREA:' \CR}{to set the logical directory for the
+       output text files.}
+\dispt{ANTENNAS\qs 1, 5, 9, 17 \CR}{to specify more of the reference
+       antennas.}
+\dispt{APARM\qs 1, 3, 2, 0, 1, 1 \CR}{to include all but the first 3
+       samples and last 2 in each pointing averaging over time within
+       the pointing and over all reference antennas.}
+\dispt{INP \CR}{to double check the inputs.}
+\dispt{GO \CR}{to write out the data for {\tt HOLOG}\@.}
+\dispe{This will write a file named {\tt MYAREA:HOLO00-08RR01} and one
+named {\tt MYAREA:HOLO00-08LL01}.  Note that we did not specify the
+one IF to be used, so IF number one was what we got. \Todx{UVHOL}}
+
+     {\tt \Tndx{HOLOG}} reads the visibility data from the text file
+produced by {\tt UVHOL}\@.  It then Fourier transforms the data to
+produce the grading in the aperture plane of the antenna.  Images of
+the re-gridded observed amplitude and phase ({\tt A\_AMP}, {\tt
+A\_PHA}), of the weights in the re-gridding ({\tt WGT}), of the derived
+amplitude and phase of the illumination in the antenna aperture ({\tt
+V\_AMP}, {\tt V\_PHA}), of the amplitude and phase of the point-spread
+function ({\tt P\_AMP}, {\tt P\_PHA}), of the phase corrections removed
+by the focus model ({\tt MODEL}), of the surface deviations of the
+antenna ({\tt V\_DEV}) in meters, and of the interpolated antenna
+power pattern ({\tt A\_PWR}) may be produced under control of adverb
+{\tt DPARM}\@.  Task {\tt PANEL} requires {\tt V\_AMP} ({\tt
+DPARM(4)}) for the mask and {\tt V\_DEV} ({\tt DPARM(9)} for the
+deviations.  An example of the images produced by {\tt HOLOG} is shown
+in Figure~\ref{fig:holog}.
+
+\begin{figure}
+\centering
+\resizebox{\hsize}{!}{\gbb{540,515}{holog}\hspace{0.5cm}\gbb{540,509}{hologdev}}
+\caption[Example {\tt HOLOG} images]{Example of the mask ({\tt V\_AMP})
+and deviation ({\tt V\_DEV}) images produced by {\tt HOLOG}\@.  Task
+{\tt GREYS} can do both the pseudo-coloring with {\tt OFMFILE =
+'RYPHLAME'} and the panel layout with {\tt INFILE = 'VLA'}\@.}
+\label{fig:holog}
+\end{figure}
+
+Many of the control adverbs must be set to appropriate values.  A
+sample set of inputs is\iodx{EVLA}
+\dispt{DEFAULT HOLOG \CR}{to initialize everything.}
+\dispt{INFILE\qs 'MYAREA:HOLO00-28RR01 \CR}{to point at the text file,
+       28 is the moving antenna with several reference antennas.}
+\dispt{OUTNAME \qs '28-Q2-40935E' \CR}{to name the output images.}
+\dispt{OPTYPE\qs 'SUBR' \CR}{to specify the type of antenna,
+       sub-reflector, sub-reflector with reference pointing, or primary
+       focus.}
+\dispt{FACTOR\qs 8.8 \CR}{to set magnification factor for sub-reflector
+       antennas; default 10.0.}
+\dispt{APARM\qs 0, -1, 25, 3.4, 9 \CR}{to set antenna outer diameter,
+       inner diameter, and focal length in meters.}
+\displ{BPARM\qs 30, 256, 0, 1, 1, -2, -2.5, -12, 100, -1 \CR}{to set
+       data reduction parameters.}
+\dispt{DPARM\qs 0 0 0 1 0 1 0 1 1 0 \CR}{to request {\tt V\_AMP}, {\tt
+       P\_AMP} , {\tt MODEL}, and {\tt V\_DEV} images.}
+\dispt{INP \CR}{to double check everything.}
+\dispt{GO \CR}{to make the images.}
+\dispe{{\tt BPARM} specifies the required image size in meters, the
+image size in pixels, minimum and maximum antenna scan angle,
+amplitude scaling factor, Fourier transform control (-2 says use DFT
+with VLA sign convention), minimum and maximum coordinate used in
+correcting for pointing, focus, and feed offset (negative says in the
+radial coordinate), a control parameter (100 inhibits local phase
+ambiguity correction in the {\tt V\_PHA} plane), and type of data (-1
+for VLA).  {\tt CPARM} all zero says to use the default spheroidal
+function in gridding on both {\tt L} and {\tt M} axes; highly
+recommended, but not relevant when using DFT imaging.  Note that {\tt
+\Tndx{HOLOG}} can also generate images from a feed model using {\tt
+VPARM}\@.}
+
+The last task in the process of measuring corrections to the antenna
+surface is {\tt \Tndx{PANEL}}
+\dispt{DEFAULT PANEL \CR}{to initialize everything.}
+\dispt{INDISK\qs {\it n\/} ; GETN {\it m\/} \CR}{to specify the {\tt
+       V\_DEV} image.}
+\dispt{IN2DI\qs {\it i\/} ; GET2N {\it j\/} \CR}{to specify the {\tt
+       V\_AMP} image used as a mask.}
+\dispt{OUTFILE\qs 'MYAREA:PANEL.out \CR}{to specify the text file to
+       receive the panel adjustment instructions.}
+\dispt{DOPLOT\qs 7 \CR}{to request plots of the input deviations, the
+       panel adjustments, and the residuals.}
+\dispt{APARM\qs 2, 1, 0, 0, 42 \CR}{To set the panel model, the clip
+       level in the mask image, and the number of pointings.  The map
+       size and frequency should be available from the image header.}
+\dispt{INLIST\qs '\qs' \CR}{to use the default VLA panel layout.}
+\dispt{INP \CR}{to review the inputs.}
+\dispt{GO \CR}{to fit the data, write the adjustment instructions, and
+       make plots.}
+\dispe{Example plots of the panel adjustments and residual are shown
+in Figure~\ref{fig:panel}.\iodx{EVLA}}
+
+\begin{figure}
+\centering
+\resizebox{\hsize}{!}{\gbb{540,566}{panel}\hspace{0.5cm}\gbb{540,566}{panelres}}
+\caption[Example {\tt PANEL} images]{Example of the panel adjustment
+image and the residual image computed and plotted by {\tt
+\Tndx{PANEL}}\@.}
+\label{fig:panel}
+\end{figure}
+
+\vfill\eject
+
+     With appropriate holography data, the output of {\tt
+\Tndx{UVHOL}} may also be used to fit an analytic function to the
+primary beam.  The task that does this is called {\tt PBEAM} and it
+fits a polynomial function and makes contour plots of the input data,
+the fit model, the residual, and {\tt IRING}-like plots comparing data
+and model in two colors, and then {\tt IRING}-like plots of the
+residual image and residual image divided by  the model.
+
+Sample inputs could contain
+\dispt{DEFAULT PBEAM \CR}{to initialize everything.}
+\dispt{OUTNAME\qs 'PBEAM Cband  \CR}{to make output images of the
+       data, model, and residual.  Required if {\tt DOTV} is false and
+       {\tt DOPLOT} is $> 0$.}
+\dispt{INFILE\qs 'MYWORK:C-6052I\_1' \CR}{to provide the text file
+       from {\tt UVHOL}.}
+\dispt{OUTFILE\qs 'MYWORK:CbandTxt  \CR}{to save the messages
+       including answers to a text file.}
+\dispt{VPARM\qs 0 \CR}{to use all defaults in the fitting.}
+\dispt{DOPLOT\qs 7 \CR}{to get all possible plots.}
+\dispt{OPTYPE\qs 'ELLI' \CR}{to fit eccentricity and position angle.}
+\dispt{INP \CR}{to double check everything.}
+\dispt{GO \CR}{to do the fit and write out images and plots.}
+\dispe{Sample plots are shown in Figure~\ref{fig:pbeam}.\iodx{EVLA}}
+
+\begin{figure}
+\centering
+\resizebox{\hsize}{!}{\gbb{540,559}{pbeamresid}\hspace{0.5cm}\gbb{540,410}{pbeamiring}}
+\caption[Example {\tt PBEAM} plots]{Example of the plots from {\tt
+\Tndx{PBEAM}}: contour plot of the residual image and {\tt IRING}-like
+plot of the residual image divided by the model.}
+\label{fig:pbeam}
+\end{figure}
