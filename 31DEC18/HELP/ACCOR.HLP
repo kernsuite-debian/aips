@@ -1,0 +1,157 @@
+; ACCOR
+;---------------------------------------------------------------
+;! Corrects cross amplitudes using auto correlation measurements
+;# Task UV VLBI CALIBRATION
+;-----------------------------------------------------------------------
+;;  Copyright (C) 1995, 1996, 2001, 2010-2011, 2014, 2016, 2018
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+ACCOR     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+ACCOR     Correct cross correlations using auto correlations
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+FLAGVER          -1.0              Flag table version to apply
+                                   0 -> highest
+TIMERANG                           Timerange:
+                                    1-4 = start day,hr,min,sec
+                                    5-8 = end   day,hr,min,sec
+SOLINT                             Solution interval (min)
+                                   .GT.0 => no pay attention
+                                            on scans
+                                   .LT.0 => SOLINT=ABS(SOLINT)
+                                   and average is terminated
+                                   at the end of scans
+                                   0 => -2 min;
+                                   see help
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+ACCOR
+Type: Task
+Use:  ACCOR corrects amplitudes in cross-correlation spectra due to
+      errors in sampler thresholds using measurements of
+      auto-correlation spectra.  Some correlators - JIVE apply this
+      correction before writing out the data.
+      For them, ACCOR should not be needed.  On the other hand,
+      ACCOR should also be benign since the auto-correlations should
+      end up scaled to 1.0 and so cause essentially no correction to
+      be made by ACCOR.  For the VLBA correlators - both the older
+      hardware correlator and the new software DiFX correlator - this
+      correction is not done prior to reading the data into AIPS.  For
+      such data, ACCOR is required.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  FLAGVER....Specifies the version of the flagging table to be applied.
+             0  => highest numbered table.
+             <0 => no flagging to be applied.
+  TIMERANG...Time range of the data to be used. In order: Start day,
+             hour, min. sec, End day, hour, min. sec. Days relative to
+             reference date.
+             TIMERANGE = 0  => All available data are used
+  SOLINT.....The solution interval (minutes). The mean values of
+             spectra are averaged through the SOLUTION intervals
+             following the start time in TIMERANGE. If SOLINT is more
+             than the range of times in TIMERANG, the time of
+             averaging is equal to the range of times in TIMERANG.
+
+             If SOLINT > 0, the averaging does not pay attention to
+             scan boundaries and several scans inside SOLINT may be
+             averaged together.  The averaging in this case may
+             include more than one source ID or/and frequency ID.
+             The source ID and frequency ID written to the output SN
+             table is the same for the all rows of the SN table and
+             equal 0.  Use CALSOUR = '' when running CLCAL to convert
+             this SN table to the relevant CL table.
+
+             If SOLINT < 0, ABS(SOLINT) is used as the average
+             interval and averaging is terminating at the end of the
+             scan.  The correct source IDs and frequency IDs appear in
+             the output SN table for the each averaged interval.
+             CALSOUR can be used in CLCAL to select calibrators in
+             this case.  Because of the gaps between scans, small
+             intervals can appear at scan ends.  Intervals less than
+             0.1*MIN(SOLINT, scan length) are not recorded to the
+             output SN table.
+
+             0 => -2 min
+  BADDISK....The disk numbers to avoid for scratch files (sorting
+             tables mostly).
+----------------------------------------------------------------
+ACCOR: Task to correct amplitudes distorted by errors of samplers.
+Documentor:  L.R. Kogan
+RELATED PROGRAMS: FITLD
+
+                          PURPOSE
+
+Calibration of a cross correlation spectrum supposes knowing parameters
+of samplers (digitizers in particular). Unfortunately these parameters
+are not identical to optimal ones and their real values are not known
+with enough accuracy. As a result the cross correlation spectrum
+amplitudes are measured with errors. These errors can be estimated
+having measured the mean value of auto correlation spectrum of a given
+interferometer's antennas. The theory of this correction is given by
+L. Kogan in VLBA SCIENTIFIC MEMO #9, 1995.
+
+The task estimates the mean values of the auto correlation spectra of
+all antennas of a given VLBI network and records them in a new SN table.
+The following application of the correction is provided by standard
+procedure of applying the SN table to an CL table (CLCAL) and following
+application this table with DOCALIB = 1 in relevant tasks.
+
+Some correlators apply this correction to the data before writing them
+out - notably the EVN JIVE correlator.  The VLBA hardware and software
+(DiFX) correlators do
+NOT apply this correction to the data.  Therefore, ACCOR is required
+for the VLBA correlators and any others that do not apply the
+correction.  ACCOR should be benign (do nothing) for those correlators
+that do apply the correction prior to reading the data into AIPS.
+Note that you can always run ACCOR and look at the SN table produced
+with PRTAB or SNPLT to see if it was benign or not.
+
+                          COMMENTS
+
+This method of correction is especially effective in the case of TWO
+bits (FOUR levels) digitizers. Uncorrected amplitudes of cross
+correlation spectra can differ from real ones in this case up to 25%.
+The correction can minimize the errors to a bit of percent.
+The behavior of the samplers' errors is unknown. In many cases it is
+stable for hours for a given sampler. But cases of minute changing can
+not be excluded. The default value of SOLINT is 60 minutes. But smaller
+value 5-10 minutes can be recommended as well.
+The correction quality can be checked by POSSM (for example) with
+DOCALIB=1 and GAINUSE equaled to the CL table number gotten from
+ACCOR's SN table.
+The mean values of all auto correlation spectra would be close to unit.
+  The task corrects other small errors of spectrum amplitudes caused by
+other errors besides samplers errors.
+  The task requires TB order of data. If it is not the task UVSRT has
+to be applied to the data early.
+
+
+

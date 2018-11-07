@@ -1,0 +1,209 @@
+; SYSOL
+;---------------------------------------------------------------
+;! undoes and re-does nominal sensitivity application for Solar data
+;# Task Calibration VLA
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2017-2018
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+SYSOL     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+SYSOL     Does nominal sensitivity application for Solar data
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+FREQID            0.0              Frequency ID number:  0 -> 1
+SUBARRAY          0.0              Subarray: 0 -> 1
+FLAGVER          -1.0              > 0 => apply flags to output
+                                   data and SY/SN tables
+DOFLAG                             = 1,3 -> do NOT flag SY
+                                   = 2,3 -> do NOT flag SN
+INVERS                             Input SY table undo  0=>none
+IN2VERS                            Input SY table redo  0=>none
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ                             Output UV file name (seq #)
+OUTDISK                            Output UV file disk unit
+OPTYPE                             'PGN' use SY post gain only
+REWEIGHT                           Additional SY scaling factors
+                                   for visibilities, weights
+DOWEIGHT         -1.0         1.0  < 0 => do NOT compute weights
+                                          from SY values
+                                   NOTE: 0 means do weights
+CUTOFF            0.0         1.0  > 0 => if fraction of good SY
+                                   values < CUTOFF, apply an
+                                   average correction instead
+FQCENTER                           >= 0 -> center frequency axis
+CALIN                              Antenna efficiencies file
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+SYSOL
+Task: For the EVLA, the SysPower table in the SDM records the switched
+      power when the noise tube is on and the switched power when the
+      noise tube is off.  If the AIPS files are obtained via OBIT ---
+      AIPS "verb" BDF2AIPS --- then an SY table is available.  It may
+      be applied to adjust the gains and the data weights.  If one has
+      been applied, the application may be removed and a new SY table
+      (i.e. one clipped and smoothed by TYSMO) may be applied.  This
+      is much like the Tsys application done formerly for the VLA but
+      there are differences.  For details, see EVLA Memo 145 by Rick
+      Perley (May 2010).  TYSMO, SNEDT, EDITA, and SNPLT all
+      understand SY tables and allow you to manipulate and/or view
+      them.  The task uses the input INTTIM random parameter where
+      available as the integration time and, if unavailable, assumes
+      that the input weights are equal the integration time.  If you
+      have done frequency averaging, this will not be true and the
+      weights will be incorrect after SYSOL (if INTTIM is missing).
+
+      Use SYSOL if your data includes EVLA observations of the Sun.
+      SYSOL uses solar Tcal values for the scans which observed the
+      Sun.  Since not all antennas have solar Tcals, the average of
+      the gains over all antennas equipped with such Tcals will be
+      used for those antennas not so equipped.
+
+      Note that SYSOL with SY tables requires valid values for Pdif,
+      Psum, and the post-detector gains.  If you have flagged data in
+      the SY table, SYSOL will flag the corresponding visibilities.
+      TYSMO allows you to replace flagged samples in the SY table with
+      averages from nearby samples.  You should consider doing this
+      with all 3 data types before running SYSOL unlesss you want the
+      data to be flagged.
+
+      SYSOL now has the ability to apply a flag table to the data as
+      they are read.  Like UVCOP, up to 600001 flags are allowed to
+      apply to a single time.  This ability was added so that you can
+      use the required data copy in SYSOL instead of an additional
+      data copy in UVCOP to reduce the size of the data and dispense
+      with large flag tables generated by auto-flag tasks like RFLAG.
+
+      Note that SYSOL should copy the data set for 3 reasons: 1. The
+      system gains may do abrupt jumps usually at the original scan
+      boundaries but sometimes at other times.  A CL table could
+      handle these jumps if it was structured to match the original
+      scans, but that original structure is often lost.  2. The data
+      weights after SYSOL need to have the amplitude gains applied to
+      them as well as the visibilities since any amplitude gains at
+      that point should only reflect errors in the assumed Tcal's.
+      However, it is completely incorrect to apply the amplitude gain
+      from the SY table to the weights computed from the SY table.
+      The CL tables contain a cumulative amplitude gain and there is
+      no reasonable way to differentiate the SY table gains from the
+      other gains later in the processing.  3. New weights are needed
+      and SYSOL computes remarkably good ones.  This means the data
+      set must be rewritten to supply those weights and it is
+      completely unsafe to overwrite the input data set.
+
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  FREQID.....Frequency ID number to do       0 => 1
+  SUBARRY....Subarray to do                  0 => 1
+  FLAGVER....If > 0, apply the specified flag table version to the
+             data and do not copy it to the output.  Unlike regular
+             calibration routines (but like UVCOP), FLAGVER = 0 means
+             no flagging.  The flag table is applied to any TY, SY,
+             and SN tables as they are copied (spectral-channel
+             independent flags only).
+  DOFLAG.....Controls whether FLAGVER is applied to tables or not.
+             = 0 => apply FLAGVER (if > 0).  If 1 => do not flag SY
+             tables, =2 => do not flag SN tables, =3 => do NOT flag
+             SN or SY tables.
+  INVERS.....Input version number of the SY table which was applied to
+             the data and is to be unapplied.  0 => none
+             If input file is in correlation coefficient form, it is
+             an error to set INVERS > 0.
+  IN2VERS....Input version number of the SY table that is to be
+             applied after INVERS is undone.   0 => none
+             If the data are not in correlation coefficient form on
+             input or after INVERS is undone, then it is an error to
+             set IN2VERS > 0.
+             If INVERS <= 0 and IN2VERS <= 0, then the program will
+             set IN2VERS to max SY version if the data are correlation
+             coefficients and INVERS to max SY version if the data are
+             in visibility form, leaving the other at 0.
+  OUTNAME....Output UV file name (name).   Standard defaults.
+  OUTCLASS...Output UV file name (class).  Standard defaults.
+  OUTSEQ.....Output UV file name (seq #).  0 => highest unique
+  OUTDISK....Output UV file disk unit.     0 => highest w space.
+  OPTYPE.....'PGN' use the SY table post-gain only to adjust gains
+             The following are a bad idea for reasons given above:
+             In the case of the above three OPTYPEs, DOWEIGHT is set
+             to -1. Any other value of OPTYPE does the normal
+             operations with Pdif and Psum from the SY table and will
+             write a new data set with weights controlled by the
+             user-chose value of DOWEIGHT.
+  REWEIGHT...Scale the visibilites by REWEIGHT(1) and the weights by
+             REWEIGHT(2).  This option is allowed for now on SY tables
+             only since the correct scaling is uncertain.  0 -> 1
+  DOWEIGHT...>= 0 => compute weights from SY values, < 0 do not change
+             input weights.  NOTE the non-standard use of the logical
+             in which 0 is true.
+  CUTOFF.....<= 0 => data for which there is not a valid SY table
+                     value are flagged.
+             > 0  => The SY table is examined in advance.  If the
+                     fraction of valid SY table entries for a
+                     particular polarization, IF, and antenna is less
+                     than CUTOFF, the gain and weight factors for that
+                     antenna, IF, and polarization will be taken to be
+                     the average of those parameters for the antennas
+                     that are not "skipped".  The data are not flagged.
+  FQCENTER,..>  0 => Change frequency axis reference pixel to
+                     Nchan / 2 + 1
+             else => do not change reference pixel
+  CALIN......The name of a text file to provide antenna efficiencies
+             as a function of antenna, frequency, and polarization.
+             By default, the system file is called:
+                 'AIPSIONS:VLA.EFFICIENCIES'
+             If it is missing, a small table which is antenna and
+             polarization independent is used instead.
+  BADDISK....The disk numbers to avoid for scratch files (sorting
+             tables mostly).
+----------------------------------------------------------------
+SYSOL:   Task to apply system temperature corrections to EVLA
+         observations Which include the Sun.
+Related programs: BDF2AIPS, TYSMO, TYAPL
+
+Since the Sun is much brighter than other radio sources EVLA antennae
+must be equipped with special high-temperature noise sources in order
+to calibrate solar data. For most bands these solar calibration
+sources are only available on a few antennae.
+
+The SY table should be inspected for bad values before running SYSOL.
+Valid values of Pdif, Psum, and Pgain must appear for all antennae.
+If you run UVCOP on the data set to apply the on-line flags, the SY
+table will also be flagged.  This helps in getting rid of bad SY
+values.  EDITA my be used to flag UV data for bad SY table values and
+SNEDT may be used to edit/modify SY values.  TYSMO may be used to clip
+and smooth SY tables.  TYCOP may be used to replace IFs (spectral
+windows) which have been rendered useless by RFI.
+
+The SY table contains a column which informs AIPS whether the values
+in a row were obtain with normal Tcal values or with Solar Tcal
+values.  SYSOL does the normal TYAPL operation on all non-Solar data.
+For Solar data, the gain and weight factors are computed for each
+antenna having a Solar Tcal and the average is then used for each
+antenna not so equipped.

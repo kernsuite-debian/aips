@@ -1,0 +1,519 @@
+%-----------------------------------------------------------------------
+%;  Copyright (C) 2002-2007, 2010, 2013-2014, 2016, 2018
+%;  Associated Universities, Inc. Washington DC, USA.
+%;
+%;  This program is free software; you can redistribute it and/or
+%;  modify it under the terms of the GNU General Public License as
+%;  published by the Free Software Foundation; either version 2 of
+%;  the License, or (at your option) any later version.
+%;
+%;  This program is distributed in the hope that it will be useful,
+%;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%;  GNU General Public License for more details.
+%;
+%;  You should have received a copy of the GNU General Public
+%;  License along with this program; if not, write to the Free
+%;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+%;  MA 02139, USA.
+%;
+%;  Correspondence concerning AIPS should be addressed as follows:
+%;          Internet email: aipsmail@nrao.edu.
+%;          Postal address: AIPS Project Office
+%;                          National Radio Astronomy Observatory
+%;                          520 Edgemont Road
+%;                          Charlottesville, VA 22903-2475 USA
+%-----------------------------------------------------------------------
+
+\APPEN{High-Frequency VLA Data in \AIPS}{Hints for Reducing High-Frequency VLA Data in \AIPS}{highfreq}
+\renewcommand{\Chapt}{24}
+
+\renewcommand{\titlea}{31-December-2007 (revised 11-November-2016)}
+\renewcommand{\Rheading}{\AIPS\ \cookbook:~\titlea\hfill}
+\renewcommand{\Lheading}{\hfill \AIPS\ \cookbook:~\titlea}
+\markboth{\Lheading}{\Rheading}
+
+High-frequency data (22 or 43 GHz) from the VLA may be reduced
+occasionally with the standard centimeter-wavelength recipe given in
+this \cookbook, particularly in the smaller arrays.  However, quire
+frequently,, the standard recipe will be inadequate for such data,
+particularly in the larger (A and B) array configurations.
+Nevertheless, VLA data taken at these high-frequencies in the largest
+array configurations can be calibrated in almost all cases with only a
+few minor adjustments to the centimeter wavelength recipe.
+\Iodx{high-frequency VLA data}\iodx{calibration}
+
+One reason for more complicated calibration is the high resolution,
+which resolves the standard flux density calibrators, particularly
+3C48. However, most of the problems are caused by the atmosphere,
+where the troposphere introduces rapid phase fluctuations between the
+antenna elements of the interferometer.  Both effects scale with
+baseline length expressed in units of wavelength, but the latter also
+heavily depends on the current weather; phases are sometimes observed
+to wind on time scales of less than a minute. This causes
+decorrelation during your calibrator and target source scans, and
+requires you to determine phase-only calibration, before the flux
+density (\ie\ gain) calibration should be attempted.
+
+In this appendix, an approach to reducing high-frequency VLA data in
+\AIPS\ is described which should help to overcome the most common
+problems. It is assumed that the reader has some experience with
+reducing data in \AIPS, and is familiar with the ``standard recipe''
+(\eg\ \Rappen{cont}), tools to examine the data, to apply self-cal,
+and if appropriate, to deal with spectral-line and polarization
+calibration issues. If not, you should read the \AIPS\ \cookbook\
+first (in particular \Rchap{cal}).
+
+High-frequency calibration begins when loading the data,
+requiring specific parameters in {\tt \tndx{FILLM}} to be set
+(ideally one should use these {\tt FILLM} inputs for all frequencies).
+
+Run {\tt FILLM} with:
+\dispt{DOWEIGHT\qs 1 \CR}{to apply \Tsys\ weights for each individual
+          {\tt IF} and polarization.}
+\dispt{DOUVCOMP\qs $-$1 \CR}{to store the data without compression,
+          which discards individual IF weights.}
+\dispt{CPARM\qs 0 ; CPARM(8)\qs 0.05 \CR}{to use a short time interval
+          in the {\tt CL} table entries (in min); 0.05min = 3s.}
+\dispt{BPARM\qs 0 ; BPARM(10)\qs 0.75 \CR}{to apply opacity and gain
+          curve corrections with zenith opacity weighted 75\%\ by the
+          measured weather and  25\%\ by seasonal averages.}
+\pd
+
+This creates a {\tt CL} table that can be interpolated over very short
+intervals, hopefully short enough to cover the atmospheric phase
+fluctuations accurately. The default {\tt CL} table interval is 5
+minutes, which may be fine for centimeter wavelengths, but is much too
+long for proper interpolation of high-frequency phases.  Also, you have
+``nominal sensitivity'' weights for individual {\tt IF}/Pol entries,
+which reflect sensitivity differences between the receivers, IFs, etc.
+To retain this ``nominal sensitivity'' weighting you are required to
+set {\tt DOCALIB=1} (actually $0 < {\tt DOCALIB} \leq 99$ and a
+non-negative value for {\tt GAINUSE}) in all the calibration tasks
+during the remainder of the data calibration.
+
+\begin{figure}
+\centering
+%\resizebox{\hsize}{!}{\gname{vplotP1}}
+\resizebox{\hsize}{!}{\gbb{533,540}{vplotP1}}
+\caption[{\tt VPLOT} of ``bad'' phases]{Uncalibrated VLA A-array 43
+GHz phases to the reference antenna in the center of the array (22)
+over 3 hours on a strong source (frequency switched every 6 minutes)
+as a function of time plotted by {\tt \tndx{VPLOT}} look very
+volatile.  Around 16:00 hours they even wrap 360 degrees within one
+minute.  They cannot be calibrated using the default {\tt CL} table
+interval of 5 minutes.\Iodx{high-frequency VLA
+data}\iodx{calibration}}
+\label{fig:badphase}
+\end{figure}
+
+\begin{figure}
+\centering
+%\resizebox{\hsize}{!}{\gname{vplotP2}}
+\resizebox{\hsize}{!}{\gbb{536,539}{vplotP2}}
+\caption[{\tt VPLOT} of ``okay'' phases]{A blow up from {\tt
+\tndx{VPLOT}} of the time range 16:02 to 16:07 from
+Figure~\ref{fig:badphase}.  The uncalibrated visibility phases are
+seen to be well behaved, albeit on a short time scale.  They can be
+calibrated if the {\tt SN} table solutions are found on these
+typical short time scales and are interpolated with a {\tt CL} table
+that has sufficiently short spacing between entries to allow for
+interpolation of the rapid phase fluctuations.  An interval of 20
+seconds would be okay here.}
+\label{fig:okphase}
+\end{figure}
+
+The importance of the {\tt CL} table interval is illustrated in
+Figure~\ref{fig:badphase} and Figure~\ref{fig:okphase}.  On the large
+scale, the phases look beyond redemption.  But, on a relatively short
+time scale, the phases are relatively well behaved and may be
+calibrated easily.
+
+After loading your data, check your {\tt CL} table entries, \eg\ {\tt
+LISTR} with {\tt OPTYPE 'GAIN'}, {\tt PRTAB} with {\tt DOHMS 1}, or
+{\tt SNPLT} on a short (few minutes) time range with {\tt OPTYPE
+'AMP'}\@.  Make sure the entries are at the interval you expect (much
+less than a minute) and that the opacity and gain curve corrections
+have been applied (gains deviating from one by a few percent).
+Inspect your continuum or ``channel 0'' data (gains, system
+temperatures), and flag bad data. For example, you also may wish to
+flag antenna 1, which is known to have bad optics at 43 GHz, and the
+antennas without a 43 GHz receiver (currently in December 2002,
+antennas 9 and 15, but for earlier observations you may want to check
+the receiver status page ({\tt
+http://www.vla.nrao.edu/astro/guides/highfreq/}),
+or your observation log --- these antennas may have been left present
+in your data when you first do a pointing scan in X-band).  Standard
+tools for data inspection and flagging are described in \Rchap{cal} of
+the \AIPS\ \cookbook\ ({\tt LISTR}, {\tt UVPRT}, {\tt VPLOT}, {\tt
+SNPLT}, {\tt UVFLG}, {\tt TVFLG}, {\tt EDITR}, {\tt EDITA}, and many
+more).  Make sure that at least your calibrators are ``clean.''  Run
+{\tt VPLOT} on your calibrators with a reference antenna close to the
+center of the array (determined by using {\tt PRTAN}) to get an
+indication how rapidly your phases fluctuate; use {\tt ANTENNA} {\it
+reference\_antenna} {\tt 0}; {\tt SOLINT 0}; {\tt BPARM 0 2 0} (for
+phase only).  If your program source is too weak to allow
+self-calibration and the phase change from one scan on your calibrator
+to the next is of the order of $180^{\circ}$, you probably want to
+flag the source data in between the calibrator scans.  Task {\tt
+\tndx{SNFLG}} may be useful for doing this flagging.
+
+Note that fast-switching, when used, will have changed the source
+names you used in making the observe schedule file. Your sources will
+have been renamed to their J2000 positions, making it difficult to
+recognize the calibrator and target scans when you run {\tt LISTR}
+({\tt OPTYPE 'SCAN'}).
+
+Run {\tt \tndx{SETJY}} on your absolute flux density calibrator: 3C286
+= J1331+305 = B1328+307, or 3C48 = J0137+331 = B0134+329. And maybe it
+is a good idea to make a copy of your correct {\tt CL} table number
+one (actually all tables) with {\tt TASAV} before continuing, so in
+case of accidents, you have {\tt CL} table one with the opacity/gain
+corrections applied.  ({\tt INDXR} may be used to re-create a {\tt CL}
+table, including the opacity and gain corrections made by {\tt
+FILLM}\@.\Iodx{high-frequency VLA data}\iodx{calibration}
+
+Run {\tt \tndx{VLANT}} to correct phases for improved estimates of the
+antenna positions.  Note that this task requires your computer to be
+connected to the Internet if your data are recent (within past 18
+months or so).  Otherwise, apply baseline corrections following advice
+at {\tt www.vla.nrao.edu/astro/archive/baselines/}.
+
+Run {\tt \tndx{CALIB}}, at this stage to correct for phase only, with
+a small solution interval (depending on your signal to noise, \eg\ 20
+seconds) on all your calibrator sources. You should use the
+Clean-components models for 3C286 or 3C48 provided with \AIPS\@.  See
+\Sec{vlacalmodels} for information on {\tt CALDIR} and {\tt CALRD}\@.
+Then run {\tt CALIB} on these sources separately using the appropriate
+model.  There are also models for 3C147 and 3C138\@.
+
+Inputs to the first pass of {\tt \tndx{CALIB}}:
+\dispt{CALSOUR '{\it cal1\/}', '{\it cal2\/}', $\ldots$ \CR}{to define
+         your calibrators; {\bf all but those for which you plan to
+         use a model, \eg\ 3C48}.}
+\dispt{DOCALIB 1 \CR}{to apply nominal sensitivities, essential that
+         $0 < {\tt DOCALIB} \leq 99$.}
+\dispt{GAINUSE 0 \CR}{apply latest {\tt CL} table (is version 2 after
+         {\tt VLANT}\@.}
+\dispt{REFANT {\it reference\_antenna} \CR}{to pick a well behaved
+         antenna in the array center.}
+\dispt{SOLINT 20/60 \CR}{to solve every 20 seconds; may have to try
+         some values.}
+\dispt{SOLMODE 'P' \CR}{to do phase calibration only at this stage.}
+\dispt{SNVER 1 \CR}{to collect all solutions in {\tt SN} table one.}
+\pd
+
+And, if you have 3C48, 3C138, 3C147, and/or 3C286 as absolute flux
+density calibrator(s), you should re-run {\tt CALIB}, one calibrator
+source at a time, with the previous/above values plus:
+\dispt{CALSOUR '{\it ssss\/}', ' ' \CR}{to specify the name you have
+         used for the calibrator source.}
+\dispt{IN2DISK\qs {\it d2} \CR}{to specify the disk with the source
+         model.}
+\dispt{GET2NAME\qs {\it ctn2\/} \CR}{to specify the {\tt CC} model to
+         be used by its catalog number.}
+\dispt{INVERS\qs 0 \CR}{to use the model's latest {\tt CC}-version
+         (\ie\ one).}
+\dispt{NCOMP\qs 0 \CR}{to use all the {\tt CC}-components of the
+         model.}
+\pd
+
+This may work, but there is no guarantee. Some tricks to apply, in no
+particular order, in your data set or {\tt CALIB} to obtain a larger
+relative portion of good versus bad solutions would
+be:\iodx{calibration}\Iodx{high-frequency VLA data}
+\begin{itemize}
+\item\ Flag some more bad data points on your calibrator sources.
+\item\ Discard antennas with uncertain baseline positions (see
+       observing log file).
+\item\ Choose a different reference antenna (the one you have might be
+       misbehaving).
+\item\ Decrease the {\tt UVRANGE} to weight short baselines (centrally
+       located antennas) more in the solution.
+\item\ Use {\tt SOLTYPE 'L1'} to be less sensitive to outlying points.
+\item\ Use {\tt FRING} instead of {\tt CALIB} with a larger {\tt
+       SOLINT} to solve for the phase rates, switching off the delay
+       search with {\tt DPARM(2) = -1}.
+\item\ Increase or decrease {\tt SOLINT}; increase for weak, decrease
+       for strong sources.
+\item\ Decrease the SNR cutoff {\tt APARM(7)} (default 5) to include
+       more noisy but possibly valid solutions.
+\item\ Decrease the number of antennas required for a solution ({\tt
+       APARM(1)}, default 6) to require fewer antennas
+\item\ Recreate 'CH 0' from 'LINE' to get up to 25\% more bandwidth on
+       calibrators.
+\end{itemize}
+
+Note that at 43 GHz in A-array the unprojected \uv-distance between
+the outer two antennas on one arm is 0.5 Mega-wavelengths, and the
+outer 6 antennas --- the default for {\tt APARM(1)} --- require good
+solutions out to 2 Mega-wavelengths for {\tt CALIB} to accept the
+solution for your outermost antenna. Hence, it is a good idea to set
+{\tt APARM(1)} to \eg\ four (or three, if you're willing to check
+the output {\tt SN} table carefully).
+
+Check the resulting {\tt SN} table number one with {\tt LISTR} ({\tt
+OPTYPE 'GAIN'}, {\tt DPARM 1 0}) or {\tt SNPLT} ({\tt INEXT 'SN'},
+{\tt OPTYPE 'PHAS'}), and judge whether you have enough solutions and
+whether you believe the phases shown are likely to reflect the
+variation caused by the troposphere. If not, fiddle around with your
+data and/or parameters in {\tt CALIB} as suggested above and try
+again. In case the majority of solutions are fine, you may want to
+edit spurious points in your {\tt SN} table with \eg\ {\tt SNEDT},
+{\tt SNCOR}, or {\tt SNSMO}\@.
+\Iodx{high-frequency VLA data}\iodx{calibration}
+
+Once you are satisfied with the phases in your {\tt SN} table, you
+want to apply phase corrections to minimize decorrelation in your
+calibrator scans before you determine the absolute flux density
+scale. To insert the corrections, run {\tt \tndx{CLCAL}} with:
+\dispt{SOURCES ' ' \CR}{to correct phases for all sources.}
+\dispt{CALSOUR '{\it cal1\/}', '{\it cal2\/}', $\ldots$ \CR}{to
+          include {\bf all} your calibrators.}
+\dispt{INTERPOL '2PT' \CR}{to interpolate between solutions ({\tt
+          'SIMP'} will average phases over a scan).}
+\dispt{SNVER 1; GAINVER 1;GAINUSE 2 \CR}{to apply {\tt SN}\#1 to {\tt
+          CL}\#1, creating {\tt CL}\#2.}
+\dispt{REFANT {\it reference\_antenna} \CR}{to select the same antenna
+          as used in {\tt CALIB}.}
+\pd
+
+In less straightforward observations you may not be able to run {\tt
+CLCAL} only once, \eg\ when you are switching frequencies.  If in
+doubt, consult \Rchap{cal} of the \AIPS\ \cookbook. It is however very
+simple to run {\tt CLCAL} multiple times. Inspect your new {\tt CL}
+table two (three after {\tt VLANT}) for unexpected dubious
+interpolations and extrapolations ({\tt LISTR} with {\tt OPTYPE
+'GAIN'}, {\tt DPARM 1 0}, or {\tt SNPLT} with {\tt INEXT 'CL'}, {\tt
+OPTYPE 'PHAS'}) and backtrack possible problems.
+
+Now re-run {\tt \tndx{CALIB}} with the corrected phases to obtain the
+flux density scale.  Begin with those sources not requiring models:
+\dispt{CALSOUR '{\it cal1\/}', '{\it cal2\/}', $\ldots$ \CR}{to
+          identify your calibrators; all, except 3C48 and 3C286.}
+\dispt{DOCALIB 1 \CR}{to apply antenna gain/opacity and antenna
+          location corrections to the data and their weights.}
+\dispt{GAINUSE 0 \CR}{to apply latest {\tt CL} table (is 3 here).}
+\dispt{REFANT {\it reference\_antenna} \CR}{to pick the same antenna
+          as used before.}
+\dispt{SOLINT\qs 0 \CR}{to average over the full scan; remember that
+          phase variations are corrected by {\tt DOCALIB}.}
+\dispt{SOLMODE 'A\&P' \CR}{to do full calibration to get flux
+          densities and residual phases.}
+\dispt{SNVER 2 \CR}{to collect solutions in a new {\tt SN} table
+          (two).}
+\pd
+
+Then run {\tt CALIB} again for the absolute flux density calibrator
+3C286, or 3C48, using a model and the previous/above values plus:
+\dispt{CALSOUR '{\it sssss\/}', ' ' \CR}{to specify the name you have
+         for the source.}
+\dispt{UVRANGE 0 \CR}{to use the full uv range without restrictions.}
+\dispt{IN2DISK\qs {\it d2} \CR}{to specify the disk with the source
+         model.}
+\dispt{GET2NAME\qs {\it ctn2\/} \CR}{to specify the model to be used
+         by its catalog number.}
+\dispt{INVERS\qs 0 \CR}{to use the model's latest {\tt CC}-version
+         (\ie\ one).}
+\dispt{NCOMP\qs 0 \CR}{to use all the {\tt CC}-components of the
+         model.\todx{CALIB}}
+\pd
+
+The same tricks may be used as for phase-only to improve the ratio of
+good to bad solutions.  Check your {\tt SN} table 2 thoroughly; the
+phases {\bf must} be zero or very close to zero (therefore {\tt
+INTERPOL '2PT'} is preferred over {\tt INTERPOL 'SIMP'} in {\tt
+CLCAL}), and you want to make sure the gains of your reference antenna
+do not scatter too much for individual sources.  Before {\tt GETJY}
+the flux density scale is not fixed so the average gain will depend on
+source.  {\tt GETJY} corrects this so that the gains for each antenna
+should be similar for all sources.  If you can identify misbehaving
+antennas, flag them, delete {\tt SN} table 2 (as it does not overwrite
+values for which data have been deleted), and re-run {\tt CALIB} as
+many times as needed to re-create {\tt SN} table two. Cautious users
+will start from the beginning.\Iodx{high-frequency VLA data}
+\iodx{calibration}
+
+Run {\tt \tndx{GETJY}} to obtain the secondary calibrator flux
+densities:
+\dispt{SOURCES '{\it cal1\/}', '{\it cal2\/}', $\ldots$ \CR}{to
+         specify the unknown sources; {\it not} the primary
+         calibrator(s).}
+\dispt{CALSOUR '3C48', ' ' \CR}{to specify the source name(s) you have
+         used in {\tt SETJY}.}
+\dispt{SNVER\qs 2 \CR}{to point to the flux density/gain solution
+         table.}
+\dispe{If you used a model for the flux density calibrator, your flux
+scale is tied to the flux density of that calibrator in the {\tt SU}
+table.  The model Clean components are scaled to match that flux.}
+
+Carefully note the flux densities reported by {\tt GETJY} and do not
+trust these values blindly.  {\tt LISTR} or {\tt SNPLT} may point out
+problematic antenna solutions, requiring you to flag some more data and
+start over.  If you flag data, it is best to delete {\tt SN} table
+\#2.  Solutions at the times of deleted data will not be overwritten.
+It is helpful to know what flux you expect for your secondary
+calibrators.  See the full source list at {\tt
+aips2.nrao.edu/vla/calflux.html}.  It is particularly helpful to use
+one or more of the sources regularly monitored by NRAO staff; see {\tt
+html://www.aoc.nrao.edu/$\sim$smyers/calibration/} for total flux as
+well as polarization information.  You want to check the values,
+because sometimes the flux densities deviate considerably from the
+expected values and make no sense.  This could be the case if the
+pointing solutions that were determined prior to your primary
+calibrator scan are inappropriate for this particular primary
+calibrator scan \eg\ when it is windy or when the cloud cover on your
+single primary calibrator scan differs from the cloud cover on the
+secondary calibrators, or, even worse, when these combine. In some
+cases you may be forced to approximate the flux density scale by
+entering a (recent) flux density for one of your secondary
+calibrators, ignoring the primary calibrator scan and accepting an
+introduced flux density uncertainty. If you decide you have to
+restart, do not forget to delete your {\tt SN} and {\tt CL} tables
+(except for {\tt CL} table 1 and 2 if you used {\tt VLANT}) and to
+reset the flux densities of all your calibrators with {\tt SETJY}
+({\tt OPTYPE 'REJY'}), before entering a {\tt ZEROSP} for a new flux
+density calibrator source (also with {\tt SETJY})\@.  Re-iterate until
+you are happy with the flux-density scale.
+
+The final flux density calibration table is obtained by running {\tt
+\tndx{CLCAL}} again:
+\dispt{SOURCES ' ' \CR}{to calibrate flux densities for all sources.}
+\dispt{CALSOUR '{\it cal1\/}', '{\it cal2\/}', $\ldots$  \CR}{to
+         include calibrators to use for your targets.}
+\dispt{INTERPOL '2PT', or 'SIMP' \CR}{(to specify the interpolation
+           method: no real difference for per-scan solutions).}
+\dispt{SNVER 2; GAINVER 2; GAINUSE 3  \CR}{to apply {\tt SN}\#2 to
+           {\tt CL}\#2, creating {\tt CL}\#3.}
+\dispt{REFANT {\it reference\_antenna} \CR}{to select the same
+           antenna as used in {\tt CALIB}.}
+\pd
+
+From here you are almost ready to follow the usual ``standard
+recipe,'' \ie\ polarization and bandpass calibration if appropriate,
+and splitting into single-source data sets.  However, remember to set
+{\tt DOCALIB = 1} in all these tasks as long as you are working on the
+multi-source data set and haven't applied initial phase, flux density
+(including polarization, bandpass) and ``nominal sensitivity''
+calibration with {\tt SPLIT}. After {\tt SPLIT}, the individual
+weights will have been entered in the data, properly scaled by the
+latest {\tt CL} table you've made. Using your single source calibrated
+data, set {\tt DOCALIB = -1} in your subsequent imaging and analysis
+tasks, unless you do self-calibration.
+
+If you anticipated checking your fast-switching calibration by
+including a ``check source'' (a moderately strong source observed a
+few times with the same fast-switching parameters at about the same
+distance from your fast-switching source as your target source, but
+not necessarily in the same direction), you can now assess a snapshot
+of your calibration by imaging this source. If the fast-switching has
+worked perfectly, your check source has the expected morphology,
+flux density, and position.  Any position error on the check source
+should indicate the accuracy of the astrometry on your target source.
+If you did not include a check source, all but the astrometry and
+spatial dependence of the calibration can be inferred from your
+fast-switching source by imaging a scan (use a modified {\tt SN}/{\tt
+CL} table by skipping the calibration on this scan) with the
+calibration derived from the two neighboring
+scans.\Iodx{high-frequency VLA data}\iodx{calibration}
+
+\sects{Additional recipes}
+
+% chapter D *************************************************
+\recipe{Banana bran muffins}
+
+\bre
+\Item {Preheat oven to \dgg{400}.}
+\Item {Grease 12 2.75-inch muffin cups.}
+\Item {In bowl, combine 1/2 cup crushed {\bf cereal} (1.5 cups
+   un-crushed Multi-Bran Chex recommended), 1.5 cups all-purpose {\bf
+   flour}, 1/2 cup {\bf sugar}, 1/3 cup chopped {\bf nuts} (optional),
+   2.5 teaspoons {\bf baking powder}, and 1/2 teaspoon {\bf baking
+   soda}.}
+\Item {In a separate bowl, combine 3 large mashed {\bf
+   bananas} (1.5 cups), 1 {\bf egg} slightly beaten, 1/4 cup
+   vegetable {\bf oil}, 2 tablespoons {\bf water}, and 1 teaspoon {\bf
+   vanilla extract}.}
+\Item {Add to cereal mixture and stir just until moistened.  Do
+   not over-mix.}
+\Item {Divide evenly among muffin cups.}
+\Item {Bake 18--20 minutes, or until tester inserted in center
+   comes out clean.}
+\item[ ]{\hfill Thanks to Ralston Purina Company.}
+\ere
+\vfill\eject
+
+% chapter D *************************************************
+\recipe{Banana-pineapple rum bread}
+
+\bre
+\Item {Place 1/2 cup {\bf white rum} and 1/2 cup diced {\bf dried
+     pineapple} in a bowl, cover, and let sit for at least one hour.}
+\Item {In a mixing bowl, beat together 4 tablespoon {\bf butter} or
+     margarine and 3/4 cup {\bf sugar}.  Add 1 extra large {\bf egg}
+     and continue beating until light and fluffy.}
+\Item {Add 2 large mashed ripe {\bf bananas} and mix well.  Beat in
+     1/3 cup plain {\bf yogurt} --- curdling of the mixture is
+     normal.}
+\Item {In another mixing bowl, combine 2 cups {\bf all-purpose flour},
+     1/2 tablespoon {\bf baking soda}, 1 teaspoon ground {\bf
+     cinnamon}, 1 teaspoon ground {\bf nutmeg}, 1 teaspoon ground {\bf
+     allspice}, and 1/2 teaspoon {\bf salt}.}
+\Item {Add the wet ingredients and mix until well blended.  Drain the
+     pineapple and add.  Fold in 1/2 cup coarsely chopped {\bf
+     pecans}.}
+\Item {Pour into liberally greased 9-inch loaf pan.  Bake at \dgg{350}
+     for 45 to 55 minutes or until the bread passes the toothpick
+     test.  Remove the pan from the oven and let it sit for 10
+     minutes, before turning out on a rack to cool.}
+\item[ ]{\hfill Thanks to Tim D. Culey, Baton Rouge, La. ({\tt
+     tsculey@bigfoot.com}).}
+\ere
+
+% chapter D ***********************************************
+\recipe{Dulce Zacateca\~no}
+
+\bre
+\Item {Peel 3 large not-too-ripe {\bf bananas} and slice
+    lengthwise.  Saute in 5 tablespoons {\bf butter} until golden
+    brown.  Drain on paper, place in a shallow baking dish, and
+    sprinkle with a little {\bf sugar}.}
+\Item {Whip 1/2 cup {\bf heavy sweet cream}.  Add 1/4 cup {\bf
+    sugar}, 1/4 cup {\bf dry sherry wine}, and 1 teaspoon {\bf
+    vanilla}.  Pour over bananas covering them completely.  Chill and
+    serve very cold.}
+\item[ ]{\hfill Thanks to Ruth Mulvey and Luisa Alvarez {\it Good
+     Food from Mexico}.}
+\ere
+
+% chapter  D **********************************************
+\recipe{Virginia's instant banana pie}
+
+\bre
+\Item {Mix 1 cup {\bf sour cream}, 1 cup {\bf milk}, and 1 small
+     package {\bf instant vanilla pudding} until mixture thickens.}
+\Item {Slice 3 medium {\bf bananas} into the bottom of a 9-inch {\bf
+     graham cracker pie crust}.}
+\Item {Pour the pudding over the bananas and refrigerate at least 2 hours.}
+\ere
+
+% chapter  D *************************************************
+\recipe{Chocolate chip banana bread}
+
+\bre
+\Item {Blend 2 cups mashed {\bf bananas}, 1 tablespoon grated {\bf
+     orange peel}, and 1/3 cup {\bf orange juice} in a bowl.  Beat in
+     3 {\bf eggs}.  Stir in 1 cup packed {\bf brown sugar} and 1/3 cup
+     {\bf vegetable oil}.}
+\Item {Combine 2-1/2 cups {\bf all-purpose flour}, 1 cup {\bf
+     chocolate chips} 2 teaspoons {\bf baking powder}, 1/2 teaspoon
+     {\bf baking soda}, 1/2 teaspoon {\bf salt}, and 1/2 teaspoon {\bf
+     nutmeg}.}
+\Item {Stir dry ingredients into banana mixture just until blended.
+     Pour into 4 greased 5-3/4 x 3-1/4-inch loaf pans.}
+\Item {Bake in \dgg{350} oven for 45 to 55 minutes or until tester
+     inserted comes out clean.  Let cool in pans on rack for 10
+     minutes.  Remove from pan and let cool completely on rack.}
+\item[ ]{\hfill Thanks to Tim D. Culey, Baton Rouge, La. ({\tt
+     tsculey@bigfoot.com}).}
+\ere

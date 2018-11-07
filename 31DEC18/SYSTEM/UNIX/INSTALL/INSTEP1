@@ -1,0 +1,3583 @@
+#!/bin/sh
+#-----------------------------------------------------------------------
+#! perform as much of the installation of AIPS as possible
+## Shell-script
+#-----------------------------------------------------------------------
+#;  Copyright (C) 1995-2017
+#;  Associated Universities, Inc. Washington DC, USA.
+#;
+#;  This program is free software; you can redistribute it and/or
+#;  modify it under the terms of the GNU General Public License as
+#;  published by the Free Software Foundation; either version 2 of
+#;  the License, or (at your option) any later version.
+#;
+#;  This program is distributed in the hope that it will be useful,
+#;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#;  GNU General Public License for more details.
+#;
+#;  You should have received a copy of the GNU General Public
+#;  License along with this program; if not, write to the Free
+#;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+#;  MA 02139, USA.
+#;
+#;  Correspondence concerning AIPS should be addressed as follows:
+#;         Internet email: aipsmail@nrao.edu.
+#;         Postal address: AIPS Project Office
+#;                         National Radio Astronomy Observatory
+#;                         520 Edgemont Road
+#;                         Charlottesville, VA 22903-2475 USA
+#-----------------------------------------------------------------------
+#  Usage: ./INSTEP1
+#
+#  This script will try to be all things to all aips installers.  Well,
+#  maybe not.  It should make the first part of the AIPS Unix
+#  installation procedure a little less painful.
+#
+#  The procedure is a bit rough around the edges, in particular when it
+#  comes to restarting, but at worst it should only re-do things that
+#  are already done.  Basically there are 19 stages that the procedure
+#  will guide the user through, starting with trying to figure out what
+#  your hostname is, and ending with directions to either start INSTEP2,
+#  or redo INSTEP1 for other architectures.
+#
+#  The list of stages is as follows.  More details on these are listed
+#  in the AIPS Unix Installation Summary.
+#
+#  1.  Ask for HOST name if "uname -n" does not work or is not found.
+#  2.  Get a name for SITE if not already defined.
+#  3.  Try to figure out ARCH for architecture, confirm with installer.
+#  4.  Make ERRORS/$HOST, LIBR, LOAD, MEMORY, PREP, SYSTEM areas if nec.
+#  5.  Make SYSLOCAL if needed, copy stuff from SYS$ARCH, SYSUNIX there.
+#  6.  Define AIPS_ROOT and move there.
+#  7.  Copy files to AIPS_ROOT (ASSN, PATH, ROOT, *DEVS, HOSTS, LOGIN..)
+#  8.  Run AIPSROOT.DEFINE to set AIPS_ROOT in these.
+#  9.  Set AIPS Versions in AIPSPATH.* interactively
+#  10. make DA00, move there, make DA00/$HOST/.
+#  11. Copy DADEVS.LIST, define DATA_ROOT, set up hosts disks (inc FITS)
+#  12. Copy NETSP, put entries in it
+#  13. Copy TPDEVS.LIST, set up entries for tapes
+#  14. Make NEWEST, PRINTENV, PP.EXE in $SYSLOCAL (checks compilers)
+#  15. Make HOSTS.LIST and give instructions on adding other hosts.
+#  16. Make XAS if we can and if installer wants.
+#  16a. XHELP on-line help CGI script install (optional).
+#  17. Make GNU Readline if we can and if installer wants.
+#  18. Make $ARCH/INSTALL and copy INSTEP[234] there.
+#  19. Either give instructions (source), or if this is a binary
+#      distribution, offer to rerun FILAIP, etc.
+#
+#  At some stage, there will probably be a checkpointing mechanism to
+#  make stopping and starting easier.  Pigs will fly then too...
+#
+#-----------------------------------------------------------------------
+#                                       Version date.
+VERS=31DEC18; export VERS
+#                                       shorten the echo command
+ei1="echo INSTEP1:  "
+$ei1 "******* AIPS INSTALLATION FOR VERSION $VERS ********"
+#                                       Don't do this as root!!!
+if [ "$LOGNAME" = "root" ] ; then
+   $ei1 "*******************************************************"
+   $ei1 "AIPS should NOT be installed as root.  Some of the files need"
+   $ei1 "to be accessed in read/write mode by the users.  Please"
+   $ei1 "restart INSTEP1 from a non-privileged account such as aips"
+   $ei1 "or aipsmgr, or your regular account."
+   $ei1 "*******************************************************"
+   exit 1
+fi
+#                                       Make sure we're in AIPS_ROOT
+if [ ! -d ./$VERS ] ; then
+   $ei1 "cannot find $VERS directory in `pwd`"
+   $ei1 "Please move to the AIPS_ROOT directory, where this"
+   $ei1 "directory should be.  Then start again."
+   $ei1 "*******************************************************"
+   exit 1
+fi
+#                                       And another check...
+if [ ! -d $VERS/SYSTEM/UNIX/INSTALL ] ; then
+   $ei1 "Cannot find INSTALL directory.  This script must be"
+   $ei1 "run from the area where the $VERS directory is located."
+   $ei1 "*******************************************************"
+   exit 1
+fi
+#                                       check for Convex or Ultrix
+#                                       On newer ConvexOS versions, this
+#                                       may not be necessary.
+if [ -d /usr/convex -o -f /ultrixboot ] ; then
+   shell="/bin/ksh"
+   ARCH=CVEX
+   if [ -f /ultrixboot ] ; then
+      shell="/bin/sh5"
+      ARCH=DEC
+   fi
+#                                       See if we've been here before
+   os=`head -1 $VERS/SYSTEM/UNIX/INSTALL/INSTEP1 | awk -F! '{print $2}'`
+   if [ "$os" != "$shell" ] ; then
+#                                       make shell converter if needed
+#                                       Someday put it in $INSUNIX...
+      if [ ! -f ./sh-cvt ] ; then
+         echo '#!'$shell >sh-cvt
+         echo 'if [ "$*" = "" ] ; then' >>sh-cvt
+         echo ' echo "usage: sh-cvt file [file...]"' >>sh-cvt
+         echo ' echo "***************************************"' >>sh-cvt
+         echo ' exit 1' >>sh-cvt
+         echo 'fi' >>sh-cvt
+         echo 'for i in $* ; do' >>sh-cvt
+         echo ' new=$i.$$' >>sh-cvt
+         echo " echo '#!'$shell >\$new" >>sh-cvt
+         echo ' cat $i >>$new' >>sh-cvt
+         echo ' rm -f $i; mv $new $i; chmod +x $i' >>sh-cvt
+         echo " echo \"sh-cvt: converted \$i to $shell\"" >>sh-cvt
+         echo 'done' >>sh-cvt
+         chmod +x sh-cvt
+      fi
+#                                       use it on INSTEP scripts...
+      echo "Convex or Ultrix found, converting INSUNIX scripts to the"
+      echo "$shell shell, otherwise things just will NOT work."
+      echo "(You may wish to undo this by editing the files later, if"
+      echo " AIPS $VERS will be installed on an architecture that"
+      echo " does not have the $shell shell)"
+      ./sh-cvt $VERS/SYSTEM/UNIX/INSTALL/INSTEP* ./INSTEP1
+      if [ -d /usr/convex ] ; then
+         echo "Converting SYSCVEX scripts...(no need to undo these)"
+         ./sh-cvt $VERS/CVEX/SYSTEM/*.SH
+      elif [ -f /ultrixboot ] ; then
+         echo "Converting SYSDEC scripts...(no need to undo these)"
+         ./sh-cvt $VERS/DEC/SYSTEM/*.SH
+      fi
+      echo "Please restart INSTEP1 again so $shell can be used."
+      echo "*******************************************************"
+      exit 1
+   fi
+elif [ -f /osf_boot ] ; then
+#                                       Have we been here before?
+   ARCH=ALPHA
+   if [ "`head -1 INSTEP1`" = '#!/bin/sh' ] ; then
+      $ei1 "OSF1 system detected.  Changing shell under which I run..."
+      cat INSTEP1 | sed -e 's,^#!/bin/sh,#!/bin/ksh,' >instep1
+      if [ "$?" != "0" ] ; then
+         $ei1 "Something is wrong; tried to change /bin/sh to /bin/ksh"
+         $ei1 "but it gave an error.  Edit the first line of the file"
+         $ei1 "./$VERS/SYSTEM/UNIX/INSTALL/INSTEP1 to make the above"
+         $ei1 "replacement and start over.  The file I tried to change"
+         $ei1 "is in 'instep1' for what it's worth"
+         $ei1 "*******************************************************"
+         exit 1
+      else
+         $ei1 "Please restart me, I just changed my shell to ksh..."
+         $ei1 "*******************************************************"
+         chmod +x instep1; chmod 777 INSTEP1; mv instep1 INSTEP1
+         exit 0
+      fi
+   fi
+fi
+#                                       Log file (about time!)
+INLOG=`pwd`/INSTEP1.LOG
+if [ -f $INLOG ] ; then
+   $ei1 "Resumes at `date`" >>$INLOG
+else
+   $ei1 "Starts at `date`" >$INLOG
+fi
+$ei1 "Using log file $INLOG to record session"
+#                                       Shell functions won't work on
+#                                       old Ultrix or Convex /bin/sh,
+#                                       hence the contortions above.  If
+#                                       your system doesn't like this
+#                                       next line, change this script to
+#                                       a korn or bash script.
+#                                       Do an echo without <return>
+ni1 () {
+  if [ "`echo -n YES`" = "YES" ] ; then
+    echo -n "INSTEP1: $1"
+  else
+    echo "INSTEP1: $1\c"
+  fi
+  echo "`date +%T`: asked: $1" >>$INLOG
+}
+spc="echo"
+el1 () {
+   echo "INSTEP1: $*"
+   echo "`date +%T`: $*" >>$INLOG
+}
+#                                       Show user the umask
+el1 "The current umask (protection mask) is `umask`"
+el1 "(check the manual page on umask if you don't know what it is)"
+el1 "(recommended umask is either 002 or 0002 for AIPS if it will be"
+el1 " used from multiple accounts in the same group, otherwise 022)"
+$spc
+ni1 "===> Is this umask acceptable? (NO) "; read yn; $spc
+echo "`date +%T`: installer response: $yn" >>$INLOG
+yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+if [ "$yn" != "Y" ] ; then
+   $spc
+   ni1 "===> Please enter desired umask: "; read um; $spc
+   echo "`date +%T`: installer response: $um" >>$INLOG
+   umask $um
+   el1 "Changed umask to `umask`; you may want to change it in your"
+   case $SHELL in
+      */csh|*/tcsh)
+          el1 "startup .login file as well" ;;
+      */ksh|*/sh|*/bash)
+          el1 "startup .profile file as well" ;;
+   esac
+fi
+#                                       ok, NOW begin. -----------------
+first=no
+oldvers=""
+#                                       @@@ update as needed!
+for i in 15APR92 15OCT92 15JUL93 15JAN94 15JUL94 15JAN95 15JUL95 \
+         15JAN96 15OCT96 15APR97 15OCT97 15APR98 15OCT98
+do
+   [ -d $i ] && oldvers=$i
+done
+if [ ! -f INSTEP1.STARTED ] ; then
+#                                       Brand new attempt.
+   el1 "version of $VERS begins at `date`"
+   echo "VERSION=$VERS" >INSTEP1.STARTED
+   [ "$oldvers" != "" ] && el1 "(recent older version found: $oldvers)"
+   first=yes
+else
+#                                       See whence the file...
+   oldver2=`grep VERSION= INSTEP1.STARTED | awk -F= '{print $2}'`
+   [ "$oldver2" = "" ] && oldver2="15OCT92 or earlier"
+   if [ "$oldver2" = "$VERS" ] ; then
+#                                       Oh, it was me.
+      el1 "version of $VERS resumes at `date`"
+      [ "$oldvers" != "" ] && el1 "(recent older version: $oldvers)"
+   else
+#                                       Aha.  An older version of me.
+      $spc
+      el1 "There seems to be an older AIPS version here ($oldver2)"
+      [ "$oldvers" = "" ] && oldvers=$oldver2
+      el1 "Moving old INSTEP1.STARTED file to INSTEP1.STARTED.OLD"
+      mv INSTEP1.STARTED INSTEP1.STARTED.OLD
+      touch INSTEP1.STARTED
+      el1 "You can use the SITE and AIPS_ROOT definitions from your"
+      el1 "older installation (probably the right thing to do)."
+      $spc
+      ni1 "===> Do you want to do this? (NO) "; read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" = "Y" ] ; then
+         extr=`grep "^SITE=" INSTEP1.STARTED.OLD | awk -F= '{print $2}'`
+         if [ "$extr" != "" ] ; then
+            SITE=$extr; export SITE
+         fi
+         extr=`grep "^AIPS_ROOT" INSTEP1.STARTED.OLD | \
+               awk -F= '{print $2}'`
+         if [ "$extr" != "" ] ; then
+            AIPS_ROOT=$extr; export AIPS_ROOT
+         fi
+         el1 "found SITE=$SITE and AIPS_ROOT=$AIPS_ROOT"
+         $spc
+         ni1 "===> If this is correct, please enter YES: "; read yn
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         $spc
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+             awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" = "Y" ] ; then
+            echo "SITE=$SITE" >>INSTEP1.STARTED
+            echo "AIPS_ROOT=$AIPS_ROOT" >>INSTEP1.STARTED
+         fi
+      fi
+      echo "VERSION=$VERS" >>INSTEP1.STARTED
+      first=yes
+      $spc
+   fi
+fi
+if [ "$first" = "yes" ] ; then
+   cat <<!
+  ----------------------------------------------------------------------
+  Copyright (C) 1995-1998
+  Associated Universities, Inc. Washington DC, USA.
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License as
+  published by the Free Software Foundation; either version 2 of
+  the License, or (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public
+  License along with this program; if not, write to the Free
+  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+  MA 02139, USA.
+
+  Correspondence concerning AIPS should be addressed as follows:
+         Internet email: aipsmail@nrao.edu.
+         Postal address: AIPS Project Office
+                         National Radio Astronomy Observatory
+                         520 Edgemont Road
+                         Charlottesville, VA 22903-2475 USA
+  ----------------------------------------------------------------------
+!
+fi
+#                                       This was causing problems.
+# if [ \( "$first" = "yes" \) -a \
+#      \( "$oldvers" != "" \) -a \
+#      \( -d BIN \) ] ; then
+#    el1 "(Moving old BIN install area to BIN.OLD)"
+#    if mv BIN BIN.OLD ; then
+#       : fine
+#    else
+#       el1 "Oops, that did not work.  Please move the old BIN area"
+#       el1 "left over from the $oldvers installation out of the way,"
+#       el1 "and restart this script."
+#       el1 "*******************************************************"
+#       exit 1
+#    fi
+# fi
+#                                       --------- Stage 1 ---------
+#                                       Get hostname (if not defined)
+#                                       Need uname for convex.  Sheesh!
+#                                       This assumes "." is in the path.
+found=no
+unameloc=""
+#                                       Look for uname somewhere...
+for i in `echo $PATH | sed -e 's#:# #g'` /bin /usr/bin /usr/ucb /sbin
+do
+   if [ -f $i/uname ] ; then
+      found=yes
+      unameloc=$i
+      break
+   fi
+done
+#                                       Convex (last we saw) didn't have
+#                                       uname so we fake it crudely.
+if [ "$found" = no ] ; then
+   if [ -d /usr/convex ] ; then
+      if [ ! -f uname ] ; then
+         ln -s $VERS/CVEX/SYSTEM/uname ./uname
+         found=yes
+         unameloc=`pwd`
+      fi
+   fi
+fi
+if [ "$found" = "yes" ] ; then
+   HOST=`$unameloc/uname -n`
+#                                       No uname?  Try hostname.
+else
+   for i in `echo $PATH | sed -e 's#:# #g'` /bin /usr/bin /usr/ucb /sbin
+   do
+      if [ -f $i/hostname ] ; then
+         found=yes
+         HOST=`hostname`
+         break
+      fi
+   done
+fi
+if [ "$found" = "no" ] ; then
+   el1 "I normally use 'uname' or 'hostname' but can't find them so,"
+   $spc
+   ni1 "===> Please enter your hostname (simple, no dots, no domain): "
+   read HOST
+   echo "`date +%T`: installer response: $HOST" >>$INLOG
+   $spc
+fi
+#                                       remove trailing dots, upcase.
+HOST=`echo $HOST | tr '[a-z]' '[A-Z]' | awk -F. '{print $1}'`
+case $HOST in
+  *.*) HOST=`echo $HOST | awk -F. '{print $1}'` ;;
+esac
+$spc
+el1 "The name for this AIPS HOST is $HOST"
+$spc
+#                                       --------- Stage 2 ---------
+#                                       Get Site name; need this in
+#                                       several places below.
+SITE=`grep SITE= INSTEP1.STARTED | awk -F= '{print $2}'`
+if [ "$SITE" = "" ] ; then
+   el1 "Please enter a name for your site.  This should be a SINGLE"
+   el1 "WORD that can be used as a directory name.  Example: at NRAO"
+   el1 "we use names such as NRAOCV, NRAOAOC, and the like."
+   $spc
+   ni1 "===> Enter your site name: "; read SITE; $spc
+   echo "`date +%T`: installer response: $SITE" >>$INLOG
+   SITE=`echo $SITE | tr '[a-z]' '[A-Z]' | awk '{print $1}'`
+   export SITE
+   echo "SITE=$SITE" >>INSTEP1.STARTED
+fi
+el1 "The SITE name is $SITE."
+#                                       --------- Stage 3 ---------
+#                                       Determine architecture
+if [ \( "$ARCH" = "" \) -o \( "$ARCH" = "UNKNOWN" \) ] ; then
+   ARCH=UNKNOWN
+   if [ -d /usr/convex ] ; then
+#                                       We should have already figured
+#                                       this out, but just in case...
+      ARCH=CVEX
+   elif [ "$unameloc" != "" ] ; then
+#                                       uname -s gives OS name
+      ARCH=`$unameloc/uname -s | tr '[a-z]' '[A-Z]'`
+      if [ "$ARCH" = "SUNOS" ] ; then
+#                                       Gets sun3, sun4
+         case `uname -r` in
+            5*|6*) case `uname -i` in
+                      *Ultra*) ARCH="SUL";;
+                      i86pc)   ARCH="SOL86";;
+                      *)       ARCH="SOL";;
+                   esac;;
+            [34]*) ARCH=`/usr/bin/arch | tr '[a-z]' '[A-Z]'`;;
+            [12]*) el1 "You need to update to a newer SunOS."
+                   el1 "***********************************************"
+                   exit 1;;
+         esac
+      elif [ "$ARCH" = "LINUX" ] ; then
+         case `uname -m` in
+#                                       Intel systems
+	    i[3-7]86) ;;
+#                                       Alpha systems
+	    alpha) ARCH=AXLINUX;;
+#                                       PowerMac
+            ppc) ARCH=LINUXPPC;;
+#                                       Others not yet ported
+	    *) el1 "Sorry, AIPS has not yet been ported to `uname -m`"
+	       el1 "systems running Linux.  Choose a name..."
+	       ARCH=UNKNOWN;;
+         esac
+      fi
+   fi
+fi
+if [ "$ARCH" = HP-UX ] ; then
+    ARCH=HP
+    case `uname -r` in
+       B.10*)
+         case `uname -m` in
+            */7[0-3]*) ;;
+            */7[89]*) ARCH=HP2;;
+            *) echo "What sort of HP are you on???"
+               echo "(Model number `uname -m` unfamiliar)"
+               exit 1;;
+            esac
+        ;;
+        esac
+    fi
+#                                       Deduce architecture from OS name
+[ "$ARCH" = AIX ] && ARCH=IBM
+[ "$ARCH" = I386 ] && ARCH=LINUX
+[ "$ARCH" = I486 ] && ARCH=LINUX
+[ "$ARCH" = I586 ] && ARCH=LINUX
+[ "$ARCH" = I686 ] && ARCH=LINUX
+#                                       No such thing-- yet!
+[ "$ARCH" = I786 ] && ARCH=LINUX
+[ "$ARCH" = IRIX ] && ARCH=SGI
+[ "$ARCH" = IRIX64 ] && ARCH=SGI
+[ "$ARCH" = OSF1 ] && ARCH=ALPHA
+[ "$ARCH" = ULTRIX ] && ARCH=DEC
+#                                       Now query user in case none of
+#                                       this worked.
+
+case $ARCH in
+   ALPHA)    archstr="Alpha system running Digital Unix (OSF/1)";;
+   AXLINUX)  archstr="Alpha system running Linux";;
+   CVEX)     archstr="Convex running ConvexOS (OLD port, unavailable)";;
+   DEC)      archstr="DecStation running Ultrix (not Alpha/OSF1)";;
+   FREEBSD)  archstr='Intel PC running FreeBSD (UNTESTED for AIPS!)';;
+   HP)       archstr="HP 9000/700 series (up to 735) running HP-UX";;
+   HP2)      archstr="HP 9000/700 series (78x or 79x) running HP-UX";;
+   IBM)      archstr="IBM RS/6000 running AIX";;
+   LINUX)    archstr="Intel system running Linux";;
+   LINUXPPC) archstr="PowerMac running Linux/PPC";;
+   SGI)      archstr="Silicon Graphics running IRIX";;
+   SUN3)     archstr="Sun-3 (Motorola 680x0; OLD port, unavailable)";;
+   SUN4)     archstr="Sun-4 (Sparc) SunOS 3.x or 4.x" ;;
+   SOL)      archstr="Sun-4 (Sparc) SunOS 5.x or higher";;
+   SOL86)    archstr="Intel PC running Solaris";;
+   SUL)      archstr="Sun-4 (Sparc ULTRA) SunOS 5.x or higher";;
+   UNKNOWN)  archstr='system without uname or any other clue!';;
+   *)        archstr="system this script hasn't seen before ($ARCH)";;
+esac
+$spc
+el1 "host $HOST seems to be a $archstr"
+el1 "If this is correct, enter YES.  If not, enter NO and"
+el1 "you will be given a choice of systems for which AIPS"
+el1 "has a set of canned shell scripts."
+$spc
+if [ "$AIPSCDROM" = YES ] ; then
+#                                       CD only has Linux, SOL binaries
+  if [ "$ARCH" = "SUL" ] ; then
+    el1 '   WARNING!  The CDROM has SOL binaries so you may want to use'
+    el1 "   it as your architecture instead of SUL.  There is a slight"
+    el1 "   performance penalty, but the alternative is a full install"
+    el1 "   on disk, and a long recompile and relink process.  To avoid"
+    el1 "   this, type NO below and choose architecture SOL instead."
+    $spc
+  fi
+fi
+yn=""
+while [ "$yn" != "Y" -a "$yn" != "N" ] ; do
+   ni1 "===> Is this correct? (no default response) "; read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+done
+if [ "$yn" = N ] ; then
+#                                       OK, give a full list.
+#
+   el1 "The architectures AIPS currently knows about are:"
+   el1 ""
+   el1 " ALPHA    for Alpha systems running Digital Unix (OSF/1)"
+   el1 " AXLINUX  for Alpha systems running Linux"
+   el1 " DEC      for DecStations running Ultrix (*not* Alpha/OSF1)"
+   el1 " HP       for Hewlett Packard 9000/700 series (up to 735)"
+   el1 " HP2      for Hewlett Packard 9000/780 or 790 series"
+   el1 " IBM      for IBM RS/6000 systems running AIX"
+   el1 " LINUX    for Intel PC (386 or better) systems running Linux"
+   el1 " LINUXPPC for PowerMacs running Linux/PPC"
+   el1 " SGI      for Silicon Graphics systems running IRIX"
+   el1 " SOL      for Sun Sparcsystems with Solaris 2.x or later"
+   el1 " SOL86    for Intel PC (386 or better) systems running Solaris"
+   el1 " SUL      for Sun ULTRA Sparcsystems with Solaris 2.x or later"
+   el1 ' SUN4     for Sun Sparcsystems with SunOS 4.x (NOT Solaris!)'
+   el1 ""
+   el1 "You may also enter a different architecture and this"
+   el1 "script will ATTEMPT to set things up for you."
+   $spc
+   adone=no
+   while [ "$adone" = no ] ; do
+      ni1 "===> Enter your architecture: "; read ARCH; $spc
+      echo "`date +%T`: installer response: $ARCH" >>$INLOG
+      ARCH=`echo $ARCH | awk '{print $1}' | tr '[a-z]' '[A-Z]'`
+      if [ -d ./$VERS/$ARCH/SYSTEM ] ; then
+         el1 "Found SYSTEM area for architecture $ARCH"
+         adone=yes
+      else
+#                                       Found what seems to be new.
+#
+         el1 "Architecture $ARCH seems to be new to AIPS."
+         $spc
+         ni1 "===> Please confirm this with YES: "; read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+             awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" = "Y" ] ; then
+            adone=yes
+#                                       Make arch-specific directory
+            if [ ! -d ./$VERS/$ARCH ] ; then
+               if mkdir ./$VERS/$ARCH ; then
+                  el1 "I cannot make directory $VERS/$ARCH!  Please"
+                  el1 "check protection on directory VERS now:"
+                  ls -ld ./$VERS/
+                  el1 'This needs to be writable by you!'
+                  el1 "***********************************************"
+                  exit 1
+               else
+                  el1 "made directory $VERS/$ARCH"
+               fi
+            fi
+            if chmod g+s ./$VERS/$ARCH ; then
+               : fine
+            else
+               el1 "warning: failed to put set-gid on $VERS/$ARCH/"
+               el1 " this may affect your ability to allow different"
+               el1 " accounts in the same group from running AIPS."
+            fi
+         else
+            el1 "very well, try again..."
+         fi
+      fi
+   done
+else
+   el1 "Very well, proceeding for your $ARCH installation"
+fi
+export ARCH
+if [ \( "$ARCH" = "SOL" \) -o \( "$ARCH" = "SOL86" \) -o \( "$ARCH" = "SUL" \) ] ; then
+#                                       check for /usr/ccs/bin/
+   found=no
+   for i in `echo $PATH | sed -e 's,:, ,g'`
+   do
+      if [ "$i" = "/usr/ccs/bin" ] ; then
+         found=yes
+         break
+      fi
+   done
+   if [ \( "$found" = no \) -a \( -d /usr/ccs/bin \) ] ; then
+      PATH=${PATH}:/usr/ccs/bin
+      export PATH
+      $spc
+      el1 "***********************************************************"
+      el1 "*       Added /usr/ccs/bin to the PATH temporarily        *"
+      el1 '* You need to make this permanent!!  (in .login/.profile) *'
+      el1 "* If you are doing an installation from source,           *"
+      el1 '* INSTEP2 will FAIL to build libraries if you forget!!!!! *'
+      el1 "***********************************************************"
+      $spc
+   fi
+fi
+#                                       --------- Stage 4 ---------
+#                                       Make sure they're all there.
+for i in ERRORS ERRORS/$HOST LIBR LOAD MEMORY PREP SYSTEM TEMPLATE ; do
+   if [ ! -d ./$VERS/$ARCH/$i ] ; then
+      if mkdir ./$VERS/$ARCH/$i ; then
+         el1 "made directory ./$VERS/$ARCH/$i/"
+      else
+         el1 "Failed to make directory ./$VERS/$ARCH/$i/"
+         el1 "*********************************************************"
+         exit 1
+      fi
+   fi
+   if [ \( "$AIPSCDROM" = YES \) -a \
+        \( \( $i = LIBR \) -o \( $i = LOAD \) \) ] ; then
+      el1 "(skipping chmod on possible symlink $i to cdrom)"
+   else
+      if chmod g+ws ./$VERS/$ARCH/$i ; then
+         : fine
+      else
+         el1 "warning: cannot set-gid or write-enable $VERS/$ARCH/$i"
+         el1 "         this may affect your ability to allow different"
+         el1 "         accounts in the same group from running AIPS."
+      fi
+   fi
+done
+#                                       Make the RUNFIL area if needed..
+if [ ! -d ./RUN ] ; then
+   if mkdir RUN ; then
+      el1 "made directory ./RUN (for user run files)"
+      chmod g+ws ./RUN
+   else
+      el1 "FAILED to make directory ./RUN in `pwd`"
+      el1 "This will prevent use of COMPRESS, run files, etc. by users."
+      el1 "You should create this and make it writable by AIPS users"
+      el1 "as soon as possible.  Proceeding..."
+      $spc
+      ni1 "===> Please press RETURN or ENTER to proceed..."; read yn
+      echo "`date +%T`: installer pressed RETURN here" >>$INLOG
+      $spc
+   fi
+else
+   el1 "Directory ./RUN already exists (no need to create)"
+   chmod g+ws ./RUN
+fi
+#                                       --------- Stage 5 ---------
+#                                       Now make a SYSLOCAL area
+#                                       This def. overridden later.
+SYSLOCAL=./$VERS/$ARCH/SYSTEM/$SITE
+# use next def. if on MNJ, and remove irrelevant el1's below.
+# SYSLOCAL=./$VERS/$ARCH/SYSTEM
+if [ ! -d $SYSLOCAL ] ; then
+   el1 "Setting up a SYSLOCAL ($SYSLOCAL) area..."
+   el1 "(if you intend on running the AIPS Midnight Job, you may want"
+   el1 " to move all files in this area to ./$VERS/$ARCH/SYSTEM"
+   el1 " and then remove the SYSTEM/$SITE directory; this is not"
+   el1 " necessary for most non-'midnight-job' installations)."
+   if [ $SYSLOCAL != ./$VERS/$ARCH/SYSTEM ] ; then
+      if mkdir $SYSLOCAL ; then
+         if chmod g+s $SYSLOCAL ; then
+            : fine
+         else
+            el1 "warning: failed to set-gid on $SYSLOCAL"
+            el1 "         this may affect your ability to allow different"
+            el1 "         accounts in the same group from running AIPS."
+         fi
+      else
+         el1 "Failed to make directory $SYSLOCAL/"
+         el1 "*********************************************************"
+         exit 1
+      fi
+#                                       and copy SYS$ARCH stuff there
+      for file in ./$VERS/$ARCH/SYSTEM/* ; do
+         if [ -f $file ] ; then
+            if cp $file $SYSLOCAL/ ; then
+               : fine
+            else
+               el1 "Failed to copy $file to $SYSLOCAL/"
+               el1 "***************************************************"
+               exit 1
+            fi
+         fi
+      done
+   fi
+#                                       Copy any SYSUNIX stuff there
+#                                       that was left behind...
+   for file in CDVER.CSH CDVER.SH \
+               CCOPTS.SH LDOPTS.SH ASOPTS.SH INCS.SH \
+               LIBR.DAT
+   do
+      if [ -f ./$VERS/SYSTEM/UNIX/$file ] ; then
+         if [ -f $SYSLOCAL/$file ] ; then
+            : do nothing, file already there
+         else
+            if cp ./$VERS/SYSTEM/UNIX/$file $SYSLOCAL/
+            then
+               : fine
+            else
+               el1 "Failed to copy $VERS/SYSTEM/UNIX/$file to"
+               el1 "$SYSLOCAL"
+               el1 "***************************************************"
+               exit 1
+            fi
+         fi
+      else
+         el1 "error:  File $file not found in SYSUNIX.  Your AIPS"
+         el1 'installation kit is incomplete!!!'
+         el1 "*********************************************************"
+         exit 1
+      fi
+   done
+   case $ARCH in
+      CVEX | DEC )
+         el1 "converting some SYSLOCAL files to $shell..."
+         ./sh-cvt $SYSLOCAL/*.SH
+         chmod +w $SYSLOCAL/AIPSEXEC
+         cp ./$VERS/SYSTEM/UNIX/AIPSEXEC $SYSLOCAL/
+         ./sh-cvt $SYSLOCAL/AIPSEXEC
+         chmod +w $SYSLOCAL/LIBR
+         cp ./$VERS/SYSTEM/UNIX/LIBR $SYSLOCAL/
+         ./sh-cvt $SYSLOCAL/LIBR
+         chmod +w $SYSLOCAL/LINK
+         cp ./$VERS/SYSTEM/UNIX/LINK $SYSLOCAL/
+         ./sh-cvt $SYSLOCAL/LINK
+      ;;
+   esac
+   el1 "...Done.  SYSLOCAL=$SYSLOCAL"
+   if [ "$oldvers" != "" ] ; then
+      $spc
+      el1 "If you had previously modified the CCOPTS.SH or LDOPTS.SH"
+      el1 "files in your old \$SYSLOCAL area for $oldvers, you should"
+      el1 "consider moving them to the new area (after comparing old"
+      el1 "and new versions.  Also check FDEFAULT.SH in \$SYSUNIX."
+      $spc
+      ni1 "===> Please press RETURN or ENTER to proceed..."; read yn
+      echo "`date +%T`: installer pressed RETURN here" >>$INLOG
+      $spc
+   fi
+else
+   el1 "SYSLOCAL ($SYSLOCAL) already exists."
+fi
+#                                       --------- Stage 6 ---------
+#                                       Make sure AIPS_ROOT defined, etc
+AIPS_ROOT=`grep AIPS_ROOT= INSTEP1.STARTED | awk -F= '{print $2}'`
+if [ "$AIPS_ROOT" = "" ] ; then
+   el1 "The current directory is"
+   el1 "  `pwd | sed -e 's#/tmp_mnt##'`"
+   $spc
+   ni1 "===> Please confirm that this is the AIPS_ROOT area: (YES) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = N ] ; then
+      el1 'Then please move to your AIPS_ROOT area and restart me!'
+      el1 "************************************************************"
+      exit 1
+   fi
+   AIPS_ROOT=`pwd | sed -e 's#/tmp_mnt##'`
+   echo "AIPS_ROOT=$AIPS_ROOT" >>INSTEP1.STARTED
+else
+   el1 "AIPS_ROOT found in INSTEP1.STARTED as $AIPS_ROOT"
+   here=`pwd | sed -e 's#/tmp_mnt##'`
+   if [ "$AIPS_ROOT" != "$here" ] ; then
+      el1 "This is not the current working directory ($here)"
+      $spc
+      ni1 "Replace old definition with $here? (YES) "; read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" = "N" ] ; then
+         el1 'Now you have really confused me!  Please make sure to run'
+         el1 "the INSTEP1 script from wherever your AIPS_ROOT area"
+         el1 "should be, and ensure that the AIPS_ROOT definition in"
+         el1 "INSTEP1.STARTED in that directory is correct.  [Hint:"
+         el1 "INSTEP1 uses the output of 'pwd' to compare, and removes"
+         el1 "any leading '/tmp_mnt' if present]"
+         el1 "*********************************************************"
+         exit 1
+      fi
+      AIPS_ROOT=$here
+      cat INSTEP1.STARTED | sed -e \
+          "/^AIPS_ROOT=/s,=.*,=$AIPS_ROOT," >INSTEP1.tmp
+      rm -f INSTEP1.STARTED; mv INSTEP1.tmp INSTEP1.STARTED
+   fi
+fi
+if echo $AIPS_ROOT | grep '\.' >/dev/null ; then
+#                                       Is this still true?  Used to be.
+   el1 'AIPS_ROOT has a period in it.  This will break INSTEP2!'
+   el1 "*******************************************************"
+   exit 1
+fi
+export AIPS_ROOT
+SYSLOCAL=$AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE
+# if a MNJ, do this instead: SYSLOCAL=$AIPS_ROOT/$VERS/$ARCH/SYSTEM
+export SYSLOCAL
+#                                       -------- Stage 6.5 --------
+#                                       FTPGET offer (gift horse)
+bindist=no
+[ -f $AIPS_ROOT/$VERS/$ARCH/LOAD/AIPS.EXE ] && bindist=yes
+if [ "$bindist" = no ] ; then
+#                                       Allow FTPGET
+   el1 "As you seem not to have a binary distribution, you may want to"
+   el1 "consider getting one via ftp.  The FTPGET script will do that"
+   el1 "for you, provided $ARCH is one of the architectures for which"
+   el1 "NRAO has binaries available.  It runs more or less by itself"
+   el1 "once you have given it certain information, and really cuts"
+   el1 "down the work that would be involved in a manual download of"
+   el1 "the binary files (executables, system files, libraries, etc.)"
+   el1 "Of course, a binary distribution avoids any recompiling too."
+   $spc
+   ni1 "===> Try this now? (Needs an internet connection) (YES) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" != "N" ] ; then
+      $AIPS_ROOT/$VERS/SYSTEM/UNIX/INSTALL/FTPGET
+      if [ $? -eq 0 ] ; then
+         el1 "That seemed to be successful."
+         bindist=yes
+      else
+         el1 "That did not seem to work completely.  Proceeding with"
+         el1 "rest of installation.  You can always recompile from the"
+         el1 "source code if you cannot use FTPGET later."
+      fi
+   fi
+fi
+#                                       --------- Stage 6.9 -------
+#                                       Convert old PRDEVS.SH
+prdevs_done=no
+if [ -f $AIPS_ROOT/PRDEVS.SH ] ; then
+#                                       Can't compare files anymore
+#                                       because of GNU GPL.  So look for
+#                                       a giveaway string in the file.
+#                                       Then update to the new version.
+   if grep AIPS_ROOT/DA00/PRDEVS.LIST $AIPS_ROOT/PRDEVS.SH >/dev/null \
+    2>/dev/null ; then
+      if [ -f $AIPS_ROOT/DA00/PRDEVS.LIST ] ; then
+         el1 "Found PRDEVS.SH and PRDEVS.LIST"
+         prdevs_done=yes
+         mv $AIPS_ROOT/PRDEVS.SH $AIPS_ROOT/PRDEVS.SH.OLD
+         ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/PRDEVS.SH \
+          $AIPS_ROOT/PRDEVS.SH
+      fi
+   fi
+   if [ "$prdevs_done" != "yes" ] ; then
+      if [ -f $AIPS_ROOT/DA00/PRDEVS.LIST ] ; then
+         el1 "Old style PRDEVS.SH apparently found, but also found"
+         el1 "PRDEVS.LIST in your DA00 area.  This is odd..."
+         el1 "moving PRDEVS.SH to PRDEVS.SH.OLD and symlinking to"
+         el1 "$AIPS_ROOT/$VERS/SYSTEM/UNIX/PRDEVS.SH..."
+         mv $AIPS_ROOT/PRDEVS.SH $AIPS_ROOT/PRDEVS.SH.OLD
+         ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/PRDEVS.SH \
+          $AIPS_ROOT/PRDEVS.SH
+         prdevs_done=yes
+      fi
+   fi
+   if [ "$prdevs_done" != "yes" ] ; then
+      el1 "Old style PRDEVS.SH found; converting it..."
+      mv $AIPS_ROOT/PRDEVS.SH $AIPS_ROOT/PRDEVS.OLD
+      . $AIPS_ROOT/PRDEVS.OLD
+      [ ! -d $AIPS_ROOT/DA00 ] && mkdir $AIPS_ROOT/DA00
+      grep '^#' $VERS/SYSTEM/UNIX/PRDEVS.LIST \
+           > $AIPS_ROOT/DA00/PRDEVS.LIST
+      $spc >> $AIPS_ROOT/DA00/PRDEVS.LIST
+      if [ $LPDEVS -ge 1 ] ; then
+         echo "Found $LPDEVS printer definition(s) in old PRDEVS.SH"
+         i=0
+         while [ $i -lt $LPDEVS ] ; do
+            i=`expr $i + 1`
+            pr=\$LPDEV$i
+            pr=`eval echo $pr`
+            ty=\$LPTYPE$i
+            ty=`eval echo $ty`
+            de=\$LPDESC$i
+            de="`eval echo $de`"
+            op=""
+            [ "$BIGPRINT" = "$i" ] && op="BIG=${BIGTHRESH-1000}"
+            if [ "$LPDEV" = "$i" ] ; then
+               if [ "$op" = "" ] ; then
+                  op="DEF"
+               else
+                  op="${op},DEF"
+               fi
+            fi
+            [ "$op" = "" ] && op="NONE"
+            echo "$pr  $ty  $op  $de" >> $AIPS_ROOT/DA00/PRDEVS.LIST
+            el1 "$de, options=$op"
+         done
+         el1 "You may want to inspect $AIPS_ROOT/DA00/PRDEVS.LIST"
+         el1 "to make sure it's ok.  Please add DUP as an option"
+         el1 "to any printer that prints on both paper sides, e.g."
+         $spc
+         el1 "ps3dup     PS      BIG=1000,DUP,DEF    Duplex printer"
+         $spc
+         if [ "$EDITOR" != "" ] ; then
+            ni1 "===> Edit this file now? (Y) " ; read yn; $spc
+            echo "`date +%T`: installer response: $yn" >>$INLOG
+            yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+                awk '{print substr($1, 1, 1)}'`
+            if [ "$yn" != "N" ] ; then
+               $EDITOR $AIPS_ROOT/DA00/PRDEVS.LIST
+            fi
+         fi
+         prdevs_done=yes
+      else
+         el1 "Something is wrong with your PRDEVS.SH; it has been"
+         el1 "moved to PRDEVS.OLD for now."
+      fi
+   fi
+fi
+if [ "$prdevs_done" = "no" ] ; then
+   if [ -f $AIPS_ROOT/DA00/PRDEVS.LIST ] ; then
+      el1 "$AIPS_ROOT/DA00/PRDEVS.LIST already exists"
+      el1 "Assuming it has been set up correctly."
+   else
+      [ ! -d $AIPS_ROOT/DA00 ] && mkdir $AIPS_ROOT/DA00
+      grep '^#' $VERS/SYSTEM/UNIX/PRDEVS.LIST \
+           > $AIPS_ROOT/DA00/PRDEVS.LIST
+      $spc >> $AIPS_ROOT/DA00/PRDEVS.LIST
+      $spc
+      el1 "AIPS knows about several types of printers, including:"
+      $spc
+      el1 "    PS       for black-and-white PostScript"
+      el1 "    PS-CMYK  for color PostScript"
+      el1 "    TEXT     for plain text"
+      el1 "    QMS      for QUIC (QMS, Talaris) printers"
+      el1 "    PREVIEW  for screen previewers (ghostview, pageview)"
+      $spc
+      el1 "Options default to NONE but can include DEF for default,"
+      el1 "DUP if it prints on both sides of the page, and BIG=nnnn"
+      el1 "if that printer will always be used for text jobs longer"
+      el1 "than nnnn lines regardless of user-selected printer."
+      el1 "Options should be a comma-separated list, with NO spaces."
+      $spc
+      if [ -f /etc/printcap ] ; then
+         el1 "Will get information on printers from /etc/printcap."
+         el1 "This may not work perfectly...."
+         $spc
+         printers=`cat /etc/printcap | tr '\011' ' ' | grep '^[^ #]' | \
+                   sort | uniq | awk -F: '{print $1}' | \
+                   awk -F\| '{print $1}'`
+	 nprinters=`echo $printers | wc -w`
+         el1 "found $nprinters printers (I think):"
+         el1 "`echo $printers | tr '\012' ' '`"
+         if [ $nprinters -gt 15 ] ; then
+            el1 "... but I won't ask you to go through all of them!"
+	 else
+            for line in $printers ; do
+               pr=`echo $line | awk '{print $1}'`
+               $spc
+               ni1 "===> Include printer $pr [Y/N/Q] (Y) "; read yn
+               echo "`date +%T`: installer response: $yn" >>$INLOG
+               yn=`echo $yn | tr '[a-z]' '[A-Z]' |
+                   awk '{print substr($1, 1, 1)}'`
+               [ "$yn" = "Q" ] && break
+               if [ "$yn" != "N" ] ; then
+                  $spc
+                  ni1 \
+                   "===> Printer type (PS/PS-CMYK/TEXT/QMS/PREVIEW): "
+                  read ty; $spc; ty=`echo $ty | tr '[a-z]' '[A-Z]'`
+                  echo "`date +%T`: installer response: $ty" >>$INLOG
+		  case $ty in
+                     "") ty="PS";;
+                     PS-C*|PSC*|C*) ty="PS-CMYK";;
+		     T*) ty="TEXT";;
+		     Q*) ty="QMS";;
+		     PR*) ty="PREVIEW";;
+                  esac
+                  case $ty in
+                     PS|PS-CMYK|TEXT|QMS|PREVIEW) ;;
+                     *) el1 "Invalid type, assuming TEXT"; ty="TEXT";;
+                  esac
+                  $spc
+                  ni1 "===> Any special options (DUP/DEF/BIG=1000): "
+                  read op
+                  echo "`date +%T`: installer response: $op" >>$INLOG
+                  op=`echo $op | tr '[a-z]' '[A-Z]' | sed -e 's/ //g' \
+                                                          -e 's:/:,:g'`
+                  [ "$op" = "" ] && op=NONE
+                  $spc; de=""; ni1 "===> Description: "; read de
+                  [ "$de" = "" ] && de="printer $pr, type $ty"
+                  echo "`date +%T`: installer response: $de" >>$INLOG
+                  echo "$pr  $ty  $op  $de" \
+                   >> $AIPS_ROOT/DA00/PRDEVS.LIST
+               fi
+            done
+            prdevs_done="yes"
+         fi
+      fi
+      if [ "$prdevs_done" = "no" ] ; then
+         $spc
+         ni1 "===> How many printers will AIPS use? "
+         read LPDEVS
+         echo "`date +%T`: installer response: $LPDEVS" >>$INLOG
+         if [ $LPDEVS -lt 1 -o $LPDEVS -gt 100 ] ; then
+            el1 "Sorry, that's too few or too many"
+            el1 "******************************************************"
+            exit 1
+         fi
+         i=0
+         el1 "For each printer, specify its name (e.g. lp or ps2 or"
+         el1 "similar), its type, any options and a description."
+         [ ! -d $AIPS_ROOT/DA00 ] && mkdir $AIPS_ROOT/DA00
+         grep '^#' $VERS/SYSTEM/UNIX/PRDEVS.LIST \
+              > $AIPS_ROOT/DA00/PRDEVS.LIST
+         $spc >> $AIPS_ROOT/DA00/PRDEVS.LIST
+         while [ $i -lt $LPDEVS ] ; do
+            i=`expr $i + 1`
+            $spc
+            ni1 "===> Name for printer $i:"; read pr; $spc
+            echo "`date +%T`: installer response: $pr" >>$INLOG
+            ni1 "===> Printer type for $pr:"; read ty
+            echo "`date +%T`: installer response: $ty" >>$INLOG
+            ty=`echo $ty | tr '[a-z]' '[A-Z]'`
+            case $ty in
+               "") ty="PS";;
+               PS-C*|PSC*|C*) ty="PS-CMYK";;
+               T*) ty="TEXT";;
+               Q*) ty="QMS";;
+               PR*) ty="PREVIEW";;
+            esac
+            case $ty in
+               PS|PS-CMYK|TEXT|QMS|PREVIEW) ;;
+               *) el1 "Sorry, \"$ty\" is an invalid printer type"
+                  el1 "Assuming TEXT for now"; ty=TEXT ;;
+            esac
+            $spc
+            ni1 "===> Printer options for $pr:"; read op
+            echo "`date +%T`: installer response: $op" >>$INLOG
+            op=`echo $op | tr '[a-z]' '[A-Z]' | sed -e 's/ //g'`
+            [ "$op" = "" ] && op=NONE
+            $spc
+            ni1 "===> Description for $pr:"
+            read ds
+            [ "$ds" = "" ] && ds="printer $pr, type $ty"
+            echo "`date +%T`: installer response: $ds" >>$INLOG
+            echo "$pr  $ty  $op  $ds" >> $AIPS_ROOT/DA00/PRDEVS.LIST
+         done
+      fi
+      if [ "$EDITOR" != "" ] ; then
+         el1 "PRDEVS.LIST set up.  It's a good idea to check it."
+         $spc
+         ni1 "===> Edit the PRDEVS.LIST file now? (Y) " ; read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+             awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" != "N" ] ; then
+            $EDITOR $AIPS_ROOT/DA00/PRDEVS.LIST
+         fi
+      fi
+   fi
+fi
+ln -s $VERS/SYSTEM/UNIX/PRDEVS.SH $AIPS_ROOT/PRDEVS.SH 2>/dev/null
+
+#                                       A or A4?
+$spc
+AIPS_PAPER=`grep AIPS_PAPER= INSTEP1.STARTED | awk -F= '{print $2}'`
+case "$AIPS_PAPER" in
+   A|A4)
+      el1 "Using existing setting of $AIPS_PAPER size paper";;
+   *)
+      ni1 \
+       "==> Select A (8.5 x 11 inch) or A4 (8.25 x 11.75) paper: (A) "
+      read a; $spc
+      case $a in
+         a4|A4)
+            AIPS_PAPER="A4"
+            rm -f $VERS/SYSTEM/UNIX/ZLPCL2.TMP
+            cat $VERS/SYSTEM/UNIX/ZLPCL2 | \
+             sed -e \
+              's/^psfilter=/# uncomment for US A size psfilter=/' \
+              > $VERS/SYSTEM/UNIX/ZLPCL2.TMP
+            rm -f $VERS/SYSTEM/UNIX/ZLPCL2
+            cat $VERS/SYSTEM/UNIX/ZLPCL2.TMP | \
+             sed -e 's/^# *psfilter/psfilter/' >$VERS/SYSTEM/UNIX/ZLPCL2
+            chmod +x $VERS/SYSTEM/UNIX/ZLPCL2
+            rm -f $VERS/SYSTEM/UNIX/ZLPCL2.TMP
+            el1 "ZLPCL2 script modified for A4 format printing."
+         ;;
+         *)
+            AIPS_PAPER="A";;
+      esac
+      cat $AIPS_ROOT/INSTEP1.STARTED | sed -e '/AIPS_PAPER/d' \
+       > $AIPS_ROOT/INSTEP1.STARTED.TMP
+      rm -f $AIPS_ROOT/INSTEP1.STARTED
+      mv $AIPS_ROOT/INSTEP1.STARTED.TMP $AIPS_ROOT/INSTEP1.STARTED
+      echo "AIPS_PAPER=$AIPS_PAPER" >>$AIPS_ROOT/INSTEP1.STARTED
+   ;;
+esac
+#
+#                                       --------- Stage 7 ---------
+#                                       Copy files to AIPS_ROOT
+SYSUNIX=$AIPS_ROOT/$VERS/SYSTEM/UNIX
+export SYSUNIX
+if [ "$oldvers" != "" ] ; then
+   $spc
+   el1 "Will NOT overwrite your HOSTS.LIST file; however, others will"
+   el1 "be moved out of the way as there are many changes."
+   $spc
+fi
+if [ ! -f $AIPS_ROOT/HOSTS.LIST ] ; then
+   cp $SYSUNIX/HOSTS.LIST $AIPS_ROOT/HOSTS.LIST
+   chmod +w $AIPS_ROOT/HOSTS.LIST
+fi
+#                                       Files to copy
+filelist="AIPSASSN.CSH AIPSASSN.SH AIPSPATH.CSH AIPSPATH.SH"
+filelist="$filelist AIPSROOT.DEFINE AIPS.BOOT HOSTS.CSH HOSTS.SH"
+filelist="$filelist LOGIN.CSH LOGIN.SH START_AIPS START_TPSERVERS"
+filelist="$filelist START_TVSERVERS TVALT"
+firstwarn=yes
+for file in $filelist
+do
+   if [ -f $SYSUNIX/$file ] ; then
+#                                       Check if they already exist
+      if [ -f $AIPS_ROOT/$file ] ; then
+#                                       Logic faulty here...
+         if [ "$first" = "yes" ] ; then
+            if [ "$firstwarn" = "yes" ] ; then
+             el1 "Warning:  Old $file found in $AIPS_ROOT.  Some older"
+             el1 "versions of AIPS_ROOT files may be incompatible with"
+             el1 "this $VERS version of AIPS, *especially* if they"
+             el1 "predate the 15APR92 release.  You will only see this"
+             el1 "warning message once."
+             $spc
+             firstwarn=no
+            fi
+            el1 "Moving $file to ${file}.OLD..."
+            if mv $AIPS_ROOT/$file $AIPS_ROOT/${file}.OLD ; then
+               if cp $SYSUNIX/$file $AIPS_ROOT/$file ; then
+                  chmod +wx $AIPS_ROOT/$file; chmod -x $SYSUNIX/$file
+               else
+                  el1 "Copy of $file to $AIPS_ROOT failed"
+                  el1 'Cannot proceed!!!'
+                  el1 "***********************************************"
+                  exit 1
+               fi
+            else
+               el1 "Cannot even do this????"
+               el1 'Cannot proceed!!!'
+               el1 "***********************************************"
+               exit 1
+            fi
+         else
+            el1 "$file already in $AIPS_ROOT, ASSUMING it's from $VERS"
+         fi
+      else
+         if cp $SYSUNIX/$file $AIPS_ROOT/$file ; then
+#                                       remove execute bit on sysunix
+#                                       version (can cause problems)
+            chmod +wx $AIPS_ROOT/$file; chmod -x $SYSUNIX/$file
+         else
+            el1 "Copy of $file to $AIPS_ROOT failed"
+            el1 'Cannot proceed!!!'
+            el1 "******************************************************"
+            exit 1
+         fi
+      fi
+   else
+      el1 "fatal error:  Cannot find $file"
+      el1 "in SYSUNIX ($AIPS_ROOT/$VERS/SYSTEM/UNIX)"
+      el1 "*******************************************************"
+      exit 1
+   fi
+done
+#                                       Special kludge for TVDEVS.SH
+[ -f $AIPS_ROOT/TVDEVS.SH.OLD ] && rm -fr $AIPS_ROOT/TVDEVS.SH.OLD
+[ -f $AIPS_ROOT/TVDEVS.SH ] && \
+ mv -f $AIPS_ROOT/TVDEVS.SH $AIPS_ROOT/TVDEVS.SH.OLD
+case $oldvers in
+#                                       @@@ Keep this updated!
+   ""|15*9[5678])
+      rm -f $AIPS_ROOT/TVDEVS.SH
+      ln -s $SYSUNIX/TVDEVS.SH $AIPS_ROOT/TVDEVS.SH
+      ;;
+   15*9[234])
+      $spc
+      el1 "If one of the old version(s) of AIPS you intend to keep"
+      el1 "predates 15JAN95, it will be necessary to put a"
+      el1 "modified version of TVDEVS.SH in the \$AIPS_ROOT area."
+      $spc
+      ni1 "===> Do you need to keep support for such a version? [YES] "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != N ] ; then
+         ln -s $SYSUNIX/TVDEVS.KLUDGE $AIPS_ROOT/TVDEVS.SH
+      else
+         ln -s $SYSUNIX/TVDEVS.SH $AIPS_ROOT/TVDEVS.SH
+      fi
+      ;;
+   *)
+      $spc
+      el1 "Your older version is incompatible with $VERS."
+      el1 "It may be necessary to remove it after $VERS is installed."
+      $spc
+      ni1 "Press RETURN to continue..."; read yn; $spc
+      rm -f $AIPS_ROOT/TVDEVS.SH
+      ln -s $SYSUNIX/TVDEVS.SH $AIPS_ROOT/TVDEVS.SH
+      ;;
+esac
+#                                       --------- Stage 8 ---------
+#                                       Fix AIPS_ROOT in these
+chmod +x ./AIPSROOT.DEFINE
+./AIPSROOT.DEFINE $AIPS_ROOT
+#                                       Make symlink to START_AIPS
+case $ARCH in
+   DEC | CVEX )
+      rm -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS
+      rm -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/aips
+      cp $AIPS_ROOT/START_AIPS $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS
+      $AIPS_ROOT/sh-cvt $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS
+      ln -s $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS \
+            $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/aips
+      el1 "Created alternative shell version of START_AIPS for $ARCH"
+      el1 "in your \$SYSLOCAL area as AIPS and symlink aips"
+   ;;
+   *)
+      [ -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/aips ] && \
+         rm -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/aips
+      ln -s $AIPS_ROOT/START_AIPS \
+            $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/aips
+      [ -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS ] && \
+         rm -f $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS
+      ln -s $AIPS_ROOT/START_AIPS \
+            $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/AIPS
+      el1 "Created symlinks AIPS and aips in \$SYSLOCAL" \
+           "to \$AIPS_ROOT/START_AIPS"
+      case $SHELL in
+         */csh|*/tcsh)
+            el1 "(you may need to give the 'rehash' command)" ;;
+         */bash)
+            el1 "(you may need to give the 'hash -r' command)" ;;
+      esac
+   ;;
+esac
+#                                       --------- Stage 9 ---------
+#                                       Versions.  See what's there.
+OLD=`grep '^OLD=' AIPSPATH.SH`
+eval $OLD
+NEW=`grep '^NEW=' AIPSPATH.SH`
+eval $NEW
+TST=`grep '^TST=' AIPSPATH.SH`
+eval $TST
+#                                       This *should* do the right thing
+if [ $first = yes ] ; then
+   if [ "$oldvers" != "" ] ; then
+      OLD=$AIPS_ROOT/$oldvers; NEW=$AIPS_ROOT/$oldvers
+   fi
+fi
+#                                       Check if any of these exist
+[ ! -d "$OLD" ] && OLD=$AIPS_ROOT/$VERS
+[ ! -d "$NEW" ] && NEW=$AIPS_ROOT/$VERS
+#                                       This one *better* exist!
+[ ! -d "$TST" ] && TST=$AIPS_ROOT/$VERS
+#                                       put back AIPS_ROOT if possible
+sedstr="s#$AIPS_ROOT#\$AIPS_ROOT#"
+if echo $OLD | grep $AIPS_ROOT >/dev/null ; then
+   OLD=`echo $OLD | sed -e $sedstr`
+fi
+if echo $NEW | grep $AIPS_ROOT >/dev/null ; then
+   NEW=`echo $NEW | sed -e $sedstr`
+fi
+if echo $TST | grep $AIPS_ROOT >/dev/null ; then
+   TST=`echo $TST | sed -e $sedstr`
+fi
+$spc
+el1 "The AIPS versions are currently:"
+$spc
+el1 "     OLD   $OLD"
+el1 "     NEW   $NEW"
+el1 "     TST   $TST"
+$spc
+ni1 "===> Is this what you want? (YES) "; read yn; $spc
+echo "`date +%T`: installer response: $yn" >>$INLOG
+yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+if [ "$yn" = N ] ; then
+   el1 "Then enter EXACTLY what OLD, NEW, and TST should be"
+   el1 "for example \$AIPS_ROOT/$VERS"; $spc
+
+   dum=""; $spc; ni1 "===> Enter directory for TST: "; read dum; $spc
+   echo "`date +%T`: installer response: $dum" >>$INLOG
+   dum=`eval echo $dum`
+   [ "$dum" != "" ] && TST=$dum
+   [ ! -d "$TST" ] && el1 "WARNING:  $TST does not exist"
+
+   dum=""; $spc; ni1 "===> Enter directory for NEW: "; read dum; $spc
+   echo "`date +%T`: installer response: $dum" >>$INLOG
+   dum=`eval echo $dum`
+   [ "$dum" != "" ] && NEW=$dum
+   [ ! -d "$NEW" ] && el1 "WARNING:  $NEW does not exist"
+
+   dum=""; $spc; ni1 "===> Enter directory for OLD: "; read dum; $spc
+   echo "`date +%T`: installer response: $dum" >>$INLOG
+   dum=`eval echo $dum`
+   [ "$dum" != "" ] && OLD=$dum
+   [ ! -d "$OLD" ] && el1 "WARNING:  $OLD does not exist"
+fi
+#                                       Put OLD, NEW, TST back in
+#                                       AIPSPATH.[C]SH files.
+cat AIPSPATH.SH | sed -e "/^OLD=/s#=.*#=$OLD#" \
+                      -e "/^NEW=/s#=.*#=$NEW#" \
+                      -e "/^TST=/s#=.*#=$TST#" \
+                >AIPSPATH.SH.tmp && \
+   rm -f AIPSPATH.SH && \
+      mv AIPSPATH.SH.tmp AIPSPATH.SH; chmod +x AIPSPATH.SH
+cat AIPSPATH.CSH | sed -e "/setenv OLD /s#OLD.*#OLD $OLD#" \
+                       -e "/setenv NEW /s#NEW.*#NEW $NEW#" \
+                       -e "/setenv TST /s#TST.*#TST $TST#" \
+                 >AIPSPATH.CSH.tmp && \
+   rm -f AIPSPATH.CSH && \
+      mv AIPSPATH.CSH.tmp AIPSPATH.CSH; chmod +x AIPSPATH.CSH
+#                                       --------- Stage 10 ---------
+#                                       Data areas
+if [ ! -d DA00 ] ; then
+   mkdir DA00
+   chmod g+ws DA00
+fi
+cd DA00/
+if [ ! -d $HOST ] ; then
+   mkdir $HOST
+   chmod g+ws $HOST
+fi
+#                                       --------- Stage 11 ---------
+#                                       Get DADEVS.LIST file
+if [ ! -f DADEVS.LIST ] ; then
+   cp ../$VERS/SYSTEM/UNIX/DADEVS.LIST .
+   chmod u+w DADEVS.LIST
+   el1 "AIPS needs a directory DATA_ROOT for the data disks."
+   el1 "Within it, you can either have one or more directories, or put"
+   el1 "symbolic links to the actual directories.  Alternatively, the"
+   el1 "DATA_ROOT can be the root of an automount or amd map. At NRAO,"
+   el1 "we use an auto.DATA map for data areas from many hosts and thus"
+   el1 "DATA_ROOT=/DATA.  For most sites, the best approach may be to"
+   el1 "make DATA_ROOT=$AIPS_ROOT/DATA and use symbolic links."
+   $spc
+   ni1 "===> What should DATA_ROOT be here? ($AIPS_ROOT/DATA) "
+   read DATA_ROOT; $spc
+   echo "`date +%T`: installer response: $DATA_ROOT" >>$INLOG
+   [ "$DATA_ROOT" = "" ] && DATA_ROOT=$AIPS_ROOT/DATA
+#                                       Just in case env.var used...
+   DATA_ROOT=`eval echo $DATA_ROOT`
+   cat DADEVS.LIST | sed -e '/^[+-]/d' >dadevs.new
+   rm DADEVS.LIST; mv dadevs.new DADEVS.LIST
+else
+#                                       Most LINUX systems have GNU grep
+#                                       as did the SGI machine we used..
+   case $ARCH in
+      *LINUX*|SGI) dtemp=`egrep '(^\+|^\-)' DADEVS.LIST | head -n 1`;;
+      *)           dtemp=`grep '^[+-]' DADEVS.LIST | head -n 1`;;
+   esac
+   dtemp=`echo $dtemp | sed -e 's:[+-]\ *::'`
+   if [ "$dtemp" = "/DATA/REQUIRED_DEFINE_ME_1" ] ; then
+      el1 "DATA_ROOT not set in DADEVS.LIST"
+      $spc
+      ni1 "===> Please enter DATA_ROOT: ($AIPS_ROOT/DATA) "
+      read DATA_ROOT; $spc
+      echo "`date +%T`: installer response: $DATA_ROOT" >>$INLOG
+#                                       Just in case env.var used...
+      DATA_ROOT=`eval echo $DATA_ROOT`
+      [ "$DATA_ROOT" = "" ] && DATA_ROOT=$AIPS_ROOT/DATA
+      DATA_ROOT=`eval echo $DATA_ROOT`
+      cat DADEVS.LIST | sed -e '/^[+-]/d' >dadevs.new
+      rm DADEVS.LIST; mv dadevs.new DADEVS.LIST
+   else
+      case $ARCH in
+         *LINUX*|SGI)
+            DATA_ROOT=`egrep '(^\+|^\-)' DADEVS.LIST | head -n 1`;;
+         *)
+            DATA_ROOT=`grep '^[+-]' DADEVS.LIST | head -n 1`;;
+      esac
+      DATA_ROOT=`echo $DATA_ROOT | \
+                 sed -e 's:[+-]\ *::' -e 's,\(/.*\)\(/.*\)$,\1,'`
+      el1 "found existing DADEVS.LIST in $AIPS_ROOT/DA00/"
+      el1 "got DATA_ROOT=$DATA_ROOT from it, proceeding."
+   fi
+fi
+#                                       Also update DATA_ROOT in the
+#                                       AIPSASSN.CSH,SH files up above.
+cd $AIPS_ROOT
+cat AIPSASSN.CSH | \
+   sed -e "/setenv DATA_ROOT /s#ROOT.*#ROOT $DATA_ROOT#" >tmp.$$
+chmod +w AIPSASSN.CSH; mv tmp.$$ AIPSASSN.CSH; chmod +x AIPSASSN.CSH
+cat AIPSASSN.SH | \
+   sed -e "/DATA_ROOT=/s#=.*#=$DATA_ROOT; export DATA_ROOT#" >tmp.$$
+chmod +w AIPSASSN.SH; mv tmp.$$ AIPSASSN.SH; chmod +x AIPSASSN.SH
+cd DA00/
+#                                       Check that DATA_ROOT exists
+export DATA_ROOT
+if [ ! -d $DATA_ROOT ] ; then
+   $spc
+   ni1 "===> DATA_ROOT directory does not exist; create it? (YES) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" != "N" ] ; then
+      if mkdir $DATA_ROOT ; then
+         el1 "$DATA_ROOT directory created."
+         chmod g+s $DATA_ROOT
+      else
+         el1 "cannot create $DATA_ROOT/"
+         el1 "**************************************"
+         el1 "you will have to do this by hand later"
+         el1 "**************************************"
+      fi
+   fi
+fi
+lnktst="-h"
+[ "$ARCH" = IBM ] && lnktst="-L"
+[ "$ARCH" = DEC ] && lnktst="-d"
+dofits=yes
+if [ "$oldvers" != "" ] ; then
+   if [ "$FITS" != "" ] ; then
+      if [ -d $FITS -o $lnktst $FITS ] ; then
+         el1 "FITS area $FITS already exists"
+         dofits=no
+      fi
+   fi
+fi
+if [ $dofits = yes ] ; then
+   if [ -d $AIPS_ROOT/FITS -o $lnktst $AIPS_ROOT/FITS ] ; then
+      el1 "FITS area $AIPS_ROOT/FITS already exists"
+      dofits=no
+   fi
+fi
+if [ $dofits = yes ] ; then
+   el1 "FITS disk file area is usually $AIPS_ROOT/FITS"
+   el1 "(it is used as an area to read/write FITS disk files by users)"
+   el1 "You can create this as either a directory or a symbolic link"
+   el1 "to another directory."
+   $spc
+   ni1 "===> Create directory $AIPS_ROOT/FITS ? (NO) " ; read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      if mkdir $AIPS_ROOT/FITS ; then
+         el1 "Created $AIPS_ROOT/FITS/ area"
+      else
+         el1 "Failed to create FITS area.  You can defer this for now."
+         $spc
+      fi
+   else
+      ni1 "===> Make it a symlink to another directory? (YES) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         ni1 "===> Enter the other directory name: "; read dirn; $spc
+         echo "`date +%T`: installer response: $dirn" >>$INLOG
+         if [ "$dirn" != "" ] ; then
+            [ ! -d "$dirn" ] && el1 "WARNING: $dirn is not a directory"
+            ln -s $dirn $AIPS_ROOT/FITS
+            el1 "Done."
+         else
+            el1 "OK, won't make a symbolic link for the FITS area."
+         fi
+      fi
+   fi
+fi
+#                                       --------- Stage 12 ---------
+#                                       Get NETSP file
+if [ ! -f NETSP ] ; then
+   cat ../$VERS/SYSTEM/UNIX/NETSP | sed '/\/.*$/d' > NETSP
+fi
+#                                       Did we already do this host?
+case $ARCH in
+   *LINUX*|SGI)
+#                                       Bug in Linux grep?
+      ndisk1=`grep "^+  $DATA_ROOT/$HOST" DADEVS.LIST | wc -l`
+      ndisk2=`grep "^-  $DATA_ROOT/$HOST" DADEVS.LIST | wc -l`
+      ndisk=`expr $ndisk1 + $ndisk2`;;
+   *) ndisk=`grep "[+-]  $DATA_ROOT/$HOST" DADEVS.LIST | wc -l`;;
+esac
+if [ $ndisk -gt 0 ] ; then
+   el1 "There seem to be $ndisk disk(s) for $HOST already."
+   el1 "No more will be added by this script to either"
+   el1 "of the files DADEVS.LIST or NETSP"
+else
+#                                       How many disks?
+   ddone=no
+   $spc
+   while [ "$ddone" = no ] ; do
+      ni1 "===> How many AIPS data areas on $HOST do you want? "
+      read n; $spc
+      echo "`date +%T`: installer response: $n" >>$INLOG
+      if [ $n -ge 0 -a $n -lt 36 ] ; then
+         ddone=yes
+      else
+         el1 "must be between 0 and 35.  Please re-enter."
+      fi
+   done
+   if [ $n -gt 0 ] ; then
+      ni1 "===> Will disks here be required regardless of host? (NO) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+      pm="-"
+      [ "$yn" = Y ] && pm="+"
+   else
+      pm="-"
+      el1 "Very well, assuming NO disks in DADEVS.LIST for this host"
+      el1 "(this is usually only valid if you are using .dadevs files)"
+      $spc
+   fi
+   m=1
+   while [ $m -le $n ] ; do
+      dname="$DATA_ROOT/${HOST}_$m"
+      el1 "$HOST disk $m will be $dname"
+      echo "$pm  $dname" >>DADEVS.LIST
+      echo "$dname" | awk '{
+ printf("%-25s  14.0    0    0    0    0    0    0    0    0\n", $1)}' \
+         >>NETSP
+      if [ ! -d $dname ] ; then
+         $spc
+         ni1 \
+         "===> Should I make it a symbolic link to another area? (YES) "
+         read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+             awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" != N ] ; then
+            sname=$dname
+            ni1 "===> What directory should symlink $sname point at? "
+            read dname; $spc
+            echo "`date +%T`: installer response: $dname" >>$INLOG
+            if [ ! -d $dname ] ; then
+               el1 "WARNING - $dname is not a directory"; $spc
+               ni1 "===> Proceed anyway with symlink? (NO) "; read yn
+               echo "`date +%T`: installer response: $yn" >>$INLOG
+               $spc
+               yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+                   awk '{print substr($1, 1, 1)}'`
+               if [ "$yn" = "Y" ] ; then
+                  ln -s $dname $sname
+               fi
+            else
+               ln -s $dname $sname
+            fi
+         else
+            ni1 "===> Would you rather create directory $dname? (YES) "
+            read yn; $spc
+            echo "`date +%T`: installer response: $yn" >>$INLOG
+            yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+                awk '{print substr($1, 1, 1)}'`
+            if [ "$yn" != N ] ; then
+               if mkdir $dname ; then
+                  chmod g+s $dname
+                  touch $dname/SPACE
+               else
+                  el1 "cannot create $dname"
+                  el1 "**************************************"
+                  el1 "WARNING: you need to create it by hand"
+                  el1 "**************************************"
+               fi
+            fi
+         fi
+      fi
+      [ -d $dname ] && touch $dname/SPACE
+      m=`expr $m + 1`
+   done
+   el1 "The files DADEVS.LIST and NETSP are in $AIPS_ROOT/DA00/"
+   el1 "You should inspect them for accuracy.  Also, you probably"
+   el1 "want to edit NETSP to set TIMDEST limits, reserved usernumbers"
+   el1 "on disks if you so choose, and scratch disk status (user -1)."
+   el1 'PUT NO TABS (ctrl-I) IN NETSP!!!!  THIS WILL BREAK AIPS!!!'
+   $spc
+   if [ "$EDITOR" != "" ] ; then
+      ni1 \
+       "===> Do you want to edit DADEVS.LIST now with $EDITOR? (YES) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         $EDITOR $AIPS_ROOT/DA00/DADEVS.LIST
+      fi
+      ni1 "===> Do you want to edit NETSP now with $EDITOR? (YES) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         $EDITOR $AIPS_ROOT/DA00/NETSP
+      fi
+   fi
+fi
+#                                       --------- Stage 13 ---------
+#                                       Fill in the TPDEVS.LIST file
+#                                       AND the TPHOSTS file!!!
+if [ ! -f TPDEVS.LIST ] ; then
+   el1 "The files TPDEVS.LIST and TPHOSTS will now be set up.  Both are"
+   el1 "plain text and have comments making them easy to understand,"
+   el1 "and both live in the $AIPS_ROOT/DA00/ directory.  "
+   el1 "TPDEVS.LIST defines the tape device names, and TPHOSTS sets"
+   el1 "what remote hosts can connect to local TPMON daemons to access"
+   el1 "your local tapes and disks".
+   cat $AIPS_ROOT/$VERS/SYSTEM/UNIX/TPDEVS.LIST | \
+   grep '^#' | sed -e "s/NRAO-CV/$SITE/" >TPDEVS.LIST
+else
+   el1 "Found existing TPDEVS.LIST, will check it for $HOST..."
+fi
+#                                       see if HOST has any entries...
+ntapes=`grep "^$HOST" TPDEVS.LIST | wc -l`
+if [ $ntapes -eq 0 ] ; then
+   el1 "You have the option of defining tape drives for this host now."
+   el1 "In general, you need to use the NO-REWIND device name for the"
+   el1 "tape drive(s).  READ THE ADVICE BELOW before entering anything!"
+   $spc
+   ni1 \
+    "===> Do you want to set up tape drives on $HOST for AIPS? (YES) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" != "N" ] ; then
+      tdone=no
+      ni1 "===> How many LOCAL tape drives on $HOST will AIPS use? "
+      while [ "$tdone" = no ] ; do
+         read n; $spc
+         echo "`date +%T`: installer response: $n" >>$INLOG
+         if [ $n -gt 0 -a $n -lt 36 ] ; then
+            tdone=yes
+         else
+            ni1 "===> must be between 1 and 35.  Please re-enter: "
+         fi
+      done
+      case $ARCH in
+         SUN3 | SUN4)
+            el1 "You must use device names of the form /dev/nrst<x> for"
+            el1 "SCSI devices and /dev/nrmt<x> for others, where <x> is"
+            el1 "0, 1, 2, ..., 7.  Do NOT use any higher numbers, as"
+            el1 "the AIPS tape Z routines ASSUME the lower numbers and"
+	    el1 "they will modify the name to get higher densities."
+            tdevs=""
+	    el1 "Checking for tape drives..."
+            rm -f /tmp/foo
+            for j in s m ; do
+               for i in 0 1 2 3 4 5 6 7 ; do
+                  mt -f /dev/nr${j}t$i status 2>/tmp/foo
+                  case "`cat /tmp/foo`" in
+                     *"No such"*) ;;
+                     *) tdevs="$tdevs /dev/nr${j}t$i";;
+                  esac
+                  rm -f /tmp/foo
+               done
+            done
+            $spc
+            el1 "Possible tape devices found: ${tdevs-NONE}"
+         ;;
+         IBM)
+            el1 "You MUST use device names of the form /dev/rmt<x>"
+            el1 "where <x> is 0, 1, 2, ...  Do NOT add any more numbers"
+            el1 "(e.g. /dev/rmt0.1) as the AIPS tape Z routines ASSUME"
+            el1 "the shorter format and will append the correct decimal"
+            el1 "entity for the relevant density."
+	    el1 "Checking for tape drives..."
+            tdevs=`lsdev -C -c tape | awk '{printf "/dev/%s ",$1}'`
+            el1 "Possible tape devices found: ${tdevs-NONE}"
+            $spc
+            lsdev -C -H -c tape |sed -e "s/^/`date +%T`: /g" | \
+             tee -a $INLOG
+         ;;
+         CVEX)
+            el1 "You MUST use device names of the form /dev/rmtxx"
+            el1 '(literally!) as the AIPS tape Z routines will'
+            el1 "reconstruct the correct tape name given the density"
+            el1 "setting and drive number.  Just enter /dev/rmtxx for"
+            el1 "each tape drive."
+         ;;
+         DEC | ALPHA)
+            el1 "Device names here MUST be specified as /dev/nrmt<x>l"
+            el1 "where <x> is the digit 0, 1, 2, etc.  Do NOT specify"
+            el1 "different devices for different densities; the AIPS"
+            el1 "tape Z routines ASSUME this format of name and will"
+            el1 "modify the last character to get the requested density"
+	    el1 "for the drive in question.  Checking for drives..."
+            tdevs=""
+            for i in 0 1 2 3 4 5 6 7 ; do
+               [ -c /dev/nrmt${i}l ] && tdevs="$tdevs /dev/nrmt${i}l"
+            done
+            el1 "Possible tape devices dound: ${tdevs-NONE}"
+         ;;
+         HP | HP2)
+            el1 "Use device names of the form /dev/rmt/<#><d>n where"
+            el1 "<#> is the device number 0, 1, etc., <d> is the"
+            el1 "density, one of l, m, or h for low, medium, high;"
+            el1 "n (literally) signifies norewind.  DO NOT USE THE"
+            el1 "BERKELEY OPTION (a trailing 'b').  AIPS will place the"
+            el1 "right density in the device name at mount time."
+         ;;
+         SOL* | SUL)
+            el1 "Device names for SunOS 5.x are /dev/rmt/<#><d><n>"
+            el1 "where <#> is the device number 0, 1, etc., <d> is the"
+            el1 "density, one of l, m, or h for low, medium, high; and"
+            el1 "n (literally) signifies norewind.  DO NOT USE THE"
+            el1 "BERKELEY OPTION (a trailing 'b').  AIPS will place"
+            el1 "the appropriate density setting in the device name"
+            el1 "when it is run, internally."
+            tdevs=""
+            for i in 0 1 2 3 4 5 6 7 8 9 ; do
+               [ -h /dev/rmt/${i}ln ] && tdevs="$tdevs /dev/rmt/${i}ln"
+            done
+            el1 "Possible tape drives found: ${tdevs-NONE}"
+         ;;
+         *LINUX*)
+            el1 "Depending on your Linux distribution, kernel, etc.,"
+            el1 "device names here may be like /dev/nrmt<#> or possibly"
+            el1 "/dev/nrst<#> or (for recent kernels) /dev/nst<#>,"
+            el1 "where <#> is the device number 0, 1, ..."
+            el1 "Do NOT configure QIC drives; they cannot backspace."
+            tdevs=""
+            for i in 0 1 2 3 4 5 6 7 8 9 ; do
+               [ -h /dev/nst$i ] && tdevs="$tdevs /dev/nst$i"
+            done
+            el1 "Possible tape drives found: ${tdevs-NONE}"
+         ;;
+         SGI)
+            case `/sbin/uname -r` in
+             5*)
+              el1 "Device names on Irix 5.x systems are /dev/rmt/<#>dnb"
+              el1 "where <#> is the device number, d is density code"
+              el1 "(one of l, m, or h; changed by aips at mount time)"
+              el1 "n is (required) no-rewind-on-close and b is for BSD"
+              el1 'style rules.  DO NOT USE BERKELEY STYLE DEVICES!'
+              $spc
+              (cd $AIPS_ROOT/$VERS/APL/DEV/UNIX/BELL/SGI
+               if [ ! -f ZMOUN2.CI6 ] ; then
+                 mv ZMOUN2.C ZMOUN2.CI6
+                 mv ZMOUN2.CI5 ZMOUN2.C
+                 el1 "(Older version of ZMOUN2 has been enabled)"
+               fi
+               if [ ! -f ZTAP2.CI6 ] ; then
+                 mv ZTAP2.C ZTAP2.CI6
+                 mv ZTAP2.CI5 ZTAP2.C
+                 el1 "(Older version of ZTAP2 has been enabled)"
+                fi
+               )
+              ;;
+              6*)
+               el1 "Devices on Irix 6.x systems are different, such as"
+               el1 "/dev/rmt/tps1d5nrv.8500, and mediad should be"
+               el1 "configured to ignore any tape devices used by AIPS."
+               ;;
+              *)
+               el1 "Check your system documentation for device names."
+               el1 "You may want to look at the other ZMOUN2.C versions"
+               el1 "such as Solaris and HP and Sun, to see how they"
+               el1 "handle density changes.  Otherwise you may have to"
+               el1 "use different AIPS tape 'drives' for each separate"
+               el1 "density setting.  This can cause deadlocks."
+               ;;
+            esac
+         ;;
+         *)
+            el1 "Check your system documentation for device names."
+            el1 "You may want to look at the other ZMOUN2.C versions"
+            el1 "in particular Solaris and HP and Sun, to see how they"
+            el1 "handle density changes.  Otherwise you may have to"
+            el1 "resort to using different AIPS tape 'drives' for each"
+            el1 "separate density setting."
+         ;;
+      esac
+      m=1
+      $spc
+      while [ $m -le $n ] ; do
+         ni1 "===> Enter device name for $HOST AIPS tape drive $m: "
+         read tname; $spc
+         echo "`date +%T`: installer response: $tname" >>$INLOG
+         if [ ! -c $tname ] ; then
+            el1 "WARNING:  $tname does not appear to be a device"
+            el1 "This may or may not be serious.  Proceed w/caution"
+            $spc
+         fi
+         el1 "The description can be, e.g. 'Exabyte 8500 in lab'"
+         el1 "Do NOT include the character '#' or quotes (but you must"
+         el1 'specify a non-blank description!)'
+         $spc
+         ni1 "===> $tname description: "; read cmt; $spc
+         echo "`date +%T`: installer response: $cmt" >>$INLOG
+         echo "$HOST $tname" | \
+            awk '{printf("%-10s %-17s XxXxX\n", $1, $2)}' >>TPDEVS.LIST
+         cat TPDEVS.LIST | sed "s#XxXxX#$cmt#" >tpdevs.list
+         rm -f TPDEVS.LIST; mv tpdevs.list TPDEVS.LIST
+         m=`expr $m + 1`
+      done
+   fi
+else
+   el1 "Found $ntapes tape definition(s) for $HOST in TPDEVS.LIST"
+fi
+if [ ! -f TPHOSTS ] ; then
+   el1 "Copying template TPHOSTS file; this ONLY allows the local host"
+   el1 "(localhost) to access your local tape drives and disks."
+   cp $AIPS_ROOT/$VERS/SYSTEM/UNIX/TPHOSTS .
+   chmod +w TPHOSTS
+   el1 'BE VERY CAREFUL: ONLY GIVE ACCESS TO HOSTS YOU TRUST!!!!'
+   el1 "You can now add hosts or IP addresses to this file.  A single"
+   el1 "wildcard (*) is permitted at the start of a hostname or the end"
+   el1 "of an IP address, e.g. *.nrao.edu or 192.33.115.*"
+   $spc
+   thost="."
+   while [ "$thost" != "" ] ; do
+      ni1 "Enter host or IP address to add, RETURN to end: ";
+      read thost; $spc
+      echo "`date +%T`: installer response: $thost" >>$INLOG
+      if [ "$thost" != "" ] ; then
+         echo "$thost" >>TPHOSTS
+# this stuff doesn't work; regexps in case statements are brain dead.
+#          case $thost in
+#             [0-9\.]*) echo "$thost" >>TPHOSTS;;
+#             [0-9\.]*\*)
+#             [a-zA-Z0-9\-.]*\*) echo "$thost" >>TPHOSTS ;;
+#             *) echo "That is not a valid RFC 952 hostname";;
+#         esac
+      fi
+   done
+else
+   el1 "Found existing TPHOSTS file"
+fi
+#                                       --------- Stage 14 ---------
+#                                       Attempt to get f77, cc cmds...
+#                                       but watch for binary dist...
+cd $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE
+if [ "$ARCH" = "LINUX" ] ; then
+   have_elf=N
+   [ -f /lib/libc.so.5 -o \
+     -f /lib/libc.so.6* -o -d /lib/elf ] && have_elf=yes
+   $spc
+   if [ $have_elf = yes ] ; then
+      el1 "You appear to have ELF support on this Linux system"
+      $spc
+   else
+      el1 "You appear NOT to have ELF support on this Linux system"
+      $spc
+      el1 "The version of 'ld' included with some early (a.out-based)"
+      el1 "Linux systems (e.g. old Slackware distributions) has a bug"
+      el1 "in the form of a failure of ld to cope with aggregate arrays"
+      el1 "larger than 16 megabytes.  This bug was detected by NRAO and"
+      el1 "reported to the maintainers.  It is fixed in the ELF version"
+      el1 "of ld (which uses libc versions 5 and later)."
+      $spc
+      ni1 "===> Confirm: Do you have ELF support? (NO) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      [ "$yn" = "" ] && yn=N
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      have_elf=$yn
+      if [ $have_elf = N ] ; then
+         if [ ! -f ../LD.UU ] ; then
+            el1 "Incomplete distribution?  Can't find LD.UU in the "
+            el1 "$AIPS_ROOT/$VERS/LINUX/SYSTEM directory"
+            el1 "******************************************************"
+            exit 1
+         fi
+         uudecode ../LD.UU
+         if [ -f ld ] ; then
+            chmod +x ld
+            el1 "There is now a version of ld in `pwd`.  You should"
+            el1 "arrange with your sysadmin to install this in place of"
+            el1 "the /bin/ld file, but only if you intend on compiling"
+            el1 "any part of AIPS.  It should be done before INSTEP3."
+            $spc
+            ni1 "===> Press RETURN when you have read this..."
+	    read dum; $spc
+         else
+            el1 "The uudecode of $AIPS_ROOT/$VERS/LINUX/SYSTEM/LD.UU"
+            el1 "failed to produce any "ld" file in SYSTEM/$SITE"
+            el1 "Cannot proceed."
+            el1 "****************************************************"
+            exit 1
+         fi
+      fi
+   fi
+#                                       Search for egcs compiler...
+#                                       As the best performance is with
+#                                       the EGCS compilers, use g77.
+   g=""; e=""; d=""
+#                                       Is it in the search path?
+   p=`type -p g77`
+   [ "$p" != "" ] && d=`dirname $p`
+#                                       Check a few standard (?) places
+   for i in $d /opt/local/egcs /usr/egcs /usr/local/egcs /usr/bin \
+               /usr/local/bin ; do
+      if [ -f $i/g77 ] ; then
+#                                       Found a g77; See if it's egcs...
+         ev=`$i/g77 -v 2>&1 | grep egcs | grep release | head -n 1 | \
+            sed -e 's/^.*egcs/egcs/' | awk '{print $1}'`
+         if [ "$ev" != "" ] ; then
+#                                       Yes it is.  $ev now has version.
+             e=$i; break
+         else
+#                                       Nope, remember this just in case
+            g=$i
+         fi
+      fi
+   done
+#                                       If we found egcs, we're ready.
+   fortemp=`( . $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH; \
+             echo $COMPILER )`
+   eval FORT=$fortemp
+   if [ "$e" != "" ] ; then
+      el1 "found $e/g77 ($ev), an EGCS compiler."
+      if [ "$FORT" != "$e/g77" ] ; then
+         el1 "NOTE: this appears to differ from $SYSUNIX/FDEFAULT.SH."
+         el1 "You should edit this file to correct the Linux definition"
+         el1 "of the COMPILER variable."
+      fi
+      FORT=$e/g77
+      [ -f $e/gcc ] && CCOM=$e/gcc
+#                                       Fallback, not egcs.  Warn.
+   elif [ "$g" != "" ] ; then
+      el1 "found $g/g77 but this is not an EGCS compiler."
+      el1 " - your AIPS performance may therefore not be optimal."
+      if [ "$FORT" != "$g/g77" ] ; then
+         el1 "NOTE: this appears to differ from $SYSUNIX/FDEFAULT.SH."
+         el1 "You should edit this file to correct the Linux definition"
+         el1 "of the COMPILER variable."
+      fi
+      FORT=$g/f77
+      [ -f $g/gcc ] CCOM=$g/gcc
+   else
+#                                       Nope; no GNU g77 found either
+      el1 "no g77 compiler found anywhere here."
+      el1 " - resorting to old slow SYSLOCAL/f77..."
+#                                       Old f2c/gcc based script, may be
+#                                       out of date, may need chmod +x..
+      FORT=$SYSLOCAL/f77
+   fi
+else
+#                                       On with the show...
+   fortemp=`( . $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH; \
+             echo $COMPILER )`
+   eval FORT=$fortemp
+fi
+if [ "$CCOM" = "" ] ; then
+   cctemp=`(. $SYSLOCAL/CCOPTS.SH; echo $COMPILER)`
+   eval CCOM=$cctemp
+fi
+if [ "$CCOM" = "cc" -a \( "$ARCH" = "SUN4" -o "$ARCH" = "SUN3" \) ]
+then
+   if [ -f /usr/lang/acc ] ; then
+      el1 "You really should use /usr/lang/acc, the ANSI C compiler"
+      el1 "(instead of $CCOM).  I've checked and it's in /usr/lang."
+      el1 "This is the compiler used by NRAO on the master system."
+      $spc
+      ni1 "===> Change to /usr/lang/acc? (YES) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != N ] ; then
+         CCOM="/usr/lang/acc"
+      else
+         el1 "*****************************************************"
+         el1 'Very well, but you have been warned: it may not work!'
+         el1 "*****************************************************"
+      fi
+   else
+      el1 "***********************************************************"
+      el1 "Warning: $CCOM does not seem to be the Sun ANSI C compiler"
+      el1 "and you don't seem to have it (/usr/lang/acc).  There may"
+      el1 "be problems with compilation of the C routines."
+      el1 "***********************************************************"
+   fi
+fi
+el1 "Fortran compiler is $FORT, C compiler is $CCOM"
+if [ "$bindist" = "yes" ] ; then
+   el1 "  (As this is a binary installation, you may not need these;"
+   el1 "   please humor me anyway...)"
+fi
+$spc
+ni1 "===> If this is correct, please enter YES: "; read yn; $spc
+echo "`date +%T`: installer response: $yn" >>$INLOG
+yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+fortch=no
+if [ "$yn" != "Y" ] ; then
+   fortch=yes
+   ni1 "===> Then what is the fortran compiler? "; read FORT; $spc
+   echo "`date +%T`: installer response: $FORT" >>$INLOG
+   ni1 "===> And what is the C compiler? "; read CCOM; $spc
+   echo "`date +%T`: installer response: $CCOM" >>$INLOG
+fi
+found=no
+case $CCOM in
+   /*)
+      [ -f $CCOM ] && found=yes
+   ;;
+   *)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         [ -f $i/$CCOM ] && found=yes
+      done
+   ;;
+esac
+if [ "$found" = "no" ] ; then
+   el1 "$CCOM cannot be found anywhere.  Check your PATH and/or the"
+   el1 "COMP= line in $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/CCOPTS.SH"
+fi
+if [ \( "$found" = "no" \) -a \( "$bindist" = "no" \) ] ; then
+   el1 "As the compiler is needed now, INSTEP1 cannot proceed further."
+   el1 "*******************************************************"
+   exit 1
+fi
+if [ "$found" = yes ] ; then
+   el1 "Making sure your CCOPTS.SH has compiler $CCOM set in it..."
+   cat CCOPTS.SH | sed -e "/^COMPILER=/s#=.*#=$CCOM#" >ccopts.sh
+   rm -f CCOPTS.SH; mv ccopts.sh CCOPTS.SH
+fi
+found=no
+case $FORT in
+   /*)
+      [ -f $FORT ] && found=yes
+   ;;
+   *)
+      for i in `echo $PATH | sed -e 's#:# #g'` ; do
+         [ -f $i/$FORT ] && found=yes
+      done
+   ;;
+esac
+if [ "$found" = no ] ; then
+   el1 "$FORT cannot be found anywhere.  Check your PATH and/or the"
+   el1 "definition of COMPILER in the relevant section of FDEFAULT.SH"
+   el1 "in $AIPS_ROOT/$VERS/SYSTEM/UNIX."
+fi
+if [ \( "$found" = "no" \) -a \( "$bindist" = "no" \) ] ; then
+   el1 "As the fortran compiler is needed now, INSTEP1 cannot proceed."
+   el1 "*******************************************************"
+   exit 1
+fi
+if [ "$found" = yes ] ; then
+   el1 "Making sure your LDOPTS.SH has compiler $FORT set in it..."
+   cat LDOPTS.SH | sed -e "/^COMPILER=/s#=.*#=$FORT#" >ldopts.sh
+   rm -f LDOPTS.SH; mv ldopts.sh LDOPTS.SH
+fi
+if [ "$fortch" = "yes" ] ; then
+   el1 " - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+   el1 "If you changed the name/location of the fortran compiler from"
+   el1 "the default, please edit SYSTEM/UNIX/FDEFAULT.SH and change"
+   el1 "it there too under the $ARCH section to reflect this."
+   if [ "$bindist" = "no" ] ; then
+      el1 '***** INSTEP2 MAY NOT WORK UNTIL YOU DO THIS!!! *****'
+   fi
+   el1 " - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -"
+   if [ "$EDITOR" != "" -a -f $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH ]
+   then
+     $spc
+     ni1 "===> Edit $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH now? "
+     read yn; $spc
+     echo "`date +%T`: installer response: $yn" >>$INLOG
+     yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+     if [ "$yn" = "Y" ] ; then
+       $EDITOR $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH
+     else
+       el1 'Very well, but please remember to do it soon!'
+     fi
+   fi
+fi
+#                                       Now NEWEST, PRINTENV, PP.EXE
+#                                       and F2PS, F2TEXT, AIPWD
+#                                       See if there are premade
+#                                       versions of these...
+if [ -f $AIPS_ROOT/BIN/$ARCH/NEWEST ] ; then
+   el1 "Copying premade version of NEWEST..."
+   if cp $AIPS_ROOT/BIN/$ARCH/NEWEST . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/NEWEST ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/NEWEST"
+            el1 "This may cause problems for your next AIPS install."
+            $spc
+            ni1 "===> Press RETURN to continue and acknowledge..."
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+            read dum
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/NEWEST to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f NEWEST ] ; then
+   el1 "Attempting to compile NEWEST..."
+   [ -f newest.c ] && rm -f newest.c
+   ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/NEWEST.C newest.c
+   if $CCOM -o NEWEST newest.c ; then
+      rm -f newest.c
+      el1 "NEWEST seems to have built successfully with $CCOM"
+   else
+      el1 "$CCOM reported an error compiling newest.c in the area"
+      el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+      el1 "Please investigate.  Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+#                                       PWD introduced in 15JUL95
+if [ -f $AIPS_ROOT/BIN/$ARCH/AIPWD ] ; then
+   el1 "Copying premade version of AIPWD..."
+   if cp $AIPS_ROOT/BIN/$ARCH/AIPWD . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/AIPWD ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/AIPWD"
+            el1 "This may cause problems for your next AIPS install."
+            $spc
+            ni1 "===> Press RETURN to continue and acknowledge..."
+            read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/AIPWD to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f AIPWD ] ; then
+   el1 "Attempting to compile AIPWD..."
+   [ -f AIPWD.c ] && rm -f AIPWD.c
+   ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/AIPWD.C AIPWD.c
+   if $CCOM -o AIPWD AIPWD.c ; then
+      rm -f AIPWD.c
+      el1 "AIPWD seems to have built successfully with $CCOM"
+   else
+      el1 "$CCOM reported an error compiling AIPWD.c in the area"
+      el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+      el1 "Please investigate.  Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+#
+if [ -f $AIPS_ROOT/BIN/$ARCH/F2PS ] ; then
+   el1 "Copying premade version of F2PS..."
+   if cp $AIPS_ROOT/BIN/$ARCH/F2PS . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/F2PS ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/F2PS"
+            el1 "This may cause problems for your next AIPS install."
+            $spc
+            ni1 "===> Press RETURN to continue and acknowledge..."
+            read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/F2PS to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f F2PS ] ; then
+   el1 "Attempting to compile Fortran-to-Postscript F2PS filter..."
+   [ -f f2ps.c ] && rm -f f2ps.c
+   ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/F2PS.C f2ps.c
+   if $CCOM -o F2PS f2ps.c ; then
+      rm -f f2ps.c
+      el1 "F2PS seems to have built successfully with $CCOM"
+   else
+      el1 "$CCOM reported an error compiling f2ps.c in the area"
+      el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+      el1 "Please investigate.  Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+#                                       F2TEXT
+if [ -f $AIPS_ROOT/BIN/$ARCH/F2TEXT ] ; then
+   el1 "Copying premade version of F2TEXT..."
+   if cp $AIPS_ROOT/BIN/$ARCH/F2TEXT . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/F2TEXT ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/F2TEXT"
+            el1 "This may cause problems for your next AIPS install."
+            $spc
+            ni1 "===> Press RETURN to continue and acknowledge..."
+            read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/F2TEXT to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f F2TEXT ] ; then
+   el1 "Attempting to compile Fortran-to-text F2TEXT filter..."
+   [ -f f2text.c ] && rm -f f2text.c
+   ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/F2TEXT.C f2text.c
+   if $CCOM -o F2TEXT f2text.c ; then
+      rm -f f2text.c
+      el1 "F2TEXT seems to have built successfully with $CCOM"
+   else
+      el1 "$CCOM reported an error compiling f2text.c in the area"
+      el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+      el1 "Please investigate.  Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+#                                       REVENV
+if [ -f $AIPS_ROOT/BIN/$ARCH/REVENV ] ; then
+   el1 "Copying premade version of REVENV..."
+   if cp $AIPS_ROOT/BIN/$ARCH/REVENV . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/REVENV ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/REVENV"
+            el1 "This may cause problems for your next AIPS install."
+            $spc
+            ni1 "===> Press RETURN to continue and acknowledge..."
+            read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/REVENV to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f REVENV ] ; then
+   el1 "Attempting to compile Reverse environment lookup REVENV..."
+   [ -f REVENV.c ] && rm -f REVENV.c
+   ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/REVENV.C REVENV.c
+   if $CCOM -o REVENV REVENV.c ; then
+      rm -f REVENV.c
+      el1 "REVENV seems to have built successfully with $CCOM"
+   else
+      el1 "$CCOM reported an error compiling REVENV.c in the area"
+      el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+      el1 "Please investigate.  Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+#                                       PRINTENV.  Just build it.
+found=no
+if [ ! -f PRINTENV ] ; then
+   if [ -f $AIPS_ROOT/BIN/$ARCH/PRINTENV ] ; then
+      el1 "Copying premade version of PRINTENV..."
+      if cp $AIPS_ROOT/BIN/$ARCH/PRINTENV . ; then
+         if [ "$AIPSCDROM" != YES ] ; then
+            el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+            if rm -f $AIPS_ROOT/BIN/$ARCH/PRINTENV ; then
+               : fine
+            else
+               el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/PRINTENV"
+               el1 " - may cause problems for your next AIPS install."
+               $spc; ni1 "===> Press RETURN to acknowledge..."; read dum
+               echo "`date +%T`: installer pressed RETURN" >>$INLOG
+            fi
+         else
+            el1 "... but will not try removing it (readonly filesystem)"
+         fi
+      else
+         el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/PRINTENV to `pwd`"
+         el1 "Please investigate.  Procedure stopping."
+         el1 "*******************************************************"
+         exit 1
+      fi
+      found=yes
+   fi
+   if [ "$found" = "no" ] ; then
+      el1 "Attempting to compile PRINTENV.C ..."
+      ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/PRINTENV.C printenv.c
+      if $CCOM -o PRINTENV printenv.c ; then
+         rm -f printenv.c
+         el1 "PRINTENV seems to have built ok with $CCOM"
+      else
+         el1 "$CCOM reported an error compiling printenv.c in the area"
+         el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+         el1 "Please investigate.  Procedure stopping."
+         el1 "*******************************************************"
+         exit 1
+      fi
+   fi
+fi
+#                                       Finally, Preprocessor.  This can
+#                                       be VERY system dependent!
+if [ -f $AIPS_ROOT/BIN/$ARCH/PP.EXE ] ; then
+   el1 "Copying premade version of PP.EXE..."
+   if cp $AIPS_ROOT/BIN/$ARCH/PP.EXE . ; then
+      if [ "$AIPSCDROM" != YES ] ; then
+         el1 "... and removing it from $AIPS_ROOT/BIN/$ARCH"
+         if rm -f $AIPS_ROOT/BIN/$ARCH/PP.EXE ; then
+            : fine
+         else
+            el1 "Cannot remove $AIPS_ROOT/BIN/$ARCH/PP.EXE"
+            el1 "This may cause problems for your next AIPS install."
+            $spc; ni1 "===> Press RETURN to continue and acknowledge..."
+            read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      else
+         el1 "... but will not try removing it (readonly filesystem)"
+      fi
+   else
+      el1 "FAILED to copy $AIPS_ROOT/BIN/$ARCH/PP.EXE to `pwd`"
+      el1 "Please investigate.  CANNOT PROCEED FURTHER."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+if [ ! -f PP.EXE ] ; then
+   el1 "Attempting to compile and link the AIPS 'PP' preprocessor..."
+   [ -f pp.f ] && rm -f pp.f
+   cp $AIPS_ROOT/$VERS/SYSTEM/UNIX/PP.FOR pp.f
+   ppfil=pp.f
+   [ -f ztrlog.c ] && rm -f ztrlog.c
+   [ -f ZTRLOG.c ] && rm -f ZTRLOG.c
+   [ -f ZTRLOP.c ] && rm -f ZTRLOP.c
+   cp $AIPS_ROOT/$VERS/SYSTEM/UNIX/ZTRLOP.C ZTRLOP.c
+   if [ "$ARCH" = IBM -o "$ARCH" = HP -o "$ARCH" = HP2 ] ; then
+#                                       IBM's or HP's don't have a
+#                                       trailing underscore.  PP handles
+#                                       this (or a compiler qualifier
+#                                       does on HPs), but we have to
+#                                       bootstrap it.  Would -qextname
+#                                       work for IBM here?  Probably but
+#                                       "if it ain't broke..."
+      mv ZTRLOP.c ZTRLOP.tmp1
+      cat ZTRLOP.tmp1 | sed -e 's/ztrlo2_/ztrlo2/g' >ZTRLOP.tmp2
+      cat ZTRLOP.tmp2 | sed -e 's/zputch_/zputch/g' >ZTRLOP.tmp3
+      cat ZTRLOP.tmp3 | sed -e 's/zgetch_/zgetch/g' >ZTRLOP.c
+      rm ZTRLOP.tmp[1-3]
+   fi
+#                                       HP-UX fortran has no CALL EXIT
+   if [ "$ARCH" = HP -o "$ARCH" = HP2 ] ; then
+      mv pp.f pp.tmp
+      cat pp.tmp | sed -e 's/CALL EXIT.*$/STOP/g' >pp.f
+      rm -f pp.tmp
+#                                       Linux uses f2c, no actual f77
+#                                       compiler.  There is no EXIT
+#                                       function, rather an F_EXIT.
+#                                       Also, patch up TVFLG/SPFLG
+   elif [ "$ARCH" = LINUX -o "$ARCH" = AXLINUX -o "$ARCH" = LINUXPPC ] ; then
+      check_g77=`echo $FORT | sed 's/.*\///'`
+      if [ "$check_g77" != "g77" ] ; then
+#                                       Assuming f2c/gcc for now.
+         if f2c pp.f ; then
+            : ok
+         else
+            el1 "Cannot run f2c on pp.f in area"
+            el1 "  $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE"
+            el1 "Please investigate.  Procedure stopping."
+            el1 "*******************************************************"
+            exit 1
+         fi
+         mv pp.c pp.tmp
+         cat pp.tmp | sed -e 's/exit_(/exit(/g' -e '/int exit/d' >pp.c
+         rm -f pp.tmp
+         ppfil=pp.c
+      else
+#                                       Using g77, easy.
+         ppfil=pp.f
+      fi
+   elif [ "$ARCH" = CRI ] ; then
+#                                       UniCOS doesn't have either the
+#                                       underscore or lowercase.
+      mv ZTRLOP.c ZTRLOP.tmp
+      cat ZTRLOP.tmp | sed -e 's/ztrlo2_/ztrlo2/g' >ZTRLOP.c
+      rm ZTRLOP.tmp
+   fi
+#                                       Compile ZTRLOP -----------------
+   if $CCOM -I$AIPS_ROOT/$VERS/INC -c ZTRLOP.c ; then
+      rm -f ZTRLOP.c
+   else
+      el1 "$CCOM -c ZTRLOP.c failed. " \
+           "Please investigate."
+      el1 "procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+#                                       AIX 3.1 needs -lc so as to get
+#                                       the C version of "getenv" and
+#                                       not the fortran version.
+   libopt=""
+   [ "$ARCH" = IBM ] && libopt="-lc "
+#                                       Compile PP.EXE -----------------
+   if $FORT $libopt -o PP.EXE $ppfil ZTRLOP.o ; then
+      rm -f pp.f ZTRLOP.o pp.o
+      el1 "PP.EXE (preprocessor) built successfully."
+   else
+      el1 "$FORT -o PP.EXE $ppfil ZTRLOP.o failed. " \
+           "Please investigate."
+      el1 "Procedure stopping."
+      el1 "*******************************************************"
+      exit 1
+   fi
+fi
+if [ "$bindist" = "no" ] ; then
+   [ -f USESHARED ] && rm -f USESHARED
+   if [ -f LIBR.DAT.UNSHARED ] ; then
+      mv LIBR.DAT LIBR.DAT.SHARED
+      mv LIBR.DAT.UNSHARED LIBR.DAT
+   fi
+#                                       Do NOT give the option of shared
+#                                       libraries as it is more trouble
+#                                       than it's worth (e.g. FITLD
+#                                       requires 25 megs to load with
+#                                       shared libraries, 2 without, on
+#                                       SunOS).  If you REALLY want
+#                                       this feature (and the huge swap
+#                                       partitions it requires),
+#                                       uncomment and caveat emptor!
+#    case $ARCH in
+#       SUN3 | SUN4 | SOL | SUL | HP | HP2)
+#          $spc
+#          el1 "On $ARCH you have the option of shareable libraries."
+#          el1 "This makes the binaries (executables) smaller (about 50"
+#          el1 "Megabytes smaller total on a Sun 4 running SunOS 4.1.2),"
+#          el1 "but will require a lot of swap space, maybe as much as"
+#          el1 "100+ Mbytes."
+#          ni1 "Do you want to make/use shared AIPS libraries? (NO) "
+#          read yn; $spc
+#          echo "`date +%T`: installer response: $yn" >>$INLOG
+#          yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+#              awk '{print substr($1, 1, 1)}'`
+#          if [ "$yn" = "Y" ] ; then
+#             touch USESHARED
+#             if [ -f LIBR.DAT.SHARED ] ; then
+#                mv LIBR.DAT LIBR.DAT.UNSHARED
+#                mv LIBR.DAT.SHARED LIBR.DAT
+#             fi
+#             el1 "System set up to use SHARED AIPS LIBRARIES on $ARCH"
+#          else
+#             rm -f USESHARED
+#             if [ -f LIBR.DAT.UNSHARED ] ; then
+#                mv LIBR.DAT LIBR.DAT.SHARED
+#                mv LIBR.DAT.UNSHARED LIBR.DAT
+#             fi
+#             el1 "System set up to use static AIPS libraries on $ARCH"
+#          fi
+#       ;;
+#    esac
+   $spc
+   el1 "On all systems, you have the option of generating a separate"
+   el1 "set of libraries compiled exclusively in debug mode."
+   el1 "This will take up some extra space and is only useful if"
+   el1 "you intend on debugging/developing AIPS code."
+   $spc
+   ni1 "===> Do you want a second (DEBUG) set of libraries built? (NO) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   if [ "$yn" = "Y" ] ; then
+      touch DOTWOLIB
+   else
+      rm -f DOTWOLIB
+   fi
+fi
+#                                       --------- Stage 15 ---------
+#                                       Finally, make HOSTS.LIST
+cd $AIPS_ROOT
+if grep '^\*  GOLDY * CVEX * MYSITE' HOSTS.LIST >/dev/null ; then
+   mv HOSTS.LIST hosts.list; chmod 777 hosts.list
+   cat hosts.list | sed -e '/^\*/d' >HOSTS.LIST
+   rm hosts.list
+fi
+#                                       If host is already here, skip
+if grep "+  $HOST" HOSTS.LIST >/dev/null ; then
+   el1 "Found $HOST in HOSTS.LIST"
+else
+#                                       Add this host
+   el1 "Please enter a short half-line description of $HOST"
+   el1 "Do NOT include the character '#' or surrounding quotes."
+   $spc
+   ni1 "===> $HOST Description: "; read cmt; $spc
+   echo "`date +%T`: installer response: $cmt" >>$INLOG
+   echo "+ $HOST $ARCH $SITE XxXxX" | \
+      awk '{
+ printf("%1s  %-10s %-7s %-8s NONE        %s\n", $1, $2, $3, $4, $5)}' \
+         >>HOSTS.LIST
+   cat HOSTS.LIST | sed "s#XxXxX#$cmt#" >hosts.list
+   rm -f HOSTS.LIST; mv hosts.list HOSTS.LIST
+   ni1 "===> Do you want other hosts of type $ARCH to run AIPS? (NO) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      el1 "Enter the simple host names one per line until done."
+      el1 "To finish, just enter a blank line (i.e. <RETURN>)"
+      $spc
+      newhost="xxx"
+      while [ "$newhost" != "" ] ; do
+         ni1 "===> Enter hostname, <RETURN> to finish hostname entry: "
+         read newhost; $spc
+         echo "`date +%T`: installer response: $newhost" >>$INLOG
+         newhost=`echo $newhost | tr '[a-z]' '[A-Z]'`
+         if [ "$newhost" != "" ] ; then
+            ni1 "===> Enter short description of $newhost: "
+            read cmt; $spc
+            echo "`date +%T`: installer response: $cmt" >>$INLOG
+            echo "+ $newhost $ARCH $SITE XxXxX" | \
+               awk '{
+ printf("%1s  %-10s %-7s %-8s NONE        %s\n", $1, $2, $3, $4, $5)}' \
+                  >>HOSTS.LIST
+               cat HOSTS.LIST | sed "s#XxXxX#$cmt#" >hosts.list
+               mv hosts.list HOSTS.LIST
+         fi
+      done
+   fi
+   el1 "An AIPS TV 'server' is not allowed to run AIPS but can act as"
+   el1 "as a server, running XAS but with the display projected to"
+   el1 "another host or X terminal."
+   $spc
+   ni1 \
+    "===> Do you want other hosts of type $ARCH to be TV servers? (NO) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      el1 "Enter the simple host names one per line until done."
+      el1 "To finish, just enter a blank line (i.e. <RETURN>)"
+      newhost="xxx"
+      newhost="xxx"
+      $spc
+      while [ "$newhost" != "" ] ; do
+         ni1 "===> Enter hostname, <RETURN> to finish hostname entry: "
+         read newhost; $spc
+         echo "`date +%T`: installer response: $newhost" >>$INLOG
+         newhost=`echo $newhost | tr '[a-z]' '[A-Z]'`
+         if [ "$newhost" != "" ] ; then
+            ni1 "===> Enter short description of $newhost: "
+            read cmt; $spc
+            echo "`date +%T`: installer response: $cmt" >>$INLOG
+            echo "- $newhost $ARCH $SITE XxXxX" | \
+               awk '{ \
+ printf("%1s  %-10s %-7s %-8s NONE        %s\n", $1, $2, $3, $4, $5)}' \
+                  >>HOSTS.LIST
+               cat HOSTS.LIST | sed "s#XxXxX#$cmt#" >hosts.list
+               mv hosts.list HOSTS.LIST
+         fi
+      done
+   fi
+   el1 "An AIPS TV 'display' is not allowed to run AIPS either, but"
+   el1 "it can RECEIVE the TV display from any AIPS host or TV server."
+   $spc
+   ni1 \
+   "===> Do you want other hosts of type $ARCH to be TV displays? (NO) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      el1 "Enter the simple host names one per line until done."
+      el1 "To finish, just enter a blank line (i.e. <RETURN>)"
+      newhost="xxx"
+      newhost="xxx"
+      $spc
+      while [ "$newhost" != "" ] ; do
+         ni1 "===> Enter hostname, <RETURN> to finish hostname entry: "
+         read newhost; $spc
+         echo "`date +%T`: installer response: $newhost" >>$INLOG
+         newhost=`echo $newhost | tr '[a-z]' '[A-Z]'`
+         if [ "$newhost" != "" ] ; then
+            ni1 "===> Enter default server for $newhost: "
+            read server; $spc
+            echo "`date +%T`: installer response: $server" >>$INLOG
+            ni1 "===> Enter short description of $newhost: "
+            read cmt; $spc
+            echo "`date +%T`: installer response: $cmt" >>$INLOG
+            echo "= $newhost $ARCH $SITE $server XxXxX" | \
+               awk '{
+   printf("%1s  %-10s %-7s %-8s %-11s %s\n", $1, $2, $3, $4, $5, $6)}' \
+                  >>HOSTS.LIST
+               cat HOSTS.LIST | sed "s#XxXxX#$cmt#" >hosts.list
+               mv hosts.list HOSTS.LIST
+         fi
+      done
+   fi
+fi
+#                                       --------- Stage 16 ---------
+#                                       Make XAS.
+#                                       Disable buffering for now.
+# if grep AIPS_TV_BUFFERED $AIPS_ROOT/AIPSASSN.SH >/dev/null ; then
+#    el1 "Setting of AIPS_TV_BUFFERED already done in AIPSASSN.SH"
+# else
+#    el1 " ------------------------------------------------------"
+#    el1 "You have the option of using buffered mode with XAS."
+#    el1 "This feature essentially reduces the number of status"
+#    el1 "checks made between AIPS and XAS, e.g. during a TVLOD image"
+#    el1 "load, the status check at the end of each line is skipped."
+#    el1 "It is not commonly used, but might increase performance on"
+#    el1 "slow or other types of network links."
+#    $spc
+#    el1 "NOTE: this option currently does not work; please enter NO"
+#    $spc
+#    ni1 "===> Do you want to set AIPS_TV_BUFFERED to YES? (NO) "
+#    read yn
+#    echo "`date +%T`: installer response: $yn" >>$INLOG
+#    $spc
+#    yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+#     awk '{print substr($1, 1, 1)}'`
+#    if [ "$yn" = "Y" ] ; then
+#       echo "AIPS_TV_BUFFERED=YES; export AIPS_TV_BUFFERED" \
+#        >> $AIPS_ROOT/AIPSASSN.SH
+#       el1 "Appended this YES value to $AIPS_ROOT/AIPSASSN.SH"
+#    else
+#       echo "AIPS_TV_BUFFERED=NO; export AIPS_TV_BUFFERED" \
+#        >> $AIPS_ROOT/AIPSASSN.SH
+#       el1 "Appended this NO value to $AIPS_ROOT/AIPSASSN.SH"
+#    fi
+# fi
+#                                       16a: check services
+SERVOK=no
+a=`ypcat services 2>/dev/null | grep sssin 2>/dev/null`
+b=`ypcat services 2>/dev/null | grep ssslock 2>/dev/null`
+$spc
+if [ "$a" != "" ] ; then
+   el1 "The AIPS services seem to be defined in the YP services map."
+   if [ "$b" != "" ] ; then
+      el1 "... and you even have ssslock (tv lock service); good."
+      SERVOK=yes
+   else
+      el1 "... but you need to add ssslock; see the AIPS Installation"
+      el1 "    summary for details.  This is an additional service for"
+      el1 "    supporting TV server locking."
+   fi
+else
+   a=`grep sssin /etc/services 2>/dev/null`
+   b=`grep ssslock /etc/services 2>/dev/null`
+   if [ "$a" != "" ] ; then
+      el1 "The AIPS services seem to be defined in /etc/services."
+      if [ "$b" != "" ] ; then
+         el1 "... and you even have ssslock (tv lock service); good."
+         SERVOK=yes
+      else
+         el1 "... but you need to add ssslock; see the AIPS Installation"
+         el1 "    summary for details.  This is an additional service for"
+         el1 "    supporting TV server locking."
+      fi
+      el1 "If you add other hosts, each one needs to have the same"
+      el1 "services defined.  For large installations, it may be easier"
+      el1 "to implement a services map via YP or NIS or NIS+."
+      $spc
+      ni1 "Press RETURN to continue..."; read yn; $spc
+   else
+      el1 "The AIPS services are NOT DEFINED.  The system administrator"
+      el1 "needs to change either the /etc/services file on every AIPS"
+      el1 "capable computer, or implement a YP/NIS/NIS+ services map."
+      el1 "Refer to the AIPS Installation Summary for details.  Until"
+      el1 "these services (sssin, etc) are defined, your AIPS TV, tek"
+      el1 "and message servers, and remote tape access WILL NOT WORK."
+      $spc
+      ni1 "Press RETURN to continue..."; read yn; $spc
+   fi
+fi
+$spc
+
+if [ ! -f $AIPS_ROOT/$VERS/$ARCH/LOAD/XAS ] ; then
+#                                       Offer to make it
+   el1 "This procedure can attempt to make the XAS (X11) TV server"
+   el1 "automatically.  This should work for most architectures, but"
+   el1 "if not, the Makefile or the xas.h header may need changed."
+   el1 "It works best if you have GNU make, but on many architectures"
+   el1 "the vendor-supplied version of 'make' is acceptable too."
+   el1 "See the AIPS Unix Installation Summary for details."
+#                                       Now for XAS itself
+   $spc
+   ni1 "===> Do you want to make XAS? (YES) " ; read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" != N ] ; then
+      case $ARCH in
+         SUN*|SOL*|SUL)
+            if [ "$OPENWINHOME" = "" ] ; then
+               for i in /usr/openwin /usr/Openwin /usr/openwin3 ; do
+                  [ -d $i ] && OPENWINHOME=$i && break
+               done
+               if [ "$OPENWINHOME" = "" ] ; then
+                  el1 'Cannot find the OPENWINHOME area anywhere!'
+                  el1 "The Makefile for XAS on $ARCH is set up to use"
+                  el1 "Sun's OpenWindows, which is usually distributed"
+                  el1 "with the operating system.  It will build with"
+                  el1 "generic X11 (Release 4 or higher) but you will"
+                  el1 "either have to edit the Makefile or restart me"
+                  el1 "after defining OPENWINHOME pointing at your X11"
+                  el1 "area for this to work."
+                  yn=N
+               fi
+            fi
+            ;;
+         *) ;;
+      esac
+   fi
+   if [ "$yn" != N ] ; then
+      cd $AIPS_ROOT/$VERS/Y/SERVERS
+      if [ -d XAS ] ; then
+         el1 "XAS directory already exists, will cleanup first..."
+         cd XAS; rm -f *.o xas XAS
+         if [ "$ARCH" != LINUX -o "$ARCH" = AXLINUX -o "$ARCH" = LINUXPPC ] ; then
+            rm -f *.c *.h *.f
+         fi
+      else
+         mkdir XAS
+         cd XAS
+      fi
+      if [ ! -f xas.c ] ; then
+         el1 "Making UNSHR to unpack archive (bash won't do it)..."
+         rm -f UNSHR*; ln -s ../UNSHR.FOR UNSHR.f
+         $FORT -o UNSHR UNSHR.f
+         ./UNSHR >/dev/null <<END_UNSHR_INPUT
+../XAS.SHR
+END_UNSHR_INPUT
+      fi
+      shopt="NO"
+      el1 "The AIPS XAS 'TV' server can use the MIT-SHM Shared"
+      el1 "memory extension to X; this permits faster communication"
+      el1 "from the X server to the XAS client when they are on the"
+      el1 "same host.  Not all X servers support this extension."
+      xdpy=""
+      if [ "$DISPLAY" != "" ] ; then
+         for i in `echo $PATH | sed -e 's,:, ,g'` /usr/bin/X11 \
+          /usr/local/X11/bin /usr/X11/bin /usr/local/bin ; do
+            [ -f $i/xdpyinfo ] && xdpy=$i/xdpyinfo && break
+         done
+         if [ "$xdpy" != "" ] ; then
+            el1 "checking for MIT Shared Memory via $xdpy"
+            xdpyinfo | grep MIT-SHM >/dev/null 2>&1
+            [ "$?" = "0" ] && shopt="YES"
+         fi
+      fi
+      if [ "$xdpy" = "" ] ; then
+         el1 "Use the 'xdpyinfo | grep MIT-SHM' command to check if"
+         el1 "your X server supports it (I couldn't find xdpyinfo in"
+         el1 "your PATH or other obvious places on this system, or"
+         el1 "perhaps your DISPLAY is not set so I didn't try to look)"
+         if [ "$ARCH" = "IBM" ] ; then
+            el1 "For AIX, it is possible to rebuild the X server to"
+            el1 "support the MIT_SHM extension for AIX 3.2.3.  You can"
+            el1 "ask your systems administrator to do this.  For AIX"
+            el1 "3.2.5, you should NOT use SHM.  I don't know whether"
+            el1 "AIX 4.x has SHM support or not."
+         fi
+      fi
+      $spc
+      el1 "Use MIT X11 shared memory extension: $shopt"
+      $spc
+      ni1 "===> Is this what you want? (NO) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "Y" ] ; then
+         if [ "$shopt" = "NO" ] ; then
+            shopt=YES
+            el1 "ENABLING shared memory for XAS"
+         else
+            shopt=NO
+            el1 "DISABLING shared memory for XAS"
+         fi
+      fi
+      if [ "$shopt" = "YES" ] ; then
+         shopt="-DUSE_SHM"
+      else
+         shopt=""
+      fi
+      [ -f Makefile -a ! -f Makefile.dist ] && \
+       mv Makefile Makefile.dist
+      rm -f Makefile
+      cat Makefile.dist | sed -e "/^SHMOPT *=/s,=.*,= $shopt," \
+       -e "/^CC *=/s,=.*,= $CCOM," > Makefile
+      gmake=""
+      for i in `echo $PATH | sed -e 's/:/ /g'` ; do
+         if [ -f $i/gmake ] ; then
+            gmake=$i/gmake
+            break
+         fi
+      done
+      if [ "$gmake" != "" ] ; then
+         el1 "Found GNU make in $gmake"
+         el1 "Will use this instead of regular 'make' here."
+      fi
+      case $ARCH in
+         DEC)
+#                                       Ultrix can't hack this Makefile
+            if [ "$gmake" = "" ] ; then
+               mv Makefile.dist Makefile.restofuniverse
+               mv Makefile.ultrix Makefile.dist
+               el1 "Using old style (pre-15JUL95) Makefile for Ultrix"
+            fi
+            ;;
+         SGI|HP|HP2)
+            if [ "$gmake" = "" ] ; then
+               el1 "Standard make is know to NOT work on $ARCH systems"
+               el1 "(I looked for GNU make as gmake but could not find"
+               el1 "it anywhere).  You will probably have to edit the"
+               el1 "Makefile by hand..."
+            fi
+            ;;
+         SOL*|SUL)
+            if [ "$LD_LIBRARY_PATH" != "" ] ; then
+               el1 'WARNING: LD_LIBRARY_PATH set; may cause problems!!'
+            fi
+            if [ "$LD_RUN_PATH" != "" ] ; then
+               el1 'WARNING: LD_RUN_PATH set; may cause problems!!'
+            fi
+            ;;
+      esac
+      LOAD=$AIPS_ROOT/$VERS/$ARCH/LOAD; export LOAD
+      el1 "(Ignore warnings about infinite loop or statements"
+      el1 " not reached or pointer mismatch)"
+      make="make"
+      [ "$gmake" != "" ] && make="$gmake"
+      if [ -f Makefile.$ARCH ] ; then
+         $make -f Makefile.$ARCH xas
+      else
+         $make xas
+      fi
+      if [ "$?" != "0" ] ; then
+         el1 "Oh well, I tried.  Sorry, you'll have to pick up"
+         el1 "the pieces in $AIPS_ROOT/$VERS/Y/SERVERS/XAS/"
+      else
+         el1 "XAS appears to have built without problems"
+	 [ ! -f $AIPS_ROOT/$VERS/$ARCH/LOAD/XAS ] && \
+	  touch $AIPS_ROOT/$VERS/$ARCH/LOAD/XAS
+         $make install
+         if [ "$?" != 0 ] ; then
+            $spc
+            if [ ! -w $AIPS_ROOT/$VERS/$ARCH/LOAD ] ; then
+               el1 'The LOAD area is not writable!  Cannot move'
+               el1 "   $AIPS_ROOT/$VERS/Y/SERVERS/XAS/xas"
+               el1 "to $AIPS_ROOT/$VERS/$ARCH/LOAD/XAS"
+               el1 "You will have to do this by hand later"
+            else
+               el1 'Odd; "make xas" worked, but "make install" failed!'
+               el1 "This does not seem to be a protection problems."
+               el1 "You will need to move"
+               el1 "   $AIPS_ROOT/$VERS/Y/SERVERS/XAS/xas"
+               el1 "to $AIPS_ROOT/$VERS/$ARCH/LOAD/XAS"
+               el1 'by hand.  Do NOT forget!'
+            fi
+            $spc
+         else
+            $make clean
+         fi
+      fi
+   else
+      el1 "Then please move to `pwd`,"
+      el1 "edit the Makefile there and type the command 'make'"
+      el1 "when this procedure is done.  You need to specify"
+      el1 "the variables INCDIRS, LIBDIRS, and SHMOPT in the"
+      el1 "Makefile (there are extensive comments in it)."
+      el1 "This can be deferred until after INSTEP3, however."
+   fi
+fi
+#                                       --------- Stage 16a --------
+#                                       XHELP/CGI stuff
+el1 "======================================================="
+#                                       @@@ change for 15OCT99
+el1 "There is now a facility which permits you to obtain on-line help"
+el1 "within AIPS and display the help in a web browser.  The default"
+el1 "settings for this XHELP system are to use Netscape as a browser"
+el1 "and NRAO's web server for the CGI program.  If you have access to"
+el1 "a web 'CGI' area, you can have this installation copy the perl"
+el1 "script to that CGI area and change the defaults so that XHELP will"
+el1 "use the local version instead of NRAO's version.  This could make"
+el1 "the response of XHELP considerably faster."
+$spc
+ni1 "===> Should I change the default browser from netscape? (NO) "
+read yn; $spc
+echo "`date +%T`: installer response: $yn" >>$INLOG
+yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+if [ "$yn" != "Y" ] ; then
+   browser="netscape"
+else
+   $spc
+   ni1 "===> Enter the name of your preferred browser program: "
+   read browser; $spc
+   el1 "Be aware that you may have to edit \$SYSUNIX/ZXHLP2 by hand"
+   el1 "in order to make '$browser' start properly or accept a URL"
+   el1 "'on the fly'.  See the ZXHLP2 source for more details."
+fi
+$spc
+ni1 "===> Do you want to use a local web server for XHELP? (NO) "
+read yn; $spc
+echo "`date +%T`: installer response: $yn" >>$INLOG
+yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+if [ "$yn" != "Y" ] ; then
+   defarea=""
+else
+   $spc
+   defarea=$HOME/html
+   [ ! -d $defarea ] && defarea=$HOME/public_html
+   el1 "First, we need to copy the perl script to your CGI area."; $spc
+   ni1 "===> Where is your CGI area ($defarea): "; read tmp
+   [ "$tmp" = "" ] && tmp=$defarea
+   if [ "$tmp" != "" ] ; then
+      if [ -d $tmp ] ; then
+         if [ -w $tmp ] ; then
+            cp $AIPS_ROOT/$VERS/SYSTEM/UNIX/PERL/ZXHLP2.PL $tmp/
+            if [ $? -ne 0 ] ; then
+               el1 "Attempted copy of ZXHLP2.PL to $tmp failed."
+               tmp=""; defarea="";
+            else
+               chmod +x $tmp/ZXHLP2.PL
+            fi
+         else
+            el1 "Sorry, the $tmp area is not writable."
+            tmp=""; defarea="";
+         fi
+      else
+         el1 "Sorry, $tmp does not seem to be a directory"
+         tmp=""; defarea="";
+      fi
+   else
+      el1 "Blank input; assuming you changed your mind."
+      tmp=""; defarea="";
+   fi
+   if [ "$defarea" = "" ] ; then
+      $spc
+      ni1 "===> Do you want to proceed anyway? (Y) "; read yn; $spc
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         ni1 "===> Enter the correct URL for your CGI area: "
+         read cgiurl
+         if [ "$cgiurl" != "" ] ; then
+            defarea="not blank"
+         fi
+      fi
+   else
+      ni1 "===> Enter the correct URL for your CGI area: "
+      read cgiurl
+      [ "$cgiurl" = "" ] && defarea=""
+      case $cgiurl in
+         .*/) ;;
+         *) cgiurl="$cgiurl/";;
+      esac
+   fi
+#                                       Customize it now...
+   if [ ! -z $tmp ] ; then
+      string="\$AIPS_ROOT = \$ENV{'AIPS_ROOT'} || $AIPS_ROOT;"
+      cat $tmp/ZXHLP2.PL | sed -e "s,^$AIPS_ROOT.*$,$string," -e \
+       "s,^\$AIPSHELP.*$,\$AIPSHELP\ =\ \"$cgiurl\";," >$tmp/ZXHLP2.TMP
+      /bin/rm -f $tmp/ZXHLP2.PL
+      mv $tmp/ZXHLP2.TMP $tmp/ZXHLP2.PL
+      chmod +x $tmp/ZXHLP2.PL
+      el1 "The $tmp/ZXHLP2.PL cgi script is now set up."
+      el1 "You should review it to make sure it is correct, especially"
+      el1 "the definitions of AIPS_ROOT and AIPSHELP."
+      if [ "$EDITOR" != "" ] ; then
+         $spc
+         ni1 "===> Edit $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH now? "
+         read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" = "Y" ] ; then
+            $EDITOR $tmp/ZXHLP2.PL
+         else
+            el1 'Very well, but please remember to do it soon!'
+         fi
+      fi
+   fi
+fi
+if [ "$defarea" = "" ] ; then
+   el1 "ZXHLP2.PL is in $VERS/SYSTEM/UNIX/PERL/ and the"
+   el1 "local CGI/XHELP facility is NOT enabled."
+   el1 "**************************************************"
+   $spc; ni1 "===> Press <RETURN> to continue..."; read dum; $spc;
+else
+#                                       Now modify ZXHLP2 in $SYSUNIX
+   cat $VERS/SYSTEM/UNIX/ZXHLP2 | sed \
+    -e "s/^AIPS_BROWSER=.*$/AIPS_BROWSER=$browser/" \
+    -e "s,^AIPSHELP_CGI=.*$,$cgiurl/ZXHLP2.PL," \
+    >$VERS/SYSTEM/UNIX/ZXHLP2.TMP
+   rm -f $VERS/SYSTEM/UNIX/ZXHLP2
+   mv $VERS/SYSTEM/UNIX/ZXHLP2.TMP $VERS/SYSTEM/UNIX/ZXHLP2
+   chmod +x $VERS/SYSTEM/UNIX/ZXHLP2
+fi
+#                                       --------- Stage 17 ---------
+#                                       Make GNU ReadLine
+cd $AIPS_ROOT
+if [ ! -d $VERS/$ARCH/LIBR/GNU ] ; then
+   mkdir $VERS/$ARCH/LIBR/GNU
+   if [ $? -ne 0 ] ; then
+      el1 "FAILED to make $VERS/$ARCH/LIBR/GNU directory"
+      el1 "Please check file permissions and restart INSTEP1 when"
+      el1 "the problem is resolved."
+      el1 "*********************************************************"
+      exit 1
+   fi
+fi
+cd $VERS/$ARCH/LIBR/GNU
+if [ -f libreadline.a ] ; then
+   el1 "Found existing $VERS/$ARCH/LIBR/GNU/libreadline.a"
+   el1 " -- assuming it is good."
+else
+#                                       See if it's unpacked...
+   if [ -f readline.c ] ; then
+      el1 "Found some source code, assuming archives already unpacked"
+   else
+      el1 "Unpacking the GNU Readline library in"
+      el1 "`pwd`."
+#                                       Re-use XAS version if possible
+      if [ -f UNSHR ] ; then
+         el1 "Using already made version of UNSHR here"
+         unshr="`pwd`/UNSHR"
+      elif [ -f $AIPS_ROOT/$VERS/Y/SERVERS/XAS/UNSHR ] ; then
+         el1 "Using already made version of UNSHR from XAS..."
+         unshr="$AIPS_ROOT/$VERS/Y/SERVERS/XAS/UNSHR"
+      else
+         el1 "Compiling UNSHR to unpack archive..."
+         rm -f UNSHR*
+         ln -s ${AIPS_ROOT}/${VERS}/Y/SERVERS/UNSHR.FOR UNSHR.f
+         $FORT -o UNSHR UNSHR.f
+         unshr="`pwd`/UNSHR"
+      fi
+      el1 "Unpacking the main READLINE archive..."
+      $unshr >/dev/null <<END_READLINE_MAIN
+../../../SYSTEM/UNIX/READLINE.SHR
+END_READLINE_MAIN
+      if [ -f readline.c ] ; then
+         el1 "Main code for READLINE unpacked (found readline.c)"
+         el1 "ASSUMING I can proceed..."
+#                                       AIPSSHAR has no permissions
+         chmod +x configure
+      else
+         el1 "Cannot find readline.c; something went wrong with UNSHR?"
+         el1 "STOPPING NOW"
+         el1 "*********************************************************"
+         exit 1
+      fi
+#                                       Ancillary packages; RLSUPP is
+#                                       required, others optional.
+      mkdir support; cd support
+      el1 "Unpacking the READLINE Support area..."
+      $unshr >/dev/null <<END_READLINE_SUPP
+../../../../SYSTEM/UNIX/RLSUPP.SHR
+END_READLINE_SUPP
+      if [ -f install.sh ] ; then
+         el1 "Supplement area for READLINE unpacked (found install.sh)"
+	 el1 "ASSUMING I can proceed..."
+#                                       AIPSSHAR has no permissions
+         chmod +x config.sub config.guess
+      else
+         el1 "Cannot find install.sh; something went wrong with UNSHR?"
+         el1 "STOPPING NOW"
+         el1 "*********************************************************"
+         exit 1
+      fi
+      cd ..
+#                                       Now the optional parts.
+      mkdir doc; cd doc
+      el1 "Unpacking the READLINE documentation..."
+      $unshr >/dev/null <<END_READLINE_DOCS
+../../../../SYSTEM/UNIX/RLDOCS.SHR
+END_READLINE_DOCS
+      cd ..
+      mkdir examples; cd examples
+      el1 "...and the examples..."
+      $unshr >/dev/null <<END_READLINE_EXAMP
+../../../../SYSTEM/UNIX/RLEXAMP.SHR
+END_READLINE_EXAMP
+      cd ..
+      el1 "Archives apparently unpacked."
+   fi
+   TMPATH=$PATH; export TMPATH
+   case $ARCH in
+      SOL*|SUL)
+         case `uname -r` in
+            5.6)
+               el1 "On Solaris 2.6 the presence of gcc can interfere"
+	       el1 "with the readline configuration.  Checking ..."
+	       TMPATH=""
+	       OLDIFS=$IFS
+	       IFS=$IFS:
+	       for i in $PATH ; do
+	          if [ -f $i/gcc ] ; then
+		     el1 "Found gcc in $i"
+		  else
+		     TMPATH="$TMPATH:$i"
+		  fi
+	       done
+	       IFS=$OLDIFS
+	       TMPATH=`echo $TMPATH | sed -e 's/^://'`
+	       ;;
+	 esac
+	 ;;
+   esac
+
+   OLDPATH=$PATH
+   PATH=$TMPATH
+   if [ -f config.status ] ; then
+      el1 "It seems that configure has already been run.  Skipping..."
+   else
+      el1 "Calling ReadLine configure script..."
+      $spc
+#                                       We leave libraries RIGHT here.
+      INSTALL=/bin/true; export INSTALL
+      ./configure --quiet
+      if [ $? -ne 0 ] ; then
+         $spc
+         el1 "congigure exited with non-zero status.  STOPPING NOW."
+         el1 "(you may want to try 'configure' again for error msgs)"
+         el1 "*********************************************************"
+         exit 1
+      fi
+   fi
+   $spc
+   el1 "configure for readline seemed to work.  Calling make..."
+   el1 "(ignore 'statement not reached', 'macro redefined', mismatches"
+   el1 " and warnings about arguments incompatible with prototypes)"
+   $spc
+   case $ARCH in
+      SOL*|SUL) make CFLAGS="-DHAVE_STRING_H -g";;
+      IBM)      make CFLAGS="-DHAVE_POSIX_SIGNALS -g";;
+      SGI)      make CFLAGS="-DHAVE_POSIX_SIGNALS -g";;
+#                                       Needed because Makefile.in is
+#                                       missing CC = @CC@, and some
+#                                       Linux systems don't have the
+#                                       usual /usr/bin/cc -> gcc link.
+      *LINUX*) make CC="$CCOM";;
+      HP|HP2)
+           echo "WARNING: While GNU ReadLine works on HPs, the signals"
+           echo "are problematic, at least on the system NRAO used for"
+           echo "testing.  Basically, POSIX signals don't work, and so"
+           echo "if you use ReadLine, you cannot do things like ^Z"
+           echo 'to suspend an AIPS session.  You have been warned!'
+           make;;
+       *) make;;
+   esac
+   if [ $? -ne 0 ] ; then
+      $spc
+      el1 "make for libreadline.a in `pwd` FAILED.  Cannot proceed."
+      el1 "Please investigate.  STOPPING NOW."
+      el1 "*********************************************************"
+      exit 1
+   else
+      PATH=$OLDPATH
+      $spc
+      el1 "make for libreadline.a seemed to work."
+      $spc
+   fi
+fi
+#                                       --------- Stage 18 ---------
+#                                       Make INSTALL area for $ARCH
+cd $AIPS_ROOT
+[ ! -d $VERS/$ARCH/INSTALL ] && mkdir $VERS/$ARCH/INSTALL
+for step in 2 3 4 ; do
+   [ ! -f $VERS/$ARCH/INSTALL/INSTEP$step ] && \
+      ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/INSTALL/INSTEP$step \
+         $AIPS_ROOT/$VERS/$ARCH/INSTALL/INSTEP$step
+done
+#                                       --------- Stage 19a --------
+#                                       Registration
+[ ! -f $AIPS_ROOT/REGISTER ] && \
+ ln -s $AIPS_ROOT/$VERS/SYSTEM/UNIX/INSTALL/REGISTER $AIPS_ROOT/REGISTER
+if [ -f $AIPS_ROOT/REGISTER.INFO ] ; then
+   regver=`grep AIPSVER= $AIPS_ROOT/REGISTER.INFO | awk '{print $NF}'`
+   if [ "$regver" = "$VERS" ] ; then
+      el1 "You seem to have already registered.  If not, and if it is"
+      el1 "appropriate for you to register (NRAO encourages sites that"
+      el1 "involved in research/education, especially in the field of"
+      el1 "radio astronomy, to register), you can do so by typing"
+      $spc
+      el1 "       $AIPS_ROOT/REGISTER"
+      $spc
+      el1 "and answer the questions."
+   elif [ "$regver" != "" ] ; then
+      el1 "You seem to have registered for an older version of AIPS."
+      el1 "As registration is necessary for each version, you should"
+      el1 "consider doing so now.  This can be done now if you like."
+      $spc
+      ni1 "===> Do you want to register AIPS $VERS now? (YES) "; read yn
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      $spc
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" = Y ] ; then
+         $AIPS_ROOT/REGISTER
+      fi
+   fi
+else
+   el1 "The AIPS software is covered by the Free Software Foundation's"
+   el1 "General Public License (as is most GNU software).  NRAO has"
+   el1 "instituting a registration mechanism, where people who need"
+   el1 "support via email or phone from NRAO must register their sites"
+   el1 "for each release.  We *encourage* sites who are serious about"
+   el1 "using AIPS for research, especially in Radio Astronomy, to"
+   el1 "register.  On-line and off-line registration is available."
+   $spc
+   ni1 "===> Do you wish to register your site now? (YES) "; read yn;
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   $spc
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" != N ] ; then
+      $AIPS_ROOT/REGISTER
+   fi
+fi
+#                                       For source-only, we're done
+if [ "$bindist" = no ] ; then
+   el1 "-----------------------------------------------------------"
+   el1 "You are essentially done with INSTEP1 for $ARCH systems now."
+   el1 "To get INSTEP2 started, you need to do the following:"
+   $spc
+   el1 "  Check the compiler settings for Fortran and C in the files"
+   el1 "    $AIPS_ROOT/$VERS/SYSTEM/UNIX/FDEFAULT.SH and"
+   el1 "    $AIPS_ROOT/$VERS/$ARCH/SYSTEM/$SITE/CCOPTS.SH and LDOPTS.SH"
+   el1 "  and as soon as you are happy with these settings, do:"
+   $spc
+   case $SHELL in
+      */csh|*/tcsh)
+         el1 "          source $AIPS_ROOT/LOGIN.CSH; \$CDTST" ;;
+      */bash|*/ksh|*/sh)
+         el1 "          . $AIPS_ROOT/LOGIN.SH; \$CDTST";;
+   esac
+   $spc
+   el1 "  Then move to the $AIPS_ROOT/$VERS/$ARCH/INSTALL directory,"
+   el1 "  and start INSTEP2 for this architecture ($ARCH)."
+   $spc
+   el1 "While INSTEP2 is working away, you will probably want to:"
+   $spc
+   el1 "1.  Edit your .login or .profile, add the LOGIN.* stuff above"
+   $spc
+   el1 "2.  Check files in $AIPS_ROOT/DA00 for correctness:"
+   el1 "    DADEVS.LIST and NETSP for disks, PRDEVS.LIST for printers"
+   el1 "    and TPDEVS.LIST for tapes"
+   $spc
+   nextno=3
+   if [ $SERVOK = no ] ; then
+      el1 "$nextno.  Define the services in /etc/services or your" \
+          "YP/NIS services map"
+      el1 "    (TV etc. WILL NOT WORK till you do)"
+      $spc
+      nextno=`expr $nextno + 1`
+   fi
+   if [ "$ARCH" = SUN3 -o "$ARCH" = SUN4 -o "$ARCH" = LINUX -o \
+        "$ARCH" = AXLINUX -o "$ARCH" = LINUXPPC \
+        -o "$OPENWINHOME" != "" ] ; then
+      el1 "$nextno.  Check definition of OPENWINHOME in START_TVSERVERS"
+      $spc
+      nextno=`expr $nextno + 1`
+   fi
+#                                       Warn about different data format
+   case "$oldvers" in
+      15*9[234])
+      el1 "${nextno}.  The $VERS version of AIPS uses the 'D' internal"
+      el1 "     format where older versions (before 15JAN95) used 'C'."
+      el1 "     ALL SYSTEM FILE NAMES (e.g. in DA00/*/, TSTMEM, etc)"
+      el1 "     HAVE CHANGED.  However, the new files generated by"
+      el1 "     FILAIP after INSTEP3 can coexist with the old ones, in"
+      el1 "     the same directories.  Unfortunately, AIPS users cannot"
+      el1 "     share data between $VERS and versions prior to 15JAN95,"
+      el1 "     other than via FITS tape or disk files."
+      $spc
+      el1 "     There is a conversion program called UPDAT that will"
+      el1 "     convert user data from 'C' to 'D' format data for you."
+      el1 "     This procedure WILL *NOT* RUN IT FOR YOU.  See the"
+      el1 "     Installation Summary for further details."
+      $spc
+      nextno=`expr $nextno + 1`
+      ;;
+   esac
+else
+#                                       --------- Stage 19b --------
+#                                       For bintapes, move stuff around
+   cd $AIPS_ROOT
+   . ./LOGIN.SH; $CDTST
+   el1 "Now is a good time to put the AIPS LOGIN stuff in your"
+   case $SHELL in
+      */csh|*/tcsh) el1 "$HOME/.login file"
+                    el1 "namely, \"source $AIPS_ROOT/LOGIN.SH\""
+                    el1 "and     \"\$CDTST\""
+                    el1 '(do not include the " quotes though!)'
+      ;;
+      */bash|*/ksh|*/sh) el1 "$HOME/.profile"
+                    el1 "namely, \". $AIPS_ROOT/LOGIN.SH\""
+                    el1 "and     \"\$CDTST\""
+                    el1 '(do not include the " quotes though!)'
+      ;;
+      *) el1 "initialization file(s) for your shell $SHELL" ;;
+   esac
+   if [ "$EDITOR" != "" ] ; then
+      $spc
+      ni1 "===> Do you want to do this now? (Y) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         case $SHELL in
+            */csh|*/tcsh) $EDITOR $HOME/.login ;;
+            */bash|*/ksh|*/sh) $EDITOR $HOME/.profile ;;
+            *) (cd $HOME; $EDITOR) ;;
+         esac
+      fi
+   fi
+   DADEVS_QUIET=YES; export DADEVS_QUIET
+   . $AIPS_ROOT/$VERS/SYSTEM/UNIX/DADEVS.SH
+   DADEVS_QUIET=NO
+   if [ ! -f $DA01/MSD001000.001\; ] ; then
+      if [ ! -f $AIPS_ROOT/BIN/$ARCH/MSD001000.001\; ] ; then
+         el1 "Message file for user 1 not found.  If you choose to run"
+         el1 "FILAIP, it will be created.  If not, you will get some"
+         el1 "warning messages when SETPAR or AIPS are started."
+         el1 " (To make these go away, start AIPS as user number 1,"
+         el1 "  ignore the messages, and just type EXIT; this will"
+         el1 "  cause the user#1 message file to be created.)"
+         $spc
+      else
+         if cp $AIPS_ROOT/BIN/$ARCH/MSD001000.001\; $DA01/ ; then
+            el1 "copied MSD001000.001; to $DA01/"
+            chmod +w $DA01/MSD001000.001\;
+            if [ "$AIPSCDROM" != YES ] ; then
+               if rm -f $AIPS_ROOT/BIN/$ARCH/MSD001000.001\; ; then
+                  : fine
+               else
+                  el1 "Cannot zap $AIPS_ROOT/BIN/$ARCH/MSD001000.001;"
+                  el1 " - may cause problems for next AIPS install."
+                  $spc
+                  ni1 "===> Press RETURN to acknowledge..."; read dum
+                  echo "`date +%T`: installer pressed RETURN" >>$INLOG
+               fi
+            else
+               el1 "... but will not try removing it (cdrom)"
+            fi
+         else
+            el1 "FAILED to copy MSD001000.001; to $DA01/"
+            el1 "(check the protection on the destination directory)"
+            el1 'This is unusual (i.e. it should not happen!) but it'
+            el1 "is generally not fatal.  The message file for user #1"
+            el1 "will be generated automatically the first time you"
+            el1 "enter AIPS as user number 1 (and exit normally)."
+            $spc
+            ni1 "===> Press RETURN to continue..." ; read dum
+            echo "`date +%T`: installer pressed RETURN" >>$INLOG
+         fi
+      fi
+   fi
+   el1 "Your binary AIPS distribution for $ARCH includes pre-made"
+   el1 "system files (the output of FILAIP and POPSGN).  Using them"
+   el1 "will allow you to get things running fast, but you now have"
+   el1 "the option of changing their characteristics.  FILAIP will"
+   el1 "have been run with the following parameters:"
+   $spc
+   el1 " #disks, #catalog entries per disk: 15 -100"
+   el1 "  #interactive AIPS, #batch queues: 8 2"
+   el1 "                      #tape drives: 4"
+   $spc
+   el1 "See the Installation Summary section \"Making the System"
+   el1 "Files\" for details on what these mean."
+#                                       @@@ change for 15OCT99
+   case $oldvers in
+      15OCT98) ;;
+      *) el1 "The 15OCT98 version increased the sizes of the memory"
+         el1 "(ME) files.  As most of these are in version-independent"
+	 el1 "areas ($AIPS_ROOT/DA00/*)"
+	 el1 "any old memory files will need to be REPLACED with the"
+         el1 "newer, larger ones.  15OCT98 AIPS will NOT work until"
+	 el1 "this is done.  If you do this now, make sure all AIPS"
+	 el1 "sessions have been stopped first!"
+         $spc
+	 ni1 "===> Do you want to replace the memory files now? (N) : "
+         read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+	  awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" = "Y" ] ; then
+	    el1 "Very well, using HOSTS.LIST to check DA00 areas..."
+	    nmf=0; nmh=0
+            hosts=`grep "^[+-].*$SITE" $AIPS_ROOT/HOSTS.LIST | \
+                   awk '{print $2}'`
+	    for i in $hosts ; do
+               if [ -f $AIPS_ROOT/DA00/$i/MED000001\; ] ; then
+	          nmh=`expr $nmh + 1`
+	          for j in $AIPS_ROOT/DA00/$i/MED* ; do
+		     mv $j $j.OLD
+                     cp $AIPS_ROOT/DA00/$ARCH/MED000001\; $j
+	             nmf=`expr $nmf + 1`
+		  done
+                  el1 "... done with host $i"
+               fi
+            done
+	    el1 "Completed $nmh hosts, $nmf memory files."
+	    el1 "The old ones are still there, as MED000001.;.OLD etc.;"
+	    el1 " - you may want to remove these later."
+	 fi
+         $spc
+         ;;
+   esac
+#                                       @@@ Drop this for 15APR99?
+   case $oldvers in
+      15*9[5678]) ;;
+      *) el1 "Since 15JAN95, a new 'D' format has been used by AIPS for"
+         el1 "system and data files.  These can exist beside any 'C'"
+	 el1 "format files from $oldvers; $VERS will NOT be able to"
+         el1 "read or write these 'C' files, and $oldvers will not see"
+         el1 "any of the 'D' format files.  You can tell which format"
+         el1 "your files are in by the third letter of the Unix name."
+         el1 "They can co-exist but you will want to delete the older"
+         el1 "'C' format files if you remove $oldvers from your system."
+         $spc
+         el1 "There is a conversion program called UPDAT that you may"
+         el1 "run to convert user data from 'C' to 'D' format, but"
+         el1 'MAKE SURE NO "D" DATA FILES EXIST BEFORE USING IT!!!'
+         $spc
+         ;;
+   esac
+   $spc
+   ni1 "===> Do you wish to change these FILAIP numbers? (N) : "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      el1 "Very well, removing all 'D' format files in DA00, MEMORY..."
+      rm -f $AIPS_ROOT/DA00/$HOST/??D*
+      rm -f $AIPS_ROOT/$VERS/$ARCH/MEMORY/??D*
+      el1 "Starting program FILAIP..."
+      RUN FILAIP
+      if [ $? -ne 0 ] ; then
+         el1 "FILAIP exited abnormally, stopping installation NOW"
+         el1 "*******************************************************"
+         exit 1
+      fi
+      el1 "FILAIP appears to have completed with no errors"
+      el1 "Starting program POPSGN..."
+      rm -f $AIPS_ROOT/poptmp $AIPS_ROOT/popout
+      echo "0 POPSDAT TST" > $AIPS_ROOT/poptmp
+      $spc >>$AIPS_ROOT/poptmp
+      cat $AIPS_ROOT/poptmp | RUN POPSGN >$AIPS_ROOT/popout 2>&1
+      if [ $? -ne 0 ] ; then
+         cat $AIPS_ROOT/popout
+         rm -f $AIPS_ROOT/popout $AIPS_ROOT/poptmp
+         el1 "POPSGN exited abnormally, stopping installation NOW"
+         el1 "*******************************************************"
+         exit 1
+      fi
+      el1 "POPSGN appears to have completed with no errors"
+#     el1 "(for your amusement, here is the output in case I'm wrong:)"
+#     cat $AIPS_ROOT/popout; rm -f $AIPS_ROOT/popout $AIPS_ROOT/poptmp
+   else
+      if [ "$AIPSCDROM" != YES ] ; then
+         mv $AIPS_ROOT/DA00/$ARCH/* $AIPS_ROOT/DA00/$HOST/
+      else
+         cp $AIPS_ROOT/DA00/$ARCH/* $AIPS_ROOT/DA00/$HOST/
+      fi
+      chmod +w $AIPS_ROOT/DA00/$HOST/*
+   fi
+#                                       Watch version format @@@
+   if [ ! -f $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/ACD000000\; ] ; then
+      el1 "You have an option to copy the system files to a TEMPLATE"
+      el1 "area for architecture $ARCH.  This is useful if you have"
+      el1 "more than one computer of type $ARCH that will use AIPS."
+      el1 "It is required if you wish to use the SYSETUP script."
+      el1 "See the AIPS Installation Summary for more details."
+      $spc
+      ni1 \
+       "===> Do you wish to copy these files? (Y) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         el1 "Copying files to TEMPLATE area for $ARCH..."
+         [ ! -d $AIPS_ROOT/$VERS/$ARCH/TEMPLATE ] && \
+            mkdir $AIPS_ROOT/$VERS/$ARCH/TEMPLATE
+         cp $AIPS_ROOT/DA00/$HOST/[ABMST]?D* \
+            $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/
+#        cp $AIPS_ROOT/DA00/$HOST/I[CD]D000001* \
+#           $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/
+         cp $AIPS_ROOT/DA00/$HOST/ICD000000\; \
+            $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/
+         cp $AIPS_ROOT/DA00/$HOST/[GP]?D* \
+            $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/
+         el1 "Done."
+      fi
+   fi
+   if [ -f $AIPS_ROOT/$VERS/$ARCH/TEMPLATE/ACD000000\; ] ; then
+      el1 "You also have the option of running the SYSETUP script at"
+      el1 "this point.  If you have already indicated above that"
+      el1 "several other hosts of type $ARCH (or other compatible"
+      el1 "systems, i.e. within the same SITE=$SITE in HOSTS.LIST)"
+      el1 "will run AIPS, you should do this now.  However, this only"
+      el1 "needs to be done ONCE per SITE."
+      $spc
+      ni1 \
+       "===> Run SYSETUP now to set up other $ARCH system areas? (Y) "
+      read yn; $spc
+      echo "`date +%T`: installer response: $yn" >>$INLOG
+      yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+       awk '{print substr($1, 1, 1)}'`
+      if [ "$yn" != "N" ] ; then
+         el1 "Starting SYSETUP.  Use THIS account as the aips manager,"
+         el1 "and the main group as the aips group unless you have set"
+         el1 "up some other account/group for AIPS already.  You can"
+         el1 "use this host ($HOST) as the master machine."
+         $AIPS_ROOT/$VERS/SYSTEM/UNIX/SYSETUP
+      fi
+   fi
+   el1 "If you have submitted a registration request for this version"
+   el1 "of AIPS to NRAO, and have received the seven numeric keys,"
+   el1 "you can run SETPAR to register your system.  Choose option 2"
+   el1 "(change params) and change item 19.  It will prompt you for"
+   el1 "for the six keys for this SITE and HOST ($SITE and $HOST), and"
+   el1 "the version-specific key.  When entered, you will be able to"
+   el1 "change the AIPS system name as identified in the terminating"
+   el1 "message of tasks, and certain printouts.  Then you can run"
+   el1 "SETSP to have all other AIPS hosts in this SITE registered."
+   $spc
+   ni1 \
+  "===> Do you wish to run SETPAR to input your registration keys? (N) "
+   read yn; $spc
+   echo "`date +%T`: installer response: $yn" >>$INLOG
+   yn=`echo $yn | tr '[a-z]' '[A-Z]' | awk '{print substr($1, 1, 1)}'`
+   if [ "$yn" = "Y" ] ; then
+      el1 "The default password (as shipped) is AMANAGER (uppercase)."
+      el1 "(you can change this later inside AIPS for user number 1"
+      RUN SETPAR
+      if [ $? -ne 0 ] ; then
+         el1 "SETPAR exited abnormally, please investigate."
+         el1 "*********************************************"
+      else
+         $spc
+         ni1 \
+          "===> Do you wish to run SETSP to register other hosts? (N) "
+         read yn; $spc
+         echo "`date +%T`: installer response: $yn" >>$INLOG
+         yn=`echo $yn | tr '[a-z]' '[A-Z]' | \
+          awk '{print substr($1, 1, 1)}'`
+         if [ "$yn" = "Y" ] ; then
+            el1 "The default as-shipped password is AMANAGER"
+            el1 "Choose \"19 CHANGE\" once you are in the program"
+            el1 "and then preserve (via -1) the existing values for"
+            el1 "this host.  You will then be prompted for the system"
+            el1 "names for this and each other host."
+            RUN SETSP
+            if [ $? -ne 0 ] ; then
+               el1 "SETSP exited abnormally, please investigate."
+               el1 "********************************************"
+            fi
+         fi
+      fi
+   fi
+   el1 "Your AIPS installation on $ARCH seems to be ready (I hope)"
+   el1 "Don't forget to check http://www.cv.nrao.edu/aips/patch.html"
+   el1 "or ftp to aips.nrao.edu:/pub/aips/$VERS/README.$VERS"
+   el1 "to check for any 'patches' to this release."
+fi
+el1 "Now, you should rerun INSTEP1 on any architectures other than"
+el1 "$ARCH for which you plan on installing AIPS (if the other"
+el1 "architectures are to share the same AIPS_ROOT area, that is)."
+el1 "-----------------------------------------------------------"
+el1 "Done.  That wasn't too painful, was it?"
+#                                       Yeah right.  Pigs fly too...
+#                                       End of INSTEP1

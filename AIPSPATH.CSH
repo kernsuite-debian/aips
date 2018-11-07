@@ -1,6 +1,6 @@
 #!/usr/bin/echo you_need_to_source_this_file
 #-----------------------------------------------------------------------
-#;  Copyright (C) 1995-1996, 1998, 2000-2016
+#;  Copyright (C) 1995-1996, 1998, 2000-2017
 #;  Associated Universities, Inc. Washington DC, USA.
 #;
 #;  This program is free software; you can redistribute it and/or
@@ -35,10 +35,10 @@
 #                                       Set the AIPS root directory.
 setenv AIPS_ROOT /opt/aips
 #                                       Define AIPS versions.
-setenv OLD $AIPS_ROOT/31DEC15
-setenv NEW $AIPS_ROOT/31DEC16
-setenv TST $AIPS_ROOT/31DEC17
-setenv CVX $AIPS_ROOT/31DEC17
+setenv OLD $AIPS_ROOT/31DEC16
+setenv NEW $AIPS_ROOT/31DEC17
+setenv TST $AIPS_ROOT/31DEC18
+setenv CVX $AIPS_ROOT/31DEC18
 #                                       Assign default version (see
 #                                       START_AIPS)
 if (! $?VERSION) setenv VERSION TST

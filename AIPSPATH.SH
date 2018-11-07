@@ -1,6 +1,6 @@
 #!/usr/bin/echo you_need_to_dot_this_file
 #-----------------------------------------------------------------------
-#;  Copyright (C) 1995-1996, 1998, 2000-2016
+#;  Copyright (C) 1995-1996, 1998, 2000-2017
 #;  Associated Universities, Inc. Washington DC, USA.
 #;
 #;  This program is free software; you can redistribute it and/or
@@ -35,12 +35,12 @@
 #                                       Set the AIPS root directory.
 AIPS_ROOT=/opt/aips
 #                                       Define AIPS versions.
-OLD=$AIPS_ROOT/31DEC15
-NEW=$AIPS_ROOT/31DEC16
+OLD=$AIPS_ROOT/31DEC16
+NEW=$AIPS_ROOT/31DEC17
 #                                       TST always used for TPMONs, and
 #                                       for MANPATH.
-TST=$AIPS_ROOT/31DEC17
-CVX=$AIPS_ROOT/31DEC17
+TST=$AIPS_ROOT/31DEC18
+CVX=$AIPS_ROOT/31DEC18
 #                                       Set default version (see
 #                                       START_AIPS).
 [ "$VERSION" = "" ] && VERSION=TST

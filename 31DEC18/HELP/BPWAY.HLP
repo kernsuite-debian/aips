@@ -1,0 +1,249 @@
+; BPWAY
+;---------------------------------------------------------------
+;! Determines channel-dependent relative weights
+;# Task UV CALIBRATION VLA
+;-----------------------------------------------------------------------
+;;  Copyright (C) 2014, 2018
+;;  Associated Universities, Inc. Washington DC, USA.
+;;
+;;  This program is free software; you can redistribute it and/or
+;;  modify it under the terms of the GNU General Public License as
+;;  published by the Free Software Foundation; either version 2 of
+;;  the License, or (at your option) any later version.
+;;
+;;  This program is distributed in the hope that it will be useful,
+;;  but WITHOUT ANY WARRANTY; without even the implied warranty of
+;;  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;;  GNU General Public License for more details.
+;;
+;;  You should have received a copy of the GNU General Public
+;;  License along with this program; if not, write to the Free
+;;  Software Foundation, Inc., 675 Massachusetts Ave, Cambridge,
+;;  MA 02139, USA.
+;;
+;;  Correspondence concerning AIPS should be addressed as follows:
+;;         Internet email: aipsmail@nrao.edu.
+;;         Postal address: AIPS Project Office
+;;                         National Radio Astronomy Observatory
+;;                         520 Edgemont Road
+;;                         Charlottesville, VA 22903-2475 USA
+;-----------------------------------------------------------------------
+BPWAY     LLLLLLLLLLLLUUUUUUUUUUUU CCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+BPWAY:     Determines channel-dependent relative weights
+INNAME                             Input UV file name (name)
+INCLASS                            Input UV file name (class)
+INSEQ             0.0     9999.0   Input UV file name (seq. #)
+INDISK            0.0        9.0   Input UV file disk unit #
+OUTNAME                            Output UV file name (name)
+OUTCLASS                           Output UV file name (class)
+OUTSEQ             0.0     9999.0  Output UV file name (seq. #)
+OUTDISK            0.0        9.0  Output UV file disk unit #
+OPTYPE                             'SORC' else 'SCAN'
+SOURCES                            Source name
+QUAL            -10.0              Calibrator qualifier -1=>all
+CALCODE                            Calibrator code '    '=>all
+TIMERANG                           Time range to use
+FREQID                             Freq. ID to select.
+SUBARRAY          0.0     1000.0   Sub-array, 0=>all
+DOCALIB          -1.0      101.0   > 0 calibrate data & weights
+                                   > 99 do NOT calibrate weights
+GAINUSE                            CL (or SN) table to apply
+DOPOL            -1.0       10.0   If >0.5 correct polarization.
+PDVER                              PD table to apply (DOPOL>0)
+BLVER                              BL table to apply.
+FLAGVER                            Flag table version
+DOBAND           -1.0       10.0   If >0.5 apply bandpass cal.
+                                   Method used depends on value
+                                   of DOBAND (see HELP file).
+BPVER                              Bandpass table version
+SMOOTH                             Spectral smoothing function
+                                   Dangerous here - see help.
+BIF                                Lower IF to include
+EIF                                Upper IF to include
+ICHANSEL                           Array of start and stop chan
+                                   numbers, plus a channel
+                                   increment and IF to be used
+                                   to select channels to sum to
+                                   find average spectral rms.
+FPARM                              (1) > 0 rolling T buffer to
+                                      find time rms F(1) times
+                                   (2) Normal time interval
+                                      between samples (sec)
+                                      IMPORTANT TO BE ~RIGHT
+                                   (3) Flag any visibility amp
+                                      > F(13) before time rms
+                                      0 -> 1.E6
+                                   (4) Smoothing type
+                                   (5) Smoothing width (min)
+                                   (6) Smoothing support (min)
+                                   (7) Minimum weight factor
+                                   (8) Maximum weight factor
+                                   (9) > 0 -> average Stokes
+                                   (10) > 0 ignore weights
+                                       SEE HELP
+FQCENTER                           >= 0 -> center frequency axis
+BADDISK                            Disks to avoid for scratch
+----------------------------------------------------------------
+BPWAY
+Task:  This task examines data, one scan at a time.  In each scan, the
+       task finds the rms versus time for each baseline over time
+       intervals, which are usually fairly short, one polarization and
+       one spectral channel at a time.  This operation is done with a
+       moving window to determine the rms at the center of the window.
+       The spectra of rmses are normalized and then written to a table
+       where they are sorted, smoothed over time, and then re-sorted
+       to time order.  These time smoothed rmses are then used to set
+       the weights of the data written to a new data set.  This data
+       set is written in uncompressed form to avoid loosing all the
+       weights just computed.
+
+       Note that any calibration, particularly bandpass, should be
+       applied to the data either before or in this task.
+Adverbs:
+  INNAME.....Input UV file name (name).      Standard defaults.
+  INCLASS....Input UV file name (class).     Standard defaults.
+  INSEQ......Input UV file name (seq. #).    0 => highest.
+  INDISK.....Disk drive # of input UV file.  0 => any.
+  OUTNAME....Output UV file name (name).      Standard defaults.
+  OUTCLASS...Output UV file name (class).     Standard defaults.
+  OUTSEQ.....Output UV file name (seq. #).    0 => highest.
+  OUTDISK....Disk drive # of output UV file.  0 => highest with space
+  OPTYPE.....'SORC' => do one source at a time.  If > 1 source, then
+             data will end up out of time order.
+             Otherwise, do one scan at a time.  The result may be
+             noisier but will beter reflect and real changes in the
+             weights and the output data will still be in time order.
+  SOURCES....Sources to be copied.   '  '=> all; if any starts with a
+             '-' then all except ANY source named.
+  QUAL.......Qualifier of sources to be copied. -1 => all.
+  CALCODE....Calibrator code of sources to copy. ' '=> all.
+  TIMERANG...Time range of the data to be copied. In order: Start day,
+             hour, min. sec, end day, hour, min. sec. Days relative to
+             ref. date.
+  FREQID.....Frequency identifier to select (you may determine which is
+             applicable from the OPTYPE='SCAN' listing produced by
+             LISTR). This task does not use SELBAND or SELFREQ and is
+             easily able to accomodate all Freq IDs.  <= 0 -> all
+  SUBARRAY...Sub-array number to copy. 0=>all.
+  DOCALIB....If true (>0), calibrate the data using information in the
+             specified Cal (CL) table for multi-source or SN table for
+             single-source data.  Also calibrate the weights unless
+             DOCALIB > 99 (use this for old non-physical weights).
+  GAINUSE....version number of the CL table to apply to multi-source
+             files or the SN table for single source files.
+             0 => highest.
+  DOPOL......If > 0 then correct data for instrumental polarization as
+             represented in the AN or PD table.  This correction is
+             only useful if PCAL has been run or feed polarization
+             parameters have been otherwise obtained.  See HELP DOPOL
+             for available correction modes: 1 is normal, 2 and 3 are
+             for VLBI.  1-3 use a PD table if available; 6, 7, 8 are
+             the same but use the AN (continuum solution) even if a PD
+             table is present.
+  PDVER......PD table to apply if PCAL was run with SPECTRAL true and
+             0 < DOPOL < 6.  <= 0 => highest.
+  FLAGVER....specifies the version of the flagging table to be applied.
+              0 => highest numbered table.
+             <0 => no flagging to be applied.
+             Keep track of your FG table versions to be certain that
+             you are using all of the flags that you intend to use.
+  DOBAND.....If true (>0) then correct the data for the shape of the
+             antenna bandpasses using the BP table specified by BPVER.
+             The correction has five modes:
+             (a) if DOBAND=1 all entries for an antenna in the table
+             are averaged together before correcting the data.
+             (b) if DOBAND=2 the entry nearest in time (including
+             solution weights) is used to correct the data.
+             (c) if DOBAND=3 the table entries are interpolated in
+             time (using solution weights) and the data are then
+             corrected.
+             (d) if DOBAND=4 the entry nearest in time (ignoring
+             solution weights) is used to correct the data.
+             (e) if DOBAND=5 the table entries are interpolated in
+             time (ignoring solution weights) and the data are then
+             corrected.
+             IMAGR uses DOBAND as the nearest integer; 0.1 is therefore
+             "false".
+  BPVER......Specifies the version of the BP table to be applied
+                0 => highest numbered table.
+               <0 => no bandpass correction to be applied.
+  SMOOTH.....Specifies the type of spectral smoothing to be applied to
+             a uv database . The default is not to apply any smoothing.
+             NOTE: SMOOTH IS FAIRLY DANGEROUS IN THIS CONTEXT.
+             Applying SMOOTH because it was applied in BPASS must
+             still be done.  SMOOTHING after BP application will
+             smooth out real structure in the spectral shape of
+             weights.  If you realy need SMOOTH to remove ringing from
+             narrow-band signals, run SPLAT on the data to apply the
+             SMOOTH and then set SMOOTH=0 for later work.  The
+             elements of SMOOTH are as follows:
+             SMOOTH(1) = type of smoothing to apply: 0 => no smoothing
+               To smooth before applying bandpass calibration
+                 1 => Hanning, 2 => Gaussian, 3 => Boxcar, 4 => Sinc
+               To smooth after applying bandpass calibration
+                 5 => Hanning, 6 => Gaussian, 7 => Boxcar, 8 => Sinc
+             SMOOTH(2) = the "diameter" of the function, i.e. width
+               between first nulls of Hanning triangle and sinc
+               function, FWHM of Gaussian, width of Boxcar. Defaults
+               (if < 0.1) are 4, 2, 2 and 3 channels for SMOOTH(1) =
+               1 - 4 and 5 - 8, resp.
+             SMOOTH(3) = the diameter over which the convolving
+               function has value - in channels.  Defaults: 1,3,1,4
+               times SMOOTH(2) used when input SMOOTH(3) < net
+               SMOOTH(2).
+  BIF........First IF included in operation
+  EIF........Last IF included in operation
+  ICHANSEL.. Array of start, stop, and increment channel numbers plus
+             an IF used for channel selection in the averaging to
+             compute a normalized rms.  Up to 20 sets if channels/IF may
+             be entered.  The first having ICHANSEL(2,i) <= 0
+             terminates the list.  ICHANSEL(4,i) is the IF number,
+             with <= 0 meaning all IFs.  If an IF has no ICHANSEL set
+             for it, then the inner 3/4 of the channels will be used.
+  FPARM......(1) Number of times to be included in the time rms.  We
+                 recommend an odd number and < 3 -> 3.
+             (2) Normal interval between samples in seconds.  The
+                 program will not do intervals longer than 2 *
+                 FPARM(1) * FPARM(2).   0 -> 10 secs
+                 IT IS IMPORTANT TO HAVE THIS ABOUT RIGHT.  If it is
+                 too short, in particular, then data samples that
+                 belong in the same bin (time interval) may end up in
+                 different bins.  This happens most often when data
+                 have been time averaged after selective flagging.
+                 Set it to somewhat less than the averaging time -
+                 if observations at XINT are averaged over N times,
+                 set FPARM(2) = (N-0.5) * XINT.
+             (3) Examine the data before doing any other checks and
+                 flag all samples > FPARM(3) Jy.  0 -> 1.E8.
+             (4) Code for type of smoothing function: 1: Boxcar,
+                 2: Gaussian, 3: Exponential, 4: Linear, 5 Median
+             .   0 -> 1
+             (5) FWHM for Gaussian, exponential, linear in minutes.
+                 0 -> 10
+             (6) Full support size for smoothing function in minutes,
+                 the function has value 0.0 outside +- FPARM(6)/2 from
+                 the time being evaluated.  0 -> 10 for box, median;
+                 0 -> 3, 4, 2 * FPARM(5) for Gaussian, exponential,
+                 and linear, resp.
+             (7) Minimum weight factor: the existing weight is
+                 multiplied by 1/rms^2 so this is equivalent to
+                 setting a maximum (normalized) rms.  0 -> 0.
+             (8) Maximum weight factor: the existing weight is
+                 multiplied by 1/rms^2 so this is equivalent to
+                 setting a minimum (normalized) rms.  0 -> 10000.
+                 NOTE: these minimum and maximum rms are applied
+                 before the smoothing to keep really extreme values
+                 from affecting the smoothed values excessively.
+             (9) If > 0, average the rms values over polarization
+                 before smoothing.
+             (10) > 1 => ignore incoming data weights in averaging and
+                         in writing the output
+                  > 0 => set incoming weights to 1 before scaling them
+                         on output but use them in averaging
+                  <=0 => use incoming weights throughout
+  FQCENTER,..>  0 => Change frequency axis reference pixel to
+                     Nchan / 2 + 1
+             else => do not change reference pixel
+  BADDISK....The disk numbers to avoid for scratch files (sorting
+             tables mostly).
+----------------------------------------------------------------
